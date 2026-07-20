@@ -1,23 +1,40 @@
 # Installer
 
-**Status:** scaffolded, implementation lands in Milestone 8 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-Guided installer that runs from the live ISO: partitions a target disk, writes the root filesystem, installs the bootloader, and hands off to the new system.
+Guided text-mode disk installer for ShreeOS. Partitions, writes the root
+filesystem, installs GRUB, and configures first boot.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
+```
+installer/
+├── scripts/
+│   └── install-to-disk.sh   # Main installer (bash, sfdisk, mkfs.ext4)
+├── tests/
+│   └── test-install.sh      # Non-interactive QEMU install test
+└── README.md
+```
 
-## Building standalone
+## Usage
 
 ```bash
-# once implemented:
-# cd installer && make
+# Interactive:
+bash installer/scripts/install-to-disk.sh /dev/sda
+
+# Non-interactive (for testing):
+bash installer/scripts/install-to-disk.sh /dev/sda --yes \
+  --hostname=shreeos --root-password=changeme
 ```
 
 ## Testing
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+bash installer/tests/test-install.sh
+```
+
+Creates a blank 4G QEMU disk, installs to it, boots it, and checks for
+the init marker.
+
+## Requirements
+
+- Host tools: `sfdisk`, `mkfs.ext4`, `grub-install`, `rsync` (or `cpio`)
+- Run as root for block device access

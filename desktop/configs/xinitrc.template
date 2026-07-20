@@ -1,0 +1,13 @@
+#!/bin/sh
+# /etc/X11/xinit/xinitrc — X session startup for ShreeOS
+
+# Wallpaper
+if [ -f /usr/share/wallpapers/shreeos-wallpaper.png ]; then
+  xwallpaper --zoom /usr/share/wallpapers/shreeos-wallpaper.png &
+fi
+
+# Keyboard
+setxkbmap us &
+
+# Start window manager
+exec dwm
