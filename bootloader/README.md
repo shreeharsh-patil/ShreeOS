@@ -1,23 +1,25 @@
 # Bootloader
 
-**Status:** scaffolded, implementation lands in Milestone 6 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-GRUB2 configuration templates and installation scripts for both BIOS and UEFI boot on $LUMEN_ARCH.
+GRUB2 configuration templates and installation scripts for hybrid BIOS/UEFI boot.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd bootloader && make
+```
+bootloader/
+├── grub/grub.cfg.template    # GRUB menu config (templated with build.conf vars)
+├── scripts/install-grub.sh   # Installs GRUB2 BIOS+UEFI to ISO staging directory
+└── README.md
 ```
 
-## Testing
+## Usage
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+# Install GRUB2 into an ISO staging directory:
+bash bootloader/scripts/install-grub.sh /path/to/iso-staging
+```
+
+## Dependencies
+
+- Host packages: `grub-pc`, `grub-efi`, `grub-common`
+- GRUB2 is a host build dependency — not cross-compiled from source
+- Minimum GRUB version: 2.04+ for full UEFI support
