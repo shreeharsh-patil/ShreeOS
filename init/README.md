@@ -1,23 +1,30 @@
 # Init System
 
-**Status:** scaffolded, implementation lands in Milestone 5 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-Custom minimal PID 1 init written in C, plus service definitions. Not systemd, not a re-skin of one — a small, auditable init tailored to this distro.
+Custom minimal PID 1 init written in C. Mounts proc/sys/dev, spawns a shell on the console, handles reboot on SIGTERM.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd init && make
+```
+init/
+├── src/
+│   ├── init.c      # PID 1 implementation
+│   └── Makefile    # Cross-compilation
+├── services/       # Service definitions (empty — future)
+├── tests/          # Unit tests (empty — future)
+└── README.md
 ```
 
-## Testing
+## Building
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+# Cross-compile (from repo root):
+export CROSS_COMPILE=x86_64-shreeos-linux-gnu-
+make -C init/src
+
+# Or via Makefile:
+make rootfs
+```
+
+## Integration
+
+The init binary is installed to `/sbin/init` by `rootfs/scripts/make-rootfs.sh`.

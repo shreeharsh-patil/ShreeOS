@@ -29,6 +29,7 @@ static void fill_str_array(const json_value *arr, char ***out, int *n) {
     if (!arr || arr->type != JSON_ARRAY) return;
     *n = json_array_len(arr);
     *out = calloc(*n + 1, sizeof(char *));
+    if (!*out) return;
     for (int i = 0; i < *n; i++) {
         const char *s = json_array_str(arr, i);
         (*out)[i] = s ? strdup(s) : strdup("");
@@ -40,6 +41,7 @@ manifest *manifest_parse(const char *json_str) {
     if (!root) return NULL;
 
     manifest *m = calloc(1, sizeof(manifest));
+    if (!m) { json_free(root); return NULL; }
     m->name        = strdup_safe(json_string(json_get(root, "name")));
     m->version     = strdup_safe(json_string(json_get(root, "version")));
     m->description = strdup_safe(json_string(json_get(root, "description")));
@@ -73,6 +75,12 @@ int manifest_save(const manifest *m, const char *dir) {
     fprintf(f, "  \"version\": \"%s\",\n", m->version);
     if (m->description && *m->description)
         fprintf(f, "  \"description\": \"%s\",\n", m->description);
+    fprintf(f, "  \"dependencies\": [");
+    for (int i = 0; i < m->ndeps; i++) {
+        if (i > 0) fprintf(f, ",");
+        fprintf(f, "\"%s\"", m->deps[i]);
+    }
+    fprintf(f, "],\n");
     fprintf(f, "  \"files\": [");
     for (int i = 0; i < m->nfiles; i++) {
         if (i > 0) fprintf(f, ",");
@@ -93,8 +101,12 @@ manifest *manifest_load(const char *dir) {
     fseek(f, 0, SEEK_END);
     long len = ftell(f);
     rewind(f);
+    if (len < 0) { fclose(f); return NULL; }
     char *buf = malloc(len + 1);
-    fread(buf, 1, len, f);
+    if (!buf) { fclose(f); return NULL; }
+    if (fread(buf, 1, len, f) != (size_t)len) {
+        free(buf); fclose(f); return NULL;
+    }
     buf[len] = '\0';
     fclose(f);
 

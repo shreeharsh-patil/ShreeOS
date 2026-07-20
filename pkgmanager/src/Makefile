@@ -25,6 +25,9 @@ $(BIN): $(OBJS)
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+test:
+	$(MAKE) -C ../tests test
+
 clean:
 	rm -f $(OBJS) $(BIN)
 	$(MAKE) -C ../tests clean

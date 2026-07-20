@@ -1,23 +1,35 @@
-# Toolchain
+# Cross-Compilation Toolchain
 
-**Status:** scaffolded, implementation lands in Milestone 2 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-Builds the cross-compilation toolchain (binutils, gcc, glibc) used to compile everything else in this repo, following the LFS two-pass method. Produces a self-contained compiler installed under $LUMEN_TOOLS that never touches the host system's own toolchain.
+Build scripts for the `x86_64-shreeos-linux-gnu-` cross-compilation toolchain (binutils, GCC, glibc, Linux kernel headers).
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd toolchain && make
+```
+toolchain/
+├── scripts/
+│   ├── common.sh                    # Shared helpers
+│   ├── sources.list                 # Pinned URLs + SHA-256
+│   ├── build-binutils-pass1.sh      # Binutils (Pass 1)
+│   ├── build-gcc-pass1.sh           # GCC (Pass 1)
+│   ├── install-kernel-headers.sh    # Linux kernel headers
+│   ├── build-glibc.sh               # glibc C library
+│   ├── build-libstdcpp.sh           # libstdc++ (GCC runtime)
+│   ├── build-gcc-pass2.sh           # GCC (Pass 2)
+│   ├── stage-toolchain.sh           # Final staging
+│   └── build-all.sh                 # Orchestrator (all 7 steps)
+└── README.md
 ```
 
-## Testing
+## Building
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+bash toolchain/scripts/build-all.sh
+# or via top-level Makefile:
+make toolchain
+```
+
+## Verification
+
+```bash
+bash tests/smoke/test-toolchain.sh
+```

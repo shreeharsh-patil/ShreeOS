@@ -14,6 +14,7 @@ static char *parse_string(const char **p) {
     (*p)++;
     size_t cap = 64, len = 0;
     char *s = malloc(cap);
+    if (!s) return NULL;
     while (**p && **p != '"') {
         if (**p == '\\') { (*p)++;
             if (**p == '"' || **p == '\\' || **p == '/') s[len++] = **p;
@@ -23,7 +24,7 @@ static char *parse_string(const char **p) {
         } else {
             s[len++] = **p;
         }
-        if (len >= cap - 1) { cap *= 2; s = realloc(s, cap); }
+        if (len >= cap - 1) { cap *= 2; char *t = realloc(s, cap); if (!t) { free(s); return NULL; } s = t; }
         (*p)++;
     }
     if (**p == '"') (*p)++;
@@ -38,6 +39,7 @@ static json_pair *parse_object(const char **p) {
     if (**p == '}') { (*p)++; return NULL; }
     while (**p) {
         json_pair *pair = calloc(1, sizeof(json_pair));
+        if (!pair) break;
         pair->key = parse_string(p);
         if (!pair->key) { free(pair); break; }
         skip_ws(p);
@@ -60,6 +62,7 @@ static json_pair *parse_array(const char **p) {
     if (**p == ']') { (*p)++; return NULL; }
     while (**p) {
         json_pair *pair = calloc(1, sizeof(json_pair));
+        if (!pair) break;
         pair->value = parse_value(p);
         *tail = pair; tail = &pair->next;
         skip_ws(p);
@@ -72,6 +75,7 @@ static json_pair *parse_array(const char **p) {
 
 static json_value *parse_value(const char **p) {
     json_value *v = calloc(1, sizeof(json_value));
+    if (!v) return NULL;
     skip_ws(p);
     if (**p == '"') {
         v->type = JSON_STRING;
@@ -94,6 +98,7 @@ static json_value *parse_value(const char **p) {
         while (**p && (isdigit((unsigned char)**p) || **p == '.' || **p == '-' || **p == '+')) (*p)++;
         size_t n = *p - start;
         v->string = malloc(n + 1);
+        if (!v->string) { free(v); return NULL; }
         memcpy(v->string, start, n);
         v->string[n] = '\0';
     }

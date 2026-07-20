@@ -1,23 +1,26 @@
 # Root Filesystem
 
-**Status:** scaffolded, implementation lands in Milestone 5 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-Assembles the base system, kernel modules, and custom init into a clean root filesystem layout (`skeleton/`), ready to be packaged into an ISO or installed to disk.
+Assembles the base system, kernel modules, and custom init into a root filesystem layout, ready for ISO packaging or disk installation.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd rootfs && make
+```
+rootfs/
+├── skeleton/etc/       # Config templates (os-release, fstab, resolv.conf)
+├── scripts/
+│   └── make-rootfs.sh  # Assembly script
+└── README.md
 ```
 
-## Testing
+## Building
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+bash rootfs/scripts/make-rootfs.sh
+# or via Makefile:
+make rootfs
+```
+
+## Output
+
+- `build/rootfs/` — assembled root filesystem
+- `build/rootfs.cpio.gz` — cpio archive for QEMU boot testing
