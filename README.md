@@ -5,8 +5,8 @@ toolchain, mainline Linux kernel, from-scratch root filesystem, custom init
 system, custom package manager, installer, and a minimal desktop environment —
 assembled into a bootable ISO and released through CI.
 
-> **Status:** early scaffold. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
-> milestone plan and current progress.
+> **Status:** pre-release. See [`docs/BUILD_GUIDE.md`](docs/BUILD_GUIDE.md) to
+> build from source, [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan.
 
 `ShreeOS` is the distro name — every reference to it lives behind the
 `DISTRO_NAME` variable in [`build.conf`](build.conf), so renaming the project
