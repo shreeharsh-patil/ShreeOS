@@ -3,7 +3,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#else
 #include <sys/stat.h>
+#endif
+
+static int mkdir_p(const char *path) {
+#ifdef _WIN32
+    return _mkdir(path);
+#else
+    return mkdir(path, 0755);
+#endif
+}
 
 static char *strdup_safe(const char *s) {
     return s ? strdup(s) : strdup("");
@@ -49,7 +63,7 @@ void manifest_free(manifest *m) {
 int manifest_save(const manifest *m, const char *dir) {
     char path[4096];
     snprintf(path, sizeof(path), "%s/manifest.json", dir);
-    mkdir(dir, 0755);
+    mkdir_p(dir);
 
     FILE *f = fopen(path, "w");
     if (!f) return -1;
@@ -67,7 +81,6 @@ int manifest_save(const manifest *m, const char *dir) {
     fprintf(f, "]\n}\n");
 
     fclose(f);
-    free(path);
     return 0;
 }
 
