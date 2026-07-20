@@ -1,0 +1,21 @@
+# Normalize to LF on commit, keep as-is on checkout (cross-platform)
+* text=auto eol=lf
+
+# Shell scripts must stay LF
+*.sh text eol=lf
+
+# Config files
+*.conf text eol=lf
+*.list text eol=lf
+*.json text eol=lf
+
+# Markdown/docs
+*.md text eol=lf
+
+# Binary files
+*.tar.xz binary
+*.tar.gz binary
+*.bz2 binary
+*.png binary
+*.jpg binary
+*.ico binary

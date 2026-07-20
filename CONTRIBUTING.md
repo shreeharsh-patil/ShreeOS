@@ -1,6 +1,6 @@
 # Contributing
 
-Lumen Linux is built milestone by milestone (see `docs/ROADMAP.md`). Please
+ShreeOS is built milestone by milestone (see `docs/ROADMAP.md`). Please
 follow the same discipline in any contribution:
 
 1. **One milestone/feature per branch and PR.** Don't mix unrelated stages.
