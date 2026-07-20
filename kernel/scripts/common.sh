@@ -31,7 +31,7 @@ kernel_srcdir() {
 # Verify host has what we need to build the kernel
 kernel_verify_host() {
   local missing=()
-  for cmd in gcc make bc flex bison openssl pkg-config; do
+  for cmd in gcc make bc flex bison openssl pkg-config cpio gzip; do
     if ! command -v "$cmd" &>/dev/null; then
       missing+=("$cmd")
     fi
