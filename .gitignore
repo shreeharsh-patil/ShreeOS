@@ -1,0 +1,18 @@
+# Build scratch space — never committed, always reproducible from scripts
+/build/
+/out/
+
+# Downloaded upstream sources (large, re-fetchable, checksum-verified)
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.tar.zst
+
+# Editor/OS cruft
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log

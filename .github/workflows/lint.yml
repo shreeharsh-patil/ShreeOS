@@ -1,0 +1,42 @@
+name: Lint
+
+# Runs on every push/PR. Full build workflows (toolchain, kernel, ISO) are
+# added incrementally in later milestones as those components exist.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Shellcheck all shell scripts
+        run: |
+          find . -name '*.sh' -not -path './build/*' -print0 \
+            | xargs -0 -r shellcheck -x
+
+      - name: Syntax-check build.conf and common.sh
+        run: |
+          bash -n build.conf
+          bash -n scripts/common.sh
+
+  structure-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify every top-level component has a README
+        run: |
+          missing=0
+          for d in toolchain base-system kernel rootfs init bootloader \
+                   pkgmanager repo-tools installer iso-builder desktop \
+                   branding update tests; do
+            if [[ ! -f "$d/README.md" ]]; then
+              echo "Missing README.md in $d/"
+              missing=1
+            fi
+          done
+          exit $missing
