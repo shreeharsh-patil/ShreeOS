@@ -16,6 +16,6 @@ GCC_SHA256="a7b39bc69cbf9e25826c5a60ab26477001f7c08d85cec04bc0e29cabed6f3cc9"
 GLIBC_URL=https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz
 GLIBC_SHA256="0b89b8c058eaa0f1121a814be6196ce2048235b43d95714ce8278fe72c7cc34a"
 
-# Linux kernel 6.10
-KERNEL_URL=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.10.tar.xz
-KERNEL_SHA256="774698422ee54c5f1e704456f37c65c06b51b4e9a8b0866f34580d86fef8e226"
+# Linux kernel 6.18 (LTS)
+KERNEL_URL=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.tar.xz
+KERNEL_SHA256="9106a4605da9e31ff17659d958782b815f9591ab308d03b0ee21aad6c7dced4b"

@@ -1,0 +1,11 @@
+# packages.list — base system packages for ShreeOS
+# Format: PACKAGE VERSION URL SHA256 CONFIGURE_ARGS
+# Each line: name version url sha256 --key=val ...
+
+ncurses 6.5 https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz 136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6 --with-shared --without-normal --without-debug --without-ada --enable-widec --with-termlib
+
+bash 5.2.37 https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz 9599b22ecd1d5787ad7d3b7bf0c59f312b3396d1e281175dd1f8a4014da621ff --without-bash-malloc --with-installed-readline=no
+
+coreutils 9.5 https://ftp.gnu.org/gnu/coreutils/coreutils-9.5.tar.xz cd328edeac92f6a665de9f323c93b712af1858bc2e0d88f3f7100469470a1b8a --enable-install-program=hostname --enable-no-install-program=kill,uptime
+
+util-linux 2.40.2 https://www.kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.2.tar.gz 7bec316b713a14c6be1a5721aa0e56a3b6170277329e6e1f1a56013cc91eece0 --without-python --disable-makeinstall-chown --without-systemd --without-systemdsystemunitdir --disable-liblastlog2 --disable-login --disable-su --disable-runuser --disable-nologin --without-udev --enable-libmount-force-mountinfo
