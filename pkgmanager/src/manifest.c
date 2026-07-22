@@ -63,7 +63,7 @@ void manifest_free(manifest *m) {
 }
 
 int manifest_save(const manifest *m, const char *dir) {
-    char path[4096];
+    char path[LPM_PATH_MAX];
     snprintf(path, sizeof(path), "%s/manifest.json", dir);
     mkdir_p(dir);
 
@@ -93,7 +93,7 @@ int manifest_save(const manifest *m, const char *dir) {
 }
 
 manifest *manifest_load(const char *dir) {
-    char path[4096];
+    char path[LPM_PATH_MAX];
     snprintf(path, sizeof(path), "%s/manifest.json", dir);
     FILE *f = fopen(path, "r");
     if (!f) return NULL;
@@ -113,4 +113,40 @@ manifest *manifest_load(const char *dir) {
     manifest *m = manifest_parse(buf);
     free(buf);
     return m;
+}
+
+/* Package name validation: [a-zA-Z0-9][a-zA-Z0-9._-]* */
+bool lpm_valid_pkgname(const char *name) {
+    if (!name || !*name) return false;
+    if (!((name[0] >= 'a' && name[0] <= 'z') ||
+          (name[0] >= 'A' && name[0] <= 'Z') ||
+          (name[0] >= '0' && name[0] <= '9')))
+        return false;
+    for (const char *p = name + 1; *p; p++) {
+        if (!((*p >= 'a' && *p <= 'z') ||
+              (*p >= 'A' && *p <= 'Z') ||
+              (*p >= '0' && *p <= '9') ||
+              *p == '.' || *p == '_' || *p == '-'))
+            return false;
+    }
+    return true;
+}
+
+/* Safe path check: no /../ components and starts with a safe prefix */
+bool lpm_safe_path(const char *path) {
+    if (!path || !*path) return false;
+    /* Must start with / */
+    if (path[0] != '/') return false;
+    /* Walk through path, reject any .. component */
+    const char *p = path;
+    while (*p) {
+        /* Check for /../ */
+        if (*p == '/' && p[1] == '.' && p[2] == '.' && (p[3] == '/' || p[3] == '\0'))
+            return false;
+        /* Also reject /.. at end */
+        if (p[0] == '.' && p[1] == '.' && (p[2] == '/' || p[2] == '\0'))
+            return false;
+        p++;
+    }
+    return true;
 }

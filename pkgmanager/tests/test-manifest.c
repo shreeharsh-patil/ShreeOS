@@ -63,10 +63,12 @@ static void test_manifest_save_load(void) {
 
     manifest *m2 = manifest_load(tmpdir);
     TEST("reloaded", m2 != NULL);
-    TEST("name preserved", strcmp(m2->name, "test-pkg") == 0);
-    TEST("version preserved", strcmp(m2->version, "0.1") == 0);
-    TEST("file preserved", m2->nfiles == 1 && strcmp(m2->files[0], "/usr/bin/test") == 0);
-    manifest_free(m2);
+    if (m2) {
+        TEST("name preserved", strcmp(m2->name, "test-pkg") == 0);
+        TEST("version preserved", strcmp(m2->version, "0.1") == 0);
+        TEST("file preserved", m2->nfiles == 1 && strcmp(m2->files[0], "/usr/bin/test") == 0);
+        manifest_free(m2);
+    }
 
     /* cleanup */
     char mp[256]; snprintf(mp, sizeof(mp), "%s/manifest.json", tmpdir);
