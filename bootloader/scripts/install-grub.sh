@@ -20,9 +20,17 @@ source "$LUMEN_ROOT_DIR/build.conf"
 source "$LUMEN_ROOT_DIR/scripts/common.sh"
 
 if [ $# -lt 1 ]; then
-  lumen_die "Usage: install-grub.sh <staging-dir>"
+  lumen_die "Usage: install-grub.sh <staging-dir> [--cmdline=...]"
 fi
 STAGING="$1"
+shift || true
+
+CMDLINE_EXTRA=""
+for arg in "$@"; do
+  case "$arg" in
+    --cmdline=*) CMDLINE_EXTRA="${arg#*=}" ;;
+  esac
+done
 
 lumen_require_cmd grub-install grub-mkrescue
 

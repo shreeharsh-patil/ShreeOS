@@ -83,11 +83,8 @@ for bin in bash ls mount; do
   fi
 done
 
-# 5. Ensure device nodes for console
-if [ ! -e "${LUMEN_STAGE_ROOT}/dev/console" ]; then
-  mkdir -p "${LUMEN_STAGE_ROOT}/dev"
-  mknod -m 622 "${LUMEN_STAGE_ROOT}/dev/console" c 5 1 2>/dev/null || true
-fi
+# 5. Ensure device nodes
+bash "${SCRIPT_DIR}/populate-devices.sh" "${LUMEN_STAGE_ROOT}"
 
 # 6. Package as cpio archive for QEMU
 if [ "$SKIP_ARCHIVE" = false ]; then
