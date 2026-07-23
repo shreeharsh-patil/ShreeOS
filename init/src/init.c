@@ -21,11 +21,14 @@
 #include <errno.h>
 
 static volatile sig_atomic_t shutdown_requested = 0;
+static volatile sig_atomic_t shutdown_mode = 0; /* 0 = reboot, 1 = poweroff, 2 = halt */
 
 static void handle_signal(int sig)
 {
-    (void)sig;
     shutdown_requested = 1;
+    if (sig == SIGUSR1) shutdown_mode = 1;
+    else if (sig == SIGUSR2) shutdown_mode = 2;
+    else shutdown_mode = 0;
 }
 
 static int mount_fs(const char *source, const char *target,
@@ -47,6 +50,8 @@ int main(void)
     sa.sa_handler = handle_signal;
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT,  &sa, NULL);
+    sigaction(SIGUSR1, &sa, NULL);
+    sigaction(SIGUSR2, &sa, NULL);
 
     printf("ShreeOS init: reached PID 1\n");
 
@@ -95,9 +100,18 @@ int main(void)
         printf("init: shell exited (status %d), respawning\n", WEXITSTATUS(status));
     }
 
-    /* Shutdown requested: reboot */
+    /* Shutdown requested: sync and act according to signal mode */
     printf("init: shutting down\n");
     sync();
-    reboot(RB_AUTOBOOT);
+    if (shutdown_mode == 1) {
+        printf("init: powering off system\n");
+        reboot(RB_POWER_OFF);
+    } else if (shutdown_mode == 2) {
+        printf("init: halting system\n");
+        reboot(RB_HALT_SYSTEM);
+    } else {
+        printf("init: rebooting system\n");
+        reboot(RB_AUTOBOOT);
+    }
     return 0;
 }

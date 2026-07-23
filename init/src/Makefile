@@ -13,15 +13,17 @@ CC := $(CROSS_COMPILE)gcc
 CFLAGS := -static -Os -Wall -Wextra
 LDFLAGS := -static
 
-SRC := init.c
-BIN := init
+BINS := init initctl
 
 .PHONY: all clean
 
-all: $(BIN)
+all: $(BINS)
 
-$(BIN): $(SRC)
+init: init.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+
+initctl: initctl.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
-	rm -f $(BIN)
+	rm -f $(BINS) *.o

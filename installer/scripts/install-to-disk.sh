@@ -27,13 +27,17 @@ shift
 ASSUME_YES=false
 HOSTNAME="${DISTRO_CODENAME}"
 ROOT_PASSWORD="shreeos"
+USERNAME=""
+USER_PASSWORD=""
 
 for arg in "$@"; do
   case "$arg" in
     --yes) ASSUME_YES=true ;;
     --hostname=*) HOSTNAME="${arg#*=}" ;;
     --root-password=*) ROOT_PASSWORD="${arg#*=}" ;;
-    --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--root-password=...]"; exit 0 ;;
+    --username=*) USERNAME="${arg#*=}" ;;
+    --user-password=*) USER_PASSWORD="${arg#*=}" ;;
+    --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--root-password=...] [--username=...] [--user-password=...]"; exit 0 ;;
   esac
 done
 
@@ -51,11 +55,7 @@ lumen_step "Installing ${DISTRO_NAME} to ${DISK}"
 
 # 1. Partition: single ext4 root partition
 lumen_log "Partitioning ${DISK}"
-sfdisk "$DISK" <<EOF
-label: gpt
-size=512M, type=21686148-6449-6E6F-744E-656564454649, name="BIOS"
-size=+, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="root"
-EOF
+bash "${SCRIPT_DIR}/partition-disk.sh" "$DISK" ${ASSUME_YES:+"--yes"}
 
 # Wait for kernel to re-read partition table
 sleep 1
@@ -82,6 +82,10 @@ fi
 # 4. Configure first-boot
 echo "${HOSTNAME}" > "${TARGET}/etc/hostname"
 sed -i "s/root:[^:]*:/root:$(echo "$ROOT_PASSWORD" | mkpasswd -m sha-512 -S "$(head -c 16 /dev/urandom | base64 | head -c 16)"):/" "${TARGET}/etc/shadow" 2>/dev/null || true
+
+if [ -n "${USERNAME}" ]; then
+  bash "${SCRIPT_DIR}/configure-user.sh" "$TARGET" "$USERNAME" "${USER_PASSWORD:-$ROOT_PASSWORD}"
+fi
 
 # 5. Install GRUB
 lumen_log "Installing GRUB"

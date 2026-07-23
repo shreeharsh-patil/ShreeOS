@@ -15,7 +15,7 @@ test-manifest: test-manifest.c $(SRCS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 test: $(TESTS)
-	for t in $(TESTS); do ./$$t; done
+	./test-manifest
 
 clean:
 	rm -f $(TESTS)

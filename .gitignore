@@ -14,5 +14,19 @@
 *.swp
 .DS_Store
 
+# AI / planning artifacts (not part of the distro)
+.planning/
+AGENTS.md
+opencode.json
+gemini-extension.json
+IMPLEMENTATION_PLAN.md
+
 # Logs
 *.log
+
+# Binaries and object files
+*.o
+*.exe
+lpm
+lpm-build
+test-manifest

@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <ctype.h>
+#include <unistd.h>
 
 int cmd_query(int argc, char **argv) {
     if (argc < 1) { fprintf(stderr, "Usage: lpm query <package>\n"); return 1; }
@@ -50,4 +52,119 @@ int cmd_list(int argc, char **argv) {
     closedir(dir);
     if (!found) printf("No packages installed\n");
     return 0;
+}
+
+static int contains_icase(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return 0;
+    if (!*needle) return 1;
+    for (; *haystack; haystack++) {
+        const char *h = haystack;
+        const char *n = needle;
+        while (*h && *n && ((unsigned char)tolower((unsigned char)*h) == (unsigned char)tolower((unsigned char)*n))) {
+            h++; n++;
+        }
+        if (!*n) return 1;
+    }
+    return 0;
+}
+
+/* ponytail: O(n) directory scan over installed package manifests; upgrade path: binary repository index cache */
+int cmd_search(int argc, char **argv) {
+    if (argc < 1) { fprintf(stderr, "Usage: lpm search <query>\n"); return 1; }
+    const char *query = argv[0];
+
+    DIR *dir = opendir(LPM_INSTALLED);
+    if (!dir) { printf("No packages found matching '%s'\n", query); return 0; }
+
+    struct dirent *ent;
+    int matches = 0;
+    while ((ent = readdir(dir))) {
+        if (ent->d_name[0] == '.') continue;
+        if (!lpm_valid_pkgname(ent->d_name)) continue;
+        char dbdir[LPM_PATH_MAX];
+        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", ent->d_name);
+        manifest *m = manifest_load(dbdir);
+        if (m) {
+            if (contains_icase(m->name, query) || contains_icase(m->description, query)) {
+                printf("%s-%s: %s\n", m->name, m->version, m->description ? m->description : "");
+                matches++;
+            }
+            manifest_free(m);
+        }
+    }
+    closedir(dir);
+    if (matches == 0) printf("No packages found matching '%s'\n", query);
+    return 0;
+}
+
+int cmd_verify(int argc, char **argv) {
+    if (argc < 1) { fprintf(stderr, "Usage: lpm verify <package>\n"); return 1; }
+    const char *name = argv[0];
+    if (!lpm_valid_pkgname(name)) {
+        fprintf(stderr, "lpm: invalid package name '%s'\n", name);
+        return 1;
+    }
+
+    char dbdir[LPM_PATH_MAX];
+    snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
+    manifest *m = manifest_load(dbdir);
+    if (!m) { fprintf(stderr, "lpm: package '%s' is not installed\n", name); return 1; }
+
+    int missing_files = 0;
+    for (int i = 0; i < m->nfiles; i++) {
+        if (access(m->files[i], F_OK) != 0) {
+            fprintf(stderr, "lpm: missing file: %s\n", m->files[i]);
+            missing_files++;
+        }
+    }
+
+    if (m->sha256 && *m->sha256) {
+        printf("lpm: package sha256 checksum: %s\n", m->sha256);
+    }
+
+    if (missing_files > 0) {
+        fprintf(stderr, "lpm: verification failed for %s (%d missing file(s))\n", name, missing_files);
+        manifest_free(m);
+        return 1;
+    }
+
+    printf("lpm: package %s-%s verified (%d files OK)\n", m->name, m->version, m->nfiles);
+    manifest_free(m);
+    return 0;
+}
+
+static void get_repo_url(char *buf, size_t maxlen) {
+    FILE *f = fopen(LPM_REPOS_CONF, "r");
+    if (f) {
+        if (fgets(buf, maxlen, f)) {
+            size_t len = strlen(buf);
+            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' || buf[len-1] == ' ')) {
+                buf[--len] = '\0';
+            }
+            fclose(f);
+            if (len > 0) return;
+        }
+        fclose(f);
+    }
+    snprintf(buf, maxlen, "http://localhost:8080");
+}
+
+int cmd_update(int argc, char **argv) {
+    (void)argc; (void)argv;
+    char url[LPM_PATH_MAX];
+    get_repo_url(url, sizeof(url));
+
+    printf("lpm: updating repository index from %s...\n", url);
+    char cmd[LPM_PATH_MAX * 4 + 256];
+    snprintf(cmd, sizeof(cmd), "curl -sSL \"%s/repo.json\" -o \"%s\" 2>/dev/null || wget -q \"%s/repo.json\" -O \"%s\"",
+             url, LPM_REPO_JSON, url, LPM_REPO_JSON);
+
+    int res = system(cmd);
+    if (res == 0 && access(LPM_REPO_JSON, F_OK) == 0) {
+        printf("lpm: repository index updated successfully\n");
+        return 0;
+    } else {
+        fprintf(stderr, "lpm: failed to update repository index from %s\n", url);
+        return 1;
+    }
 }
