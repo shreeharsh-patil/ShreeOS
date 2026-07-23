@@ -11,6 +11,12 @@ fi
 if [ -f "$KERNEL_ROOT_DIR/scripts/common.sh" ]; then
   source "$KERNEL_ROOT_DIR/scripts/common.sh"
 fi
+if [ -f "$KERNEL_ROOT_DIR/kernel/sources.list" ]; then
+  source "$KERNEL_ROOT_DIR/kernel/sources.list"
+fi
+if [ -f "$KERNEL_ROOT_DIR/toolchain/scripts/sources.list" ]; then
+  source "$KERNEL_ROOT_DIR/toolchain/scripts/sources.list"
+fi
 
 # Kernel-specific directories
 KERNEL_SOURCES="${LUMEN_BUILD_DIR}/sources"
