@@ -70,7 +70,7 @@ QEMU_PID=$!
 
 WAITED=0
 FOUND=false
-while [ $WAITED -lt $TIMEOUT ]; do
+while [ $WAITED -lt "$TIMEOUT" ]; do
   sleep 1
   WAITED=$((WAITED + 1))
   if grep -q "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then

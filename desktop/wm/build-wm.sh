@@ -18,7 +18,12 @@ source "$LUMEN_ROOT_DIR/build.conf"
 source "$LUMEN_ROOT_DIR/scripts/common.sh"
 source "$SCRIPT_DIR/sources.list"
 
-COMPONENTS="${@:-dwm st dmenu}"
+COMPONENTS=("${@:-dwm}" "${@:-st}" "${@:-dmenu}")
+if [ $# -gt 0 ]; then
+  COMPONENTS=("$@")
+else
+  COMPONENTS=(dwm st dmenu)
+fi
 BUILDDIR="${LUMEN_BUILD_DIR}/desktop"
 export CC="${LUMEN_TARGET_TRIPLET}-gcc"
 export AR="${LUMEN_TARGET_TRIPLET}-ar"
@@ -28,11 +33,9 @@ lumen_require_cmd "${CC}"
 mkdir -p "$BUILDDIR"
 
 build_suckless() {
-  local name="$1" url="$2" sha="$3" patch="$4"
-  local varname="${name^^}_URL"
-  varname="${varname//-/_}"
-  local archive="${BUILDDIR}/$(basename "${url}")"
-  local srcdir="${BUILDDIR}/${name}-*"
+  local name="$1" url="$2" sha="$3"
+  local archive
+  archive="${BUILDDIR}/$(basename "${url}")"
 
   lumen_step "Building ${name}"
 
@@ -40,7 +43,7 @@ build_suckless() {
 
   if [ ! -d "${BUILDDIR}/${name}" ]; then
     tar -xzf "$archive" -C "$BUILDDIR"
-    mv "${BUILDDIR}"/${name}-* "${BUILDDIR}/${name}" 2>/dev/null || true
+    mv "${BUILDDIR}/${name}-"* "${BUILDDIR}/${name}" 2>/dev/null || true
   fi
 
   cd "${BUILDDIR}/${name}"
@@ -55,8 +58,9 @@ build_suckless() {
     cp "${SCRIPT_DIR}/config/${name}.mk" config.mk
   else
     # Override config.mk for cross-compilation
+    local ver_clean="${name#*-}"
     cat > config.mk <<CONFIGMK
-VERSION = $(echo "$name" | sed 's/.*-//')
+VERSION = ${ver_clean}
 PREFIX = /usr
 MANPREFIX = \${PREFIX}/share/man
 X11INC = ${LUMEN_SYSROOT}/usr/include/X11
@@ -74,7 +78,7 @@ CONFIGMK
   lumen_ok "${name} built and installed"
 }
 
-for comp in $COMPONENTS; do
+for comp in "${COMPONENTS[@]}"; do
   case "$comp" in
     dwm)   build_suckless "dwm"   "$DWM_URL"   "$DWM_SHA256" ;;
     st)    build_suckless "st"    "$ST_URL"    "$ST_SHA256" ;;

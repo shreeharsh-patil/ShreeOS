@@ -11,6 +11,9 @@ fi
 if [ -f "$LUMEN_ROOT_DIR/scripts/common.sh" ]; then
   source "$LUMEN_ROOT_DIR/scripts/common.sh"
 fi
+if [ -f "$LUMEN_SCRIPT_DIR/sources.list" ]; then
+  source "$LUMEN_SCRIPT_DIR/sources.list"
+fi
 
 export PATH="$LUMEN_TOOLS/bin:${PATH}"
 

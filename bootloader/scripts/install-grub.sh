@@ -60,7 +60,7 @@ grub-install \
 
 # Copy GRUB config
 if [ -f "${LUMEN_ROOT_DIR}/bootloader/grub/grub.cfg.template" ]; then
-  DISTRO_NAME="${DISTRO_NAME}" DISTRO_VERSION="${DISTRO_VERSION}" \
+  DISTRO_NAME="${DISTRO_NAME}" DISTRO_VERSION="${DISTRO_VERSION}" CMDLINE_EXTRA="${CMDLINE_EXTRA}" \
     envsubst < "${LUMEN_ROOT_DIR}/bootloader/grub/grub.cfg.template" \
     > "${STAGING}/boot/grub/grub.cfg"
   lumen_ok "GRUB config written: ${STAGING}/boot/grub/grub.cfg"

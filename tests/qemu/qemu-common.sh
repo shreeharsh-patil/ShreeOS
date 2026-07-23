@@ -32,7 +32,7 @@ qemu_run() {
 qemu_wait_for_marker() {
   local log_file="$1" qemu_pid="$2" timeout="${3:-60}"
   local waited=0 found=false
-  while [ $waited -lt $timeout ]; do
+  while [ $waited -lt "$timeout" ]; do
     sleep 1
     waited=$((waited + 1))
     if grep -q "$MARKER_STRING" "$log_file" 2>/dev/null; then

@@ -66,10 +66,7 @@ for pkg_dir in "$STAGING"/*/; do
   # Build .lpkg: tar.gz with manifest.json first, then all files
   (
     cd "$pkg_dir"
-    tar -czf "$LPKG_PATH" \
-      --transform="s|^\./||" \
-      --sort=name \
-      manifest.json $(find . -not -name manifest.json -not -name '.' -not -name '..' 2>/dev/null)
+    tar -czf "$LPKG_PATH" --transform="s|^\./||" --sort=name .
   )
 
   # Compute SHA256

@@ -66,16 +66,16 @@ for test in "${SCRIPT_DIR}"/*.sh; do
       EXIT_CODE=1
     fi
   else
-    OUTPUT=$(bash "$test" 2>&1) && {
+    if OUTPUT=$(bash "$test" 2>&1); then
       DURATION=$(( $(date +%s) - START ))
       printf "  [       OK ] %s (%ds)\n" "$TEST_NAME" "$DURATION"
       PASSED=$((PASSED + 1))
-    } || {
+    else
       DURATION=$(( $(date +%s) - START ))
       printf "  [  FAILED  ] %s (%ds)\n--- output ---\n%s\n---\n" "$TEST_NAME" "$DURATION" "$OUTPUT"
       FAILED=$((FAILED + 1))
       EXIT_CODE=1
-    }
+    fi
   fi
 done
 

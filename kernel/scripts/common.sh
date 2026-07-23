@@ -15,8 +15,8 @@ fi
 # Kernel-specific directories
 KERNEL_SOURCES="${LUMEN_BUILD_DIR}/sources"
 KERNEL_BUILDDIR="${LUMEN_BUILD_DIR}/build-kernel"
-KERNEL_INITRAMFS_SRC="${KERNEL_ROOT_DIR}/kernel/initramfs"
-KERNEL_INITRAMFS_OUT="${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
+export KERNEL_INITRAMFS_SRC="${KERNEL_ROOT_DIR}/kernel/initramfs"
+export KERNEL_INITRAMFS_OUT="${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
 
 export ARCH="${LUMEN_ARCH}"
 export CROSS_COMPILE="${LUMEN_TARGET_TRIPLET}-"
