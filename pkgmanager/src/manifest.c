@@ -366,7 +366,6 @@ void lpm_unlock(void) {
         flock(lock_fd, LOCK_UN);
         close(lock_fd);
         lock_fd = -1;
-        unlink(LPM_LOCK_FILE);
     }
 #endif
 }

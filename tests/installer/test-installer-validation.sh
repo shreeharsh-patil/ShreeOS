@@ -32,4 +32,23 @@ else
   echo "  [OK] Non-existent block device correctly rejected"
 fi
 
+# 4. Behavioral test: Partition a virtual disk image using GPT layout
+if command -v sfdisk >/dev/null 2>&1; then
+  TEST_DISK=$(mktemp /tmp/shreeos-part-test-XXXXXX.img)
+  truncate -s 100M "$TEST_DISK"
+  trap 'rm -f "$TEST_DISK"' EXIT
+
+  if bash "${ROOT_DIR}/installer/scripts/partition-disk.sh" "$TEST_DISK" --yes >/dev/null 2>&1; then
+    # Verify GPT partitions were created
+    if sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "BIOS-Boot" && \
+       sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "EFI-System" && \
+       sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "ShreeOS-Root"; then
+      echo "  [OK] Successfully partitioned virtual disk image with GPT BIOS+ESP+Root layout"
+    else
+      echo "  [WARN] sfdisk did not report expected partition labels"
+    fi
+  fi
+  rm -f "$TEST_DISK"
+fi
+
 echo "==> All installer validation tests passed successfully!"

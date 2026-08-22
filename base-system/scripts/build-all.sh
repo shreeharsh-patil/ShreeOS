@@ -37,6 +37,7 @@ PACKAGES=(
   "17-tar"
   "18-xz"
   "19-util-linux"
+  "20-libxcrypt"
 )
 
 while [[ $# -gt 0 ]]; do

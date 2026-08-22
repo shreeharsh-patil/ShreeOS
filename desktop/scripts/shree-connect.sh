@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # desktop/scripts/shree-connect.sh — ShreeOS Connect (Experimental Local Network File Transfer)
 #
-# Status: Experimental (Opt-in only, local LAN).
-#
-# Provides local peer discovery and basic file exchange with size limits,
-# filename sanitization, and temporary .part file transfer.
+# Status: Disabled by default (Experimental LAN Transfer).
+# Requires explicit opt-in via ~/.config/shreeos/connect/config (ENABLED=true).
 
 set -euo pipefail
 
 CONNECT_DIR="${HOME}/.config/shreeos/connect"
+CONF_FILE="${CONNECT_DIR}/config"
 PAIRED_DEVICES="${CONNECT_DIR}/paired.list"
 mkdir -p "$CONNECT_DIR"
 chmod 700 "$CONNECT_DIR"
@@ -17,20 +16,31 @@ chmod 600 "$PAIRED_DEVICES"
 
 MAX_BYTES=$((50 * 1024 * 1024)) # 50 MB limit
 
+is_enabled() {
+  if [ -f "$CONF_FILE" ] && grep -q "ENABLED=true" "$CONF_FILE" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
 run_listener_daemon() {
+  if ! is_enabled; then
+    echo "ShreeOS Connect is disabled by default. Enable it via Settings or by creating ${CONF_FILE} with ENABLED=true."
+    exit 0
+  fi
+
   local port=8899
   local dl_dir="${HOME}/Downloads"
   mkdir -p "$dl_dir"
 
   echo "ShreeOS Connect listener started on port ${port} (Opt-In Mode)"
   while true; do
-    if command -v nc >/dev/null 2>&1; then
+    if is_enabled && command -v nc >/dev/null 2>&1; then
       local ts
       ts=$(date +"%Y%m%d_%H%M%S")
       local part_file="${dl_dir}/Transfer_${ts}.part"
       local final_file="${dl_dir}/Received_${ts}.dat"
 
-      # Receive up to MAX_BYTES into temporary .part file
       nc -l -p "$port" > "$part_file" 2>/dev/null || true
       
       if [ -f "$part_file" ] && [ -s "$part_file" ]; then
@@ -63,7 +73,6 @@ send_file_to_peer() {
   fi
   [ -z "$target_file" ] && exit 0
 
-  # Sanitize and check file size
   local sz
   sz=$(wc -c < "$target_file" || echo 0)
   if [ "$sz" -gt "$MAX_BYTES" ]; then
@@ -84,18 +93,27 @@ send_file_to_peer() {
 
 interactive_menu() {
   local initial_file="${1:-}"
-  local options="[1] Send File to Nearby Device\n[2] Discover Network Devices\n[3] Start Connect Receiver (Manual Session)\n[4] Manage Paired Devices"
+  local state="Disabled"
+  if is_enabled; then state="Enabled"; fi
+
+  local options="[1] Toggle Connect Feature (Currently ${state})\n[2] Send File to Nearby Device\n[3] Discover Network Devices\n[4] Manage Paired Devices"
   local choice
-  choice=$(echo -e "$options" | dmenu -p "ShreeOS Connect (Experimental)" -l 4 -c)
+  choice=$(echo -e "$options" | dmenu -p "ShreeOS Connect" -l 4 -c)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in
+    *"Toggle Connect"*)
+      if is_enabled; then
+        echo "ENABLED=false" > "$CONF_FILE"
+        shree-notify "Connect" "ShreeOS Connect disabled" --app="Connect"
+      else
+        echo "ENABLED=true" > "$CONF_FILE"
+        shree-notify "Connect" "ShreeOS Connect enabled (Local LAN only)" --app="Connect"
+      fi
+      ;;
     *"Send File"*) send_file_to_peer "$initial_file" ;;
     *"Discover"*)
       st -g 70x16 -t "Discovered Devices" -e /bin/bash -c "shree-connect discover; echo ''; read -r -p 'Press Enter to close' _" &
-      ;;
-    *"Start Connect Receiver"*)
-      st -g 70x14 -t "Connect Receiver" -e /bin/bash -c "shree-connect --daemon" &
       ;;
     *"Manage Paired"*)
       st -g 70x16 -t "Paired Devices" -e /bin/bash -c "cat '$PAIRED_DEVICES'; echo ''; read -r -p 'Press Enter to close' _" &

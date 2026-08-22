@@ -3,14 +3,14 @@
  *
  * Core Features:
  *   - Essential virtual filesystem mounting (/proc, /sys, /dev, /run, /dev/pts, /dev/shm)
+ *   - Kernel cmdline parsing for emergency / recovery mode (single, recovery, shreeos.mode=recovery)
  *   - Robust service descriptor parsing (/etc/services.d/*.conf) with comma-separated dependencies
  *   - Non-blocking SIGCHLD zombie process reaping (waitpid(-1, WNOHANG))
- *   - Service state machine (STOPPED, STARTING, RUNNING, FAILED, STOPPING)
- *   - Race-free service restart with SIGTERM -> wait -> SIGKILL -> verify dead sequence
- *   - Safe service configuration reload with live PID & state reconciliation
+ *   - Race-free service restart with SIGTERM -> wait -> SIGKILL -> verify dead (ESRCH) sequence
+ *   - Safe service configuration reload with live PID & state reconciliation and dead service cleanup
  *   - Exponential restart backoff (max 30s) and crash loop detection
  *   - Process group signal delivery & service stdout/stderr logging (/var/log/shreeos/services/)
- *   - Unix domain socket IPC (/run/init.sock) with strict command protocol
+ *   - Unix domain socket IPC (/run/init.sock) secured with SO_PEERCRED authorization
  *   - Multi-stage orderly shutdown: SIGTERM -> wait -> SIGKILL -> sync -> remount ro -> reboot/poweroff
  */
 
@@ -223,6 +223,42 @@ static void parse_service_file(const char *path, service_t *table, int *count) {
     }
 }
 
+static void stop_service(service_t *s, int sig);
+static void reap_children(void);
+static int start_service(service_t *s);
+
+/* Synchronously stops a service, confirming process death via ESRCH */
+static void stop_service_sync(service_t *s) {
+    if (!s || s->pid <= 0) {
+        if (s) { s->state = SVC_STOPPED; s->pid = 0; }
+        return;
+    }
+
+    pid_t old_pid = s->pid;
+    stop_service(s, SIGTERM);
+
+    /* Poll up to 2 seconds for graceful exit */
+    for (int i = 0; i < 20; i++) {
+        reap_children();
+        if (s->pid == 0 || (kill(old_pid, 0) == -1 && errno == ESRCH)) break;
+        usleep(100000);
+    }
+
+    /* If still alive, send SIGKILL to process group */
+    if (s->pid > 0 && kill(old_pid, 0) == 0) {
+        kill(-old_pid, SIGKILL);
+        kill(old_pid, SIGKILL);
+        for (int i = 0; i < 15; i++) {
+            reap_children();
+            if (s->pid == 0 || (kill(old_pid, 0) == -1 && errno == ESRCH)) break;
+            usleep(100000);
+        }
+    }
+
+    s->state = SVC_STOPPED;
+    s->pid = 0;
+}
+
 static void load_and_reconcile_services(void) {
     service_t new_table[MAX_SERVICES];
     int new_count = 0;
@@ -243,18 +279,32 @@ static void load_and_reconcile_services(void) {
     }
 
     if (new_count == 0 && num_services == 0) {
-        /* Built-in default services: NEVER expose unauthenticated root shell */
         add_service_entry(new_table, &new_count, "hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", NULL, RESTART_NEVER, true, false);
         add_service_entry(new_table, &new_count, "network", "ip link set lo up 2>/dev/null || ifconfig lo 127.0.0.1 up 2>/dev/null", "hostname", RESTART_NEVER, true, false);
         add_service_entry(new_table, &new_count, "console", "/usr/bin/shree-auth --login-tty", "network", RESTART_ALWAYS, false, true);
     }
 
-    /* Reconcile old services with new table */
+    /* 1. Stop and remove services that no longer exist in new_table */
+    for (int i = 0; i < num_services; i++) {
+        bool found = false;
+        for (int j = 0; j < new_count; j++) {
+            if (strcmp(services[i].name, new_table[j].name) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            log_info(services[i].name, "Service removed from configuration. Stopping...");
+            stop_service_sync(&services[i]);
+        }
+    }
+
+    /* 2. Reconcile existing / changed services */
     for (int i = 0; i < new_count; i++) {
         service_t *old = find_service(new_table[i].name);
         if (old) {
-            /* Preserve PID and state if command unchanged */
             if (strcmp(old->command, new_table[i].command) == 0) {
+                /* Command unchanged: preserve PID & state */
                 new_table[i].pid = old->pid;
                 new_table[i].state = old->state;
                 new_table[i].last_start = old->last_start;
@@ -262,10 +312,9 @@ static void load_and_reconcile_services(void) {
                 new_table[i].last_exit_status = old->last_exit_status;
                 new_table[i].restart_count = old->restart_count;
             } else {
-                /* Command changed: kill old instance safely */
-                if (old->state == SVC_RUNNING && old->pid > 0) {
-                    kill(-old->pid, SIGTERM);
-                }
+                /* Command modified: restart safely */
+                log_info(old->name, "Service command modified. Restarting with updated configuration...");
+                stop_service_sync(old);
             }
         }
     }
@@ -286,12 +335,10 @@ static bool check_dependencies_met(const service_t *s) {
         service_t *dep = find_service(token);
         if (dep) {
             if (dep->is_oneshot) {
-                /* Oneshot must have succeeded (stopped with status 0) */
                 if (dep->state != SVC_STOPPED || dep->last_exit_status != 0 || dep->last_start == 0) {
                     return false;
                 }
             } else {
-                /* Daemon must be currently RUNNING */
                 if (dep->state != SVC_RUNNING) {
                     return false;
                 }
@@ -368,7 +415,7 @@ static void stop_service(service_t *s, int sig) {
     if (!s || s->state != SVC_RUNNING || s->pid <= 0) return;
 
     s->state = SVC_STOPPING;
-    kill(-s->pid, sig); /* Kill entire process group */
+    kill(-s->pid, sig);
     kill(s->pid, sig);
 }
 
@@ -404,34 +451,9 @@ static void reap_children(void) {
     }
 }
 
-/* Race-free restart: SIGTERM -> wait -> SIGKILL -> verify reaped -> start */
 static void restart_service_sync(service_t *s) {
     if (!s) return;
-
-    if (s->state == SVC_RUNNING && s->pid > 0) {
-        pid_t old_pid = s->pid;
-        stop_service(s, SIGTERM);
-
-        /* Poll up to 2 seconds for graceful exit */
-        for (int i = 0; i < 20; i++) {
-            reap_children();
-            if (s->pid == 0) break;
-            usleep(100000);
-        }
-
-        /* If still alive, send SIGKILL to process group */
-        if (s->pid > 0) {
-            kill(-old_pid, SIGKILL);
-            for (int i = 0; i < 10; i++) {
-                reap_children();
-                if (s->pid == 0) break;
-                usleep(100000);
-            }
-        }
-    }
-
-    s->state = SVC_STOPPED;
-    s->pid = 0;
+    stop_service_sync(s);
     s->restart_count = 0;
     start_service(s);
 }
@@ -445,7 +467,6 @@ static void supervise_services(void) {
         if (s->state == SVC_STOPPED && !s->is_oneshot && s->restart == RESTART_ALWAYS) {
             start_service(s);
         } else if (s->state == SVC_FAILED && (s->restart == RESTART_ALWAYS || s->restart == RESTART_ON_FAILURE)) {
-            /* Crash loop backoff: throttle exponential delay up to 30s */
             int backoff = 1 << (s->restart_count > 5 ? 5 : s->restart_count);
             if (now - s->last_exit >= backoff) {
                 start_service(s);
@@ -481,6 +502,16 @@ static void handle_ipc_connections(void) {
     int client_fd = accept(ipc_sock_fd, NULL, NULL);
     if (client_fd < 0) return;
 
+    /* Authenticate peer credentials via SO_PEERCRED */
+    bool is_root = false;
+#ifdef SO_PEERCRED
+    struct ucred cred;
+    socklen_t cred_len = sizeof(cred);
+    if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED, &cred, &cred_len) == 0) {
+        if (cred.uid == 0) is_root = true;
+    }
+#endif
+
     char req[256] = {0};
     ssize_t n = read(client_fd, req, sizeof(req) - 1);
     if (n <= 0) { close(client_fd); return; }
@@ -502,6 +533,18 @@ static void handle_ipc_connections(void) {
                           services[i].name, state_to_str(services[i].state),
                           services[i].pid, services[i].command);
         }
+    } else if (strncmp(cmd, "STATUS ", 7) == 0) {
+        char *target = cmd + 7;
+        service_t *s = find_service(target);
+        if (s) {
+            snprintf(res, sizeof(res), "Service: %s\nState:   %s\nPID:     %d\nRestarts: %d\nExitCode: %d\nCommand: %s\n",
+                     s->name, state_to_str(s->state), s->pid, s->restart_count, s->last_exit_status, s->command);
+        } else {
+            snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
+        }
+    } else if (!is_root) {
+        /* Restrict all mutating operations to root */
+        snprintf(res, sizeof(res), "ERROR: Permission denied (root privileges required for %s)\n", cmd);
     } else if (strncmp(cmd, "START ", 6) == 0) {
         char *target = cmd + 6;
         service_t *s = find_service(target);
@@ -529,15 +572,6 @@ static void handle_ipc_connections(void) {
         if (s) {
             restart_service_sync(s);
             snprintf(res, sizeof(res), "OK: Restarted service '%s'\n", target);
-        } else {
-            snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
-        }
-    } else if (strncmp(cmd, "STATUS ", 7) == 0) {
-        char *target = cmd + 7;
-        service_t *s = find_service(target);
-        if (s) {
-            snprintf(res, sizeof(res), "Service: %s\nState:   %s\nPID:     %d\nRestarts: %d\nExitCode: %d\nCommand: %s\n",
-                     s->name, state_to_str(s->state), s->pid, s->restart_count, s->last_exit_status, s->command);
         } else {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
@@ -594,6 +628,22 @@ static void perform_shutdown(void) {
     }
 }
 
+static bool check_recovery_mode(void) {
+    FILE *f = fopen("/proc/cmdline", "r");
+    if (!f) return false;
+    char line[1024] = {0};
+    if (fgets(line, sizeof(line), f)) {
+        fclose(f);
+        if (strstr(line, "single") || strstr(line, "recovery") ||
+            strstr(line, "shreeos.mode=recovery") || strstr(line, "init=/bin/sh")) {
+            return true;
+        }
+    } else {
+        fclose(f);
+    }
+    return false;
+}
+
 int main(void) {
     if (getpid() != 1) {
         fprintf(stderr, "init: must be run as PID 1\n");
@@ -617,6 +667,33 @@ int main(void) {
     printf("=========================================\n\n");
 
     mount_essential_filesystems();
+
+    /* Check for kernel recovery / single user mode */
+    if (check_recovery_mode()) {
+        printf("\n[init] *** EMERGENCY RECOVERY MODE ***\n");
+        printf("[init] Launching recovery console...\n\n");
+
+        int fd = open("/dev/console", O_RDWR);
+        if (fd >= 0) {
+            dup2(fd, STDIN_FILENO);
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+            if (fd > 2) close(fd);
+        }
+
+        pid_t rpid = fork();
+        if (rpid == 0) {
+            setsid();
+            execl("/bin/sh", "sh", "--login", (char *)NULL);
+            _exit(1);
+        }
+        int status;
+        waitpid(rpid, &status, 0);
+        printf("\n[init] Recovery session terminated. Rebooting system...\n");
+        perform_shutdown();
+        return 0;
+    }
+
     load_and_reconcile_services();
     init_ipc_socket();
 

@@ -7,6 +7,27 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+
+static int safe_exec(const char *file, char *const argv[]) {
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        /* Redirect stdout/stderr to /dev/null */
+        int devnull = open("/dev/null", 0666);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        execvp(file, argv);
+        _exit(127);
+    }
+    int status;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
 
 int cmd_query(int argc, char **argv) {
     if (argc < 1) { fprintf(stderr, "Usage: lpm query <package>\n"); return 1; }
@@ -49,7 +70,6 @@ int cmd_info(int argc, char **argv) {
         return 1;
     }
 
-    /* First check installed db */
     char dbdir[LPM_PATH_MAX];
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
     manifest *m = manifest_load(dbdir);
@@ -70,7 +90,6 @@ int cmd_info(int argc, char **argv) {
         return 0;
     }
 
-    /* Otherwise check repo.json */
     char *version = NULL, *filename = NULL, *sha256 = NULL;
     if (lpm_repo_lookup(name, &version, &filename, &sha256) == 0) {
         printf("Package:     %s\n", name);
@@ -128,7 +147,6 @@ int cmd_search(int argc, char **argv) {
     const char *query = (argc > 0) ? argv[0] : "";
     int matches = 0;
 
-    /* 1. Search Repository Index if available */
     FILE *f = fopen(LPM_REPO_JSON, "rb");
     if (f) {
         fseek(f, 0, SEEK_END);
@@ -159,7 +177,6 @@ int cmd_search(int argc, char **argv) {
         fclose(f);
     }
 
-    /* 2. Search Installed Packages */
     DIR *dir = opendir(LPM_INSTALLED);
     if (dir) {
         struct dirent *ent;
@@ -213,7 +230,6 @@ int cmd_verify(int argc, char **argv) {
             continue;
         }
 
-        /* Check per-file SHA-256 hash if available in checksum table */
         const char *expected_hash = manifest_get_checksum(m, filepath);
         if (expected_hash && *expected_hash) {
             char actual_hash[65] = {0};
@@ -274,29 +290,51 @@ int cmd_update(int argc, char **argv) {
     char tmp_json[LPM_PATH_MAX];
     snprintf(tmp_json, sizeof(tmp_json), "%s.tmp.%d", LPM_REPO_JSON, (int)getpid());
 
-    char cmd[LPM_PATH_MAX * 4 + 256];
-    snprintf(cmd, sizeof(cmd), "curl -sSL \"%s/repo.json\" -o \"%s\" 2>/dev/null || wget -q \"%s/repo.json\" -O \"%s\"",
-             url, tmp_json, url, tmp_json);
+    char repo_file_url[LPM_PATH_MAX * 2];
+    snprintf(repo_file_url, sizeof(repo_file_url), "%s/repo.json", url);
 
-    int res = system(cmd);
+    /* Fetch using fork/execvp instead of shell system() */
+    char *curl_args[] = { "curl", "-sSL", repo_file_url, "-o", tmp_json, NULL };
+    char *wget_args[] = { "wget", "-q", repo_file_url, "-O", tmp_json, NULL };
+
+    int res = safe_exec("curl", curl_args);
+    if (res != 0) {
+        res = safe_exec("wget", wget_args);
+    }
+
     if (res == 0 && access(tmp_json, F_OK) == 0) {
-        /* Validate that downloaded file contains valid JSON */
         FILE *tf = fopen(tmp_json, "rb");
         if (tf) {
             fseek(tf, 0, SEEK_END);
             long sz = ftell(tf);
-            fclose(tf);
+            rewind(tf);
             if (sz > 2) {
-                rename(tmp_json, LPM_REPO_JSON);
-                printf("lpm: repository index updated successfully\n");
-                lpm_unlock();
-                return 0;
+                char *buf = malloc(sz + 1);
+                if (buf && fread(buf, 1, sz, tf) == (size_t)sz) {
+                    buf[sz] = '\0';
+                    json_value *root = json_parse(buf);
+                    if (root) {
+                        json_value *packages = json_get(root, "packages");
+                        if (packages && packages->type == JSON_OBJECT) {
+                            fclose(tf);
+                            free(buf);
+                            json_free(root);
+                            rename(tmp_json, LPM_REPO_JSON);
+                            printf("lpm: repository index updated successfully\n");
+                            lpm_unlock();
+                            return 0;
+                        }
+                        json_free(root);
+                    }
+                }
+                free(buf);
             }
+            fclose(tf);
         }
     }
 
     unlink(tmp_json);
-    fprintf(stderr, "lpm: failed to update repository index from %s (network or server error)\n", url);
+    fprintf(stderr, "lpm: failed to update repository index from %s (invalid metadata or network error)\n", url);
     lpm_unlock();
     return 1;
 }

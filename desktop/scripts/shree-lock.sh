@@ -10,8 +10,6 @@ if command -v slock >/dev/null 2>&1; then
   exec slock
 elif command -v i3lock >/dev/null 2>&1; then
   exec i3lock -c 1C1C1E --ring-color=2878FF --keyhl-color=60A0FF
-elif [ -x /usr/bin/shree-auth ] && /usr/bin/shree-auth --check-lock >/dev/null 2>&1; then
-  exec /usr/bin/shree-auth --lock
 else
   # FAIL CLOSED: Never provide an unauthenticated fake lock screen
   if command -v shree-notify >/dev/null 2>&1; then

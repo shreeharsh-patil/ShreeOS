@@ -48,4 +48,20 @@ else
   echo "  [OK] Bootloader installer enforces mandatory UUID and rejects hardcoded device fallbacks"
 fi
 
+# 6. Verify SO_PEERCRED authorization enforcement in init.c
+if grep -q "SO_PEERCRED" "${ROOT_DIR}/init/src/init.c" 2>/dev/null; then
+  echo "  [OK] Init supervisor IPC (/run/init.sock) enforces SO_PEERCRED client authorization"
+else
+  echo "  [FAIL] Init supervisor missing SO_PEERCRED credentials check" >&2
+  exit 1
+fi
+
+# 7. Verify console login service does not launch unauthenticated root shell
+if grep -q "command=/bin/bash --login" "${ROOT_DIR}/init/services/90-console.conf" 2>/dev/null; then
+  echo "  [FAIL] Insecure unauthenticated root shell configured in 90-console.conf" >&2
+  exit 1
+else
+  echo "  [OK] Console service enforces authenticated login flow via shree-auth"
+fi
+
 echo "==> All security audit tests passed successfully!"

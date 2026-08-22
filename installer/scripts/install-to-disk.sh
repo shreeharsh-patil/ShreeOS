@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # installer/scripts/install-to-disk.sh — Install ShreeOS to a target disk
 #
+# Supports real block devices and disk images via losetup -Pf.
 # Partitions (BIOS Boot + EFI ESP + Root ext4), formats, copies rootfs,
 # installs GRUB (UEFI & BIOS), and configures first boot with secure credentials.
 #
@@ -57,6 +58,26 @@ for arg in "$@"; do
   esac
 done
 
+TARGET=""
+LOOP_DEV=""
+
+cleanup() {
+  if [ -n "$TARGET" ] && [ -d "$TARGET" ]; then
+    shreeos_log "Unmounting target filesystems..."
+    umount "${TARGET}/boot/efi" 2>/dev/null || true
+    umount "$TARGET" 2>/dev/null || true
+    rmdir "$TARGET" 2>/dev/null || true
+  fi
+  if [ -n "$LOOP_DEV" ]; then
+    shreeos_log "Detaching loop device ${LOOP_DEV}..."
+    losetup -d "$LOOP_DEV" 2>/dev/null || true
+  fi
+  if [ -n "${CREDS_FILE:-}" ] && [ -f "${CREDS_FILE}" ]; then
+    rm -f "${CREDS_FILE}"
+  fi
+}
+trap cleanup EXIT INT TERM
+
 shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid
 
 # Validate hostname strictly: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$
@@ -80,32 +101,43 @@ if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
 fi
 
-shreeos_step "Installing ${DISTRO_NAME:-ShreeOS} to ${DISK}"
+WORKING_DISK="$DISK"
+
+# If disk is regular file, attach loop device with partition scanning
+if [ -f "$DISK" ] && [ ! -b "$DISK" ]; then
+  if command -v losetup >/dev/null 2>&1; then
+    shreeos_log "Attaching raw disk image ${DISK} via loop device (with partition scanning)..."
+    LOOP_DEV=$(losetup -Pf --show "$DISK")
+    WORKING_DISK="$LOOP_DEV"
+  fi
+fi
+
+shreeos_step "Installing ${DISTRO_NAME:-ShreeOS} to ${WORKING_DISK}"
 
 # 1. Partition disk with safety checks and GPT scheme
-shreeos_log "Partitioning ${DISK}"
+shreeos_log "Partitioning ${WORKING_DISK}"
 PARTITION_ARGS=()
 if [ "$ASSUME_YES" = true ]; then
   PARTITION_ARGS+=("--yes")
 fi
-bash "${SCRIPT_DIR}/partition-disk.sh" "$DISK" "${PARTITION_ARGS[@]}"
+bash "${SCRIPT_DIR}/partition-disk.sh" "$WORKING_DISK" "${PARTITION_ARGS[@]}"
 
 # Settle partition table
 sleep 1
 
 # Detect partition devices
-if [ -b "${DISK}p3" ] || [ -f "${DISK}p3" ]; then
-  PART_BIOS="${DISK}p1"
-  PART_ESP="${DISK}p2"
-  PART_ROOT="${DISK}p3"
-elif [ -b "${DISK}3" ] || [ -f "${DISK}3" ]; then
-  PART_BIOS="${DISK}1"
-  PART_ESP="${DISK}2"
-  PART_ROOT="${DISK}3"
+if [ -b "${WORKING_DISK}p3" ] || [ -f "${WORKING_DISK}p3" ]; then
+  PART_BIOS="${WORKING_DISK}p1"
+  PART_ESP="${WORKING_DISK}p2"
+  PART_ROOT="${WORKING_DISK}p3"
+elif [ -b "${WORKING_DISK}3" ] || [ -f "${WORKING_DISK}3" ]; then
+  PART_BIOS="${WORKING_DISK}1"
+  PART_ESP="${WORKING_DISK}2"
+  PART_ROOT="${WORKING_DISK}3"
 else
-  PART_BIOS="${DISK}1"
-  PART_ESP="${DISK}2"
-  PART_ROOT="${DISK}3"
+  PART_BIOS="${WORKING_DISK}1"
+  PART_ESP="${WORKING_DISK}2"
+  PART_ROOT="${WORKING_DISK}3"
 fi
 
 shreeos_log "Detected partition devices (BIOS: ${PART_BIOS}, ESP: ${PART_ESP}, Root: ${PART_ROOT})"
@@ -134,17 +166,6 @@ if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "uefi" ]; then
     mount "$PART_ESP" "${TARGET}/boot/efi"
   fi
 fi
-
-cleanup() {
-  shreeos_log "Unmounting target filesystems..."
-  umount "${TARGET}/boot/efi" 2>/dev/null || true
-  umount "$TARGET" 2>/dev/null || true
-  rmdir "$TARGET" 2>/dev/null || true
-  if [ -n "${CREDS_FILE:-}" ] && [ -f "${CREDS_FILE}" ]; then
-    rm -f "${CREDS_FILE}"
-  fi
-}
-trap cleanup EXIT INT TERM
 
 # 4. Copy rootfs payload
 shreeos_log "Copying root filesystem contents..."
@@ -207,7 +228,6 @@ if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
     USER_TMP_CRED=$(mktemp /tmp/user-cred-XXXXXX)
     chmod 600 "$USER_TMP_CRED"
     printf "%s" "$USER_PW" > "$USER_TMP_CRED"
-    # Wipe USER_PW immediately
     USER_PW=""
     unset USER_PW
 
@@ -216,9 +236,9 @@ if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
   fi
 fi
 
-# 6. Install Bootloader (UEFI + BIOS)
-shreeos_log "Installing GRUB bootloader to ${DISK}"
-bash "${SHREEOS_ROOT_DIR}/bootloader/scripts/install-grub-disk.sh" "$TARGET" "$DISK"
+# 6. Install Bootloader (UEFI & BIOS)
+shreeos_log "Installing GRUB bootloader to ${WORKING_DISK}"
+bash "${SHREEOS_ROOT_DIR}/bootloader/scripts/install-grub-disk.sh" "$TARGET" "$WORKING_DISK" --boot-mode="$BOOT_MODE"
 
 # 7. Generate fstab with UUIDs
 ROOT_UUID=$(blkid -s UUID -o value "$PART_ROOT" 2>/dev/null || echo "")
@@ -231,7 +251,7 @@ fi
 cat > "${TARGET}/etc/fstab" <<FSTAB
 # /etc/fstab — Static file system information
 UUID=${ROOT_UUID} / ext4 defaults 0 1
-$( [ -n "$ESP_UUID" ] && echo "UUID=${ESP_UUID} /boot/efi vfat umask=0077 0 2" )
+$( [ "$BOOT_MODE" != "bios" ] && [ -n "$ESP_UUID" ] && echo "UUID=${ESP_UUID} /boot/efi vfat umask=0077 0 2" )
 proc /proc proc defaults 0 0
 sysfs /sys sysfs defaults 0 0
 devtmpfs /dev devtmpfs defaults 0 0

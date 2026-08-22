@@ -64,11 +64,23 @@ cd "$KERNEL_BUILDDIR"
 
 make -C "$SRCDIR" O="$KERNEL_BUILDDIR" ARCH="${LUMEN_ARCH}" defconfig
 
-# Apply minimal config overrides via merge_config.sh
+# Determine kernel config profile based on active PROFILE
+KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/generic.config"
+if [ "${PROFILE:-desktop}" = "desktop" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/desktop.config" ]; then
+  KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/desktop.config"
+elif [ "${PROFILE:-}" = "qemu" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/qemu.config" ]; then
+  KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/qemu.config"
+elif [ "${PROFILE:-}" = "minimal" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/x86_64-minimal.config" ]; then
+  KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/x86_64-minimal.config"
+fi
+
+lumen_log "Applying kernel config profile: $(basename "$KERNEL_CFG")"
+
+# Apply config overrides via merge_config.sh
 "${SRCDIR}/scripts/kconfig/merge_config.sh" \
   -O "$KERNEL_BUILDDIR" \
   -m "$KERNEL_BUILDDIR/.config" \
-  "${KERNEL_ROOT_DIR}/kernel/configs/x86_64-minimal.config"
+  "$KERNEL_CFG"
 
 # Set the initramfs source path (relative to kernel build dir)
 "${SRCDIR}/scripts/config" \

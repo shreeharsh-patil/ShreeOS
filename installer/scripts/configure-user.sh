@@ -6,8 +6,8 @@
 #   - Passwords read from 0600 file or stdin, never exposed on argv
 #   - Passwords hashed using stdin-based hashing (openssl -stdin, python3 sys.stdin)
 #   - Password variables wiped immediately from memory
-#   - Discovers next available UID/GID (>= 1000) avoiding collisions
-#   - Sets /home/<user> ownership to <uid>:<gid> and mode 0700
+#   - Discovers next available UID and GID independently (>= 1000)
+#   - Sets /home/<user> ownership to <uid>:<gid> and mode 0700 (fails closed on error)
 #   - Adds user to wheel group securely
 
 set -euo pipefail
@@ -75,7 +75,7 @@ fi
 mkdir -p "${TARGET}/etc"
 touch "${TARGET}/etc/passwd" "${TARGET}/etc/group" "${TARGET}/etc/shadow"
 
-# 5. Allocate next available UID & GID >= 1000
+# 5. Allocate next available UID & GID independently (>= 1000)
 NEW_UID=1000
 if [ -s "${TARGET}/etc/passwd" ]; then
   MAX_EXISTING_UID=$(awk -F':' '$3 >= 1000 && $3 < 65000 {print $3}' "${TARGET}/etc/passwd" 2>/dev/null | sort -n | tail -n1 || echo "")
@@ -83,7 +83,14 @@ if [ -s "${TARGET}/etc/passwd" ]; then
     NEW_UID=$((MAX_EXISTING_UID + 1))
   fi
 fi
-NEW_GID="$NEW_UID"
+
+NEW_GID=1000
+if [ -s "${TARGET}/etc/group" ]; then
+  MAX_EXISTING_GID=$(awk -F':' '$3 >= 1000 && $3 < 65000 {print $3}' "${TARGET}/etc/group" 2>/dev/null | sort -n | tail -n1 || echo "")
+  if [ -n "$MAX_EXISTING_GID" ]; then
+    NEW_GID=$((MAX_EXISTING_GID + 1))
+  fi
+fi
 
 # 6. Add user and group entries if not present
 if ! grep -q "^${USER}:" "${TARGET}/etc/passwd" 2>/dev/null; then
@@ -117,9 +124,9 @@ fi
 # 8. Create /home/<user> with correct owner & 0700 permissions
 mkdir -p "${TARGET}/home/${USER}"
 chmod 700 "${TARGET}/home/${USER}"
-chown -R "${NEW_UID}:${NEW_GID}" "${TARGET}/home/${USER}" 2>/dev/null || true
+chown -R "${NEW_UID}:${NEW_GID}" "${TARGET}/home/${USER}"
 
 chmod 600 "${TARGET}/etc/shadow"
 chmod 644 "${TARGET}/etc/passwd" "${TARGET}/etc/group"
 
-echo "Configured user account '${USER}' (UID ${NEW_UID}) on ${TARGET}"
+echo "Configured user account '${USER}' (UID ${NEW_UID}, GID ${NEW_GID}) on ${TARGET}"

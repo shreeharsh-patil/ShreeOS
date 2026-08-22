@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # bootloader/scripts/install-grub-disk.sh — Install GRUB2 to a target installed disk
 #
-# Installs both UEFI (x86_64-efi to ESP) and BIOS (i386-pc to MBR/GPT) bootloaders
-# onto the target installation disk and configures GRUB with mandatory root UUID.
-#
-# Usage:
-#   bash bootloader/scripts/install-grub-disk.sh <target-mount> <disk-device> [--efi-dir=<path>] [--cmdline=...]
-#
+# Supports --boot-mode=both|uefi|bios. Installs UEFI (x86_64-efi to ESP)
+# and/or BIOS (i386-pc to MBR/GPT) and generates grub.cfg with root UUID.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +22,7 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
 }
 
 if [ $# -lt 2 ]; then
-  shreeos_die "Usage: install-grub-disk.sh <target-root-mount> <disk-device> [--efi-dir=...] [--cmdline=...]"
+  shreeos_die "Usage: install-grub-disk.sh <target-root-mount> <disk-device> [--efi-dir=...] [--cmdline=...] [--boot-mode=both|uefi|bios]"
 fi
 
 TARGET="$1"
@@ -34,11 +31,13 @@ shift 2 || true
 
 EFI_DIR="${TARGET}/boot/efi"
 CMDLINE_EXTRA=""
+BOOT_MODE="both"
 
 for arg in "$@"; do
   case "$arg" in
     --efi-dir=*) EFI_DIR="${arg#*=}" ;;
     --cmdline=*) CMDLINE_EXTRA="${arg#*=}" ;;
+    --boot-mode=*) BOOT_MODE="${arg#*=}" ;;
   esac
 done
 
@@ -48,7 +47,7 @@ fi
 
 shreeos_require_cmd grub-install blkid
 
-shreeos_step "Installing GRUB2 to target disk ${DISK} (Target root: ${TARGET})"
+shreeos_step "Installing GRUB2 (${BOOT_MODE}) to target disk ${DISK} (Target root: ${TARGET})"
 
 mkdir -p "${TARGET}/boot/grub"
 mkdir -p "${EFI_DIR}"
@@ -57,35 +56,47 @@ UEFI_SUCCESS=false
 BIOS_SUCCESS=false
 
 # 1. Install UEFI Bootloader (x86_64-efi)
-shreeos_log "Installing GRUB for UEFI (x86_64-efi) into ${EFI_DIR}..."
-if grub-install \
-    --target=x86_64-efi \
-    --boot-directory="${TARGET}/boot" \
-    --efi-directory="${EFI_DIR}" \
-    --bootloader-id="${DISTRO_NAME:-ShreeOS}" \
-    --removable \
-    --recheck; then
-  shreeos_ok "GRUB UEFI (x86_64-efi) installed successfully"
-  UEFI_SUCCESS=true
-else
-  shreeos_warn "grub-install for x86_64-efi failed (grub-efi-amd64 may be missing on host or ESP not mounted)"
+if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "uefi" ]; then
+  shreeos_log "Installing GRUB for UEFI (x86_64-efi) into ${EFI_DIR}..."
+  if grub-install \
+      --target=x86_64-efi \
+      --boot-directory="${TARGET}/boot" \
+      --efi-directory="${EFI_DIR}" \
+      --bootloader-id="${DISTRO_NAME:-ShreeOS}" \
+      --removable \
+      --recheck; then
+    shreeos_ok "GRUB UEFI (x86_64-efi) installed successfully"
+    UEFI_SUCCESS=true
+  else
+    if [ "$BOOT_MODE" = "uefi" ]; then
+      shreeos_die "FATAL: grub-install for x86_64-efi failed during UEFI-only installation."
+    else
+      shreeos_warn "grub-install for x86_64-efi failed (grub-efi-amd64 may be missing or ESP not mounted)"
+    fi
+  fi
 fi
 
 # 2. Install BIOS Bootloader (i386-pc)
-shreeos_log "Installing GRUB for BIOS (i386-pc) onto ${DISK}..."
-if grub-install \
-    --target=i386-pc \
-    --boot-directory="${TARGET}/boot" \
-    --recheck \
-    "${DISK}"; then
-  shreeos_ok "GRUB BIOS (i386-pc) installed successfully on ${DISK}"
-  BIOS_SUCCESS=true
-else
-  shreeos_warn "grub-install for i386-pc failed (grub-pc may be missing on host or non-block device)"
+if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "bios" ]; then
+  shreeos_log "Installing GRUB for BIOS (i386-pc) onto ${DISK}..."
+  if grub-install \
+      --target=i386-pc \
+      --boot-directory="${TARGET}/boot" \
+      --recheck \
+      "${DISK}"; then
+    shreeos_ok "GRUB BIOS (i386-pc) installed successfully on ${DISK}"
+    BIOS_SUCCESS=true
+  else
+    if [ "$BOOT_MODE" = "bios" ]; then
+      shreeos_die "FATAL: grub-install for i386-pc failed during BIOS-only installation."
+    else
+      shreeos_warn "grub-install for i386-pc failed"
+    fi
+  fi
 fi
 
 if [ "$UEFI_SUCCESS" = false ] && [ "$BIOS_SUCCESS" = false ]; then
-  shreeos_die "FATAL: Both UEFI and BIOS GRUB installations failed on ${DISK}."
+  shreeos_die "FATAL: Neither UEFI nor BIOS GRUB installation succeeded on ${DISK}."
 fi
 
 # 3. Detect Root UUID and Generate Target grub.cfg (Fail closed if missing)
@@ -99,7 +110,6 @@ if [ -n "$TARGET_DEV" ]; then
 fi
 
 if [ -z "$ROOT_UUID" ]; then
-  # Try checking block device of partition 3
   if [ -b "${DISK}p3" ]; then
     ROOT_UUID=$(blkid -s UUID -o value "${DISK}p3" 2>/dev/null || echo "")
   elif [ -b "${DISK}3" ]; then

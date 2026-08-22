@@ -37,8 +37,13 @@ get_battery() {
 }
 
 get_net() {
-  if ip route get 1.1.1.1 >/dev/null 2>&1; then
-    echo "Wi-Fi"
+  dev=$(ip route show default 2>/dev/null | awk '{print $5}' | head -n1 || echo "")
+  if [ -n "$dev" ]; then
+    case "$dev" in
+      wl*|wlan*|wifi*) echo "Wi-Fi" ;;
+      eth*|en*|eno*|enp*) echo "Ethernet" ;;
+      *) echo "Online" ;;
+    esac
   else
     echo "Offline"
   fi
@@ -55,8 +60,6 @@ while true; do
   NET=$(get_net)
   DATETIME=$(get_datetime)
 
-  # Restrained desktop topbar format:
-  # Left has tags & app title; Right has system status & date/time
   STATUS="  Mem: ${MEM}  │  Load: ${CPU}  │  ${NET}  │  ${BAT}  │  ${DATETIME}  "
 
   if command -v xsetroot >/dev/null 2>&1; then
