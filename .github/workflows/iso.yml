@@ -18,7 +18,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex gawk texinfo \
-            curl patch bzip2 xz-utils bc libssl-dev cpio gzip \
+            curl patch bzip2 xz-utils bc libssl-dev libelf-dev cpio gzip \
             xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf \
             libx11-dev libxinerama-dev libxft-dev libcrypt-dev
 
@@ -34,7 +34,13 @@ jobs:
       - name: Build toolchain (if not cached)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
-          bash toolchain/scripts/build-all.sh --skip-tests
+          make toolchain
+
+      - name: Mark cached toolchain ready
+        if: steps.cache-toolchain.outputs.cache-hit == 'true'
+        run: |
+          mkdir -p build/.markers
+          touch build/.markers/.toolchain
 
       - name: Run unit & security tests
         run: |

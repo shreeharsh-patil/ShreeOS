@@ -30,12 +30,15 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --target="${LUMEN_TARGET_TRIPLET}" \
   --enable-hashes=all \
   --enable-obsolete-api=glibc \
-  --disable-static
+  --enable-static \
+  --enable-shared
 
 make -j"${LUMEN_MAKE_JOBS}"
 make install
 
-# Also install headers and library to sysroot for cross-compiler linking
-make install DESTDIR="${LUMEN_SYSROOT}" 2>/dev/null || true
+# Install headers and libraries into sysroot for cross-compiler linking
+mkdir -p "${LUMEN_SYSROOT}/usr/include" "${LUMEN_SYSROOT}/usr/lib"
+cp -a "${LUMEN_STAGE_ROOT}/usr/include/crypt.h" "${LUMEN_SYSROOT}/usr/include/" 2>/dev/null || true
+cp -a "${LUMEN_STAGE_ROOT}/usr/lib/libcrypt"* "${LUMEN_SYSROOT}/usr/lib/" 2>/dev/null || true
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

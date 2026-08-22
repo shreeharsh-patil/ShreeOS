@@ -24,6 +24,7 @@ KERNEL_BUILDDIR="${LUMEN_BUILD_DIR}/build-kernel"
 export KERNEL_INITRAMFS_SRC="${KERNEL_ROOT_DIR}/kernel/initramfs"
 export KERNEL_INITRAMFS_OUT="${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
 
+export PATH="${LUMEN_TOOLS}/bin:${PATH}"
 export ARCH="${LUMEN_ARCH}"
 export CROSS_COMPILE="${LUMEN_TARGET_TRIPLET}-"
 

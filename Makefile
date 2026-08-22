@@ -109,7 +109,7 @@ $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain
 .PHONY: packages
 packages: $(MARKER_DIR)/.packages
 
-$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain
+$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system
 	$(MAKE) -C pkgmanager/src
 	$(MAKE) -C init/src
 	@touch $@

@@ -17,8 +17,8 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc flex bison \
-            openssl pkg-config cpio gzip
+          sudo apt-get install -y build-essential bc flex bison gawk texinfo \
+            openssl pkg-config cpio gzip libssl-dev libelf-dev curl patch bzip2 xz-utils
 
       - name: Restore cached toolchain
         id: cache-toolchain
@@ -26,6 +26,11 @@ jobs:
         with:
           path: build/tools
           key: toolchain-${{ hashFiles('build.conf', 'toolchain/scripts/**') }}
+
+      - name: Build toolchain (if not cached)
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          bash toolchain/scripts/build-all.sh --skip-tests
 
       - name: Build kernel
         run: |
