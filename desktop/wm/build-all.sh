@@ -52,13 +52,12 @@ if [ -f "${DESKTOP_DIR}/configs/xinitrc.template" ]; then
   chmod 755 "${STAGE_ROOT}/etc/X11/xinitrc"
 fi
 
-# 3. Install desktop scripts and create command symlinks without .sh
+# 3. Install desktop scripts and create extensionless symlinks/copies
 for script in "${DESKTOP_DIR}/scripts/"*.sh; do
   [ -f "$script" ] || continue
   base=$(basename "$script")
   cp "$script" "${STAGE_ROOT}/usr/bin/${base}"
   chmod 755 "${STAGE_ROOT}/usr/bin/${base}"
-  # Install without .sh extension for clean CLI invocation
   clean_name="${base%.sh}"
   if [ "$clean_name" != "$base" ]; then
     cp "$script" "${STAGE_ROOT}/usr/bin/${clean_name}"
@@ -89,7 +88,13 @@ for tool in "${SHREEOS_ROOT_DIR}/scripts/shreectl" "${SHREEOS_ROOT_DIR}/scripts/
   fi
 done
 
-# 6. Install vector icon family & branding
+# 6. Install recovery tool
+if [ -f "${SHREEOS_ROOT_DIR}/installer/scripts/shree-recovery.sh" ]; then
+  cp "${SHREEOS_ROOT_DIR}/installer/scripts/shree-recovery.sh" "${STAGE_ROOT}/usr/bin/shree-recovery"
+  chmod 755 "${STAGE_ROOT}/usr/bin/shree-recovery"
+fi
+
+# 7. Install vector icon family & branding
 if [ -d "${SHREEOS_ROOT_DIR}/branding/icons" ]; then
   cp "${SHREEOS_ROOT_DIR}/branding/icons/"*.svg "${STAGE_ROOT}/usr/share/icons/shreeos/" 2>/dev/null || true
 fi

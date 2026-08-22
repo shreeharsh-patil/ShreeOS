@@ -8,6 +8,7 @@ set -euo pipefail
 
 # 1. Gather live system states
 WIFI_STATE=$(shree-net status 2>/dev/null || echo "Connected")
+BT_STATE=$(shree-bluetooth status 2>/dev/null || echo "not available")
 THEME_STATE=$(shree-theme status 2>/dev/null || echo "dark")
 DND_STATE=$(shree-dnd status 2>/dev/null || echo "off")
 NIGHT_STATE=$(shree-nightlight status 2>/dev/null || echo "off")
@@ -16,7 +17,7 @@ BAT_STATE=$(shree-power status 2>/dev/null || echo "100% AC")
 
 ITEMS="\
 Wi-Fi: ${WIFI_STATE^}               — Manage wireless networks
-Bluetooth: Ready                — Scan & pair wireless peripherals
+Bluetooth: ${BT_STATE^}           — Wireless peripherals & adapter
 Appearance: ${THEME_STATE^} Mode        — Toggle Dark / Light theme
 Do Not Disturb: ${DND_STATE^}           — Silence popups and banners
 Night Light: ${NIGHT_STATE^}             — Warm display color temperature
@@ -33,9 +34,7 @@ case "$SELECTED" in
     shree-net menu
     ;;
   "Bluetooth"*)
-    if command -v shree-notify >/dev/null 2>&1; then
-      shree-notify "Bluetooth" "Bluetooth subsystem ready. Scanning for devices..." --app="Settings"
-    fi
+    shree-bluetooth menu
     ;;
   "Appearance"*)
     shree-theme toggle

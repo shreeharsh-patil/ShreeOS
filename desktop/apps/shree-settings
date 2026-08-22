@@ -1,49 +1,156 @@
-#!/bin/sh
-# desktop/apps/shree-settings — ShreeOS System Settings application
+#!/usr/bin/env bash
+# desktop/apps/shree-settings — ShreeOS Master System Settings Application
 #
-# Dense, organized sidebar + panel navigation for appearance, display, network, updates.
+# Dense, organized category navigation with direct backend system hooks
+# for appearance, wallpapers, displays, network, bluetooth, sound, storage, updates.
 
-CATEGORIES="\
-Appearance        — Theme, accent color, transparency
-Desktop & Dock    — Wallpaper, dock position, autohide
-Displays          — Resolution, refresh rate, scaling
-Network           — Wi-Fi, Ethernet, DNS configuration
-Sound             — Output device, volume, alert sounds
-Storage           — Disk usage and partition overview
-Software Updates  — Check and install system package upgrades
-About ShreeOS     — System specs and build information"
+set -euo pipefail
 
-CATEGORY=$(echo "$CATEGORIES" | dmenu -p "ShreeOS Settings" -l 8 -c)
-
-case "$CATEGORY" in
-  Appearance*)
-    THEME_CHOICE=$(printf "Dark Mode (Default)\nLight Mode\nToggle Transparency\nReset Accent Color" | dmenu -p "Appearance Settings" -l 4 -c)
-    case "$THEME_CHOICE" in
-      *Dark*)  echo "Dark mode enabled" ;;
-      *Light*) echo "Light mode enabled" ;;
-    esac
-    ;;
-  "Desktop & Dock"*)
-    DOCK_CHOICE=$(printf "Bottom (Default)\nAuto-Hide On\nAuto-Hide Off\nChange Wallpaper" | dmenu -p "Dock Settings" -l 4 -c)
-    ;;
-  Displays*)
-    if command -v xrandr >/dev/null 2>&1; then
-      st -g 70x20 -t "Display Settings" -e /bin/bash -c "xrandr; echo ''; echo 'Press Enter to exit'; read -r" &
+apply_wallpaper() {
+  local wp="$1"
+  if [ -f "$wp" ]; then
+    if command -v xwallpaper >/dev/null 2>&1; then
+      xwallpaper --zoom "$wp"
+    elif command -v feh >/dev/null 2>&1; then
+      feh --bg-fill "$wp"
     fi
-    ;;
-  Network*)
-    st -g 70x20 -t "Network Settings" -e /bin/bash -c "ip addr; echo ''; echo 'Press Enter to exit'; read -r" &
-    ;;
-  Sound*)
-    st -g 60x15 -t "Sound Settings" -e /bin/bash -c "if command -v alsamixer >/dev/null 2>&1; then alsamixer; else echo 'Volume: 100%'; read -r; fi" &
-    ;;
-  Storage*)
-    st -g 70x20 -t "Storage Settings" -e /bin/bash -c "df -h; echo ''; echo 'Press Enter to exit'; read -r" &
-    ;;
-  "Software Updates"*)
-    st -g 75x24 -t "Software Updates" -e /bin/bash -c "system-update.sh; echo ''; echo 'Press Enter to exit'; read -r" &
-    ;;
-  "About ShreeOS"*)
-    shree-about &
-    ;;
-esac
+    mkdir -p "${HOME}/.config/shreeos"
+    echo "WALLPAPER=${wp}" > "${HOME}/.config/shreeos/wallpaper.conf"
+    shree-notify "Wallpaper Updated" "Applied $(basename "$wp")" --app="Settings"
+  fi
+}
+
+handle_appearance() {
+  local cur
+  cur=$(shree-theme status 2>/dev/null || echo "dark")
+  local choice
+  choice=$(printf "Dark Mode (Currently %s)\nLight Mode\nAutomatic (Sunset to Sunrise)\nToggle Theme Now\nChange Wallpaper\nAdjust Transparency & Blur" "$cur" | dmenu -p "Appearance Settings" -l 6 -c)
+  [ -z "$choice" ] && return
+
+  case "$choice" in
+    "Dark Mode"*)  shree-theme dark ;;
+    "Light Mode"*) shree-theme light ;;
+    "Automatic"*)  shree-theme auto ;;
+    "Toggle"*)     shree-theme toggle ;;
+    "Change Wallpaper"*)
+      local wp_list
+      wp_list=$(find /usr/share/wallpapers "${HOME}/Pictures" "${HOME}/Desktop" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null || true)
+      local wp_choice
+      wp_choice=$(echo -e "$wp_list" | dmenu -p "Select Wallpaper" -l 6 -c)
+      [ -n "$wp_choice" ] && apply_wallpaper "$wp_choice"
+      ;;
+    "Adjust Transparency"*)
+      shree-notify "Compositor" "Window transparency & blur are configured in /etc/X11/picom.conf" --app="Settings"
+      ;;
+  esac
+}
+
+handle_dock() {
+  local choice
+  choice=$(printf "Auto-Hide: Disabled\nAuto-Hide: Enabled\nRestart Dock Service" | dmenu -p "Dock Settings" -l 3 -c)
+  [ -z "$choice" ] && return
+  case "$choice" in
+    "Auto-Hide: Enabled"*)
+      mkdir -p "${HOME}/.config/shreeos"
+      echo "AUTOHIDE=true" > "${HOME}/.config/shreeos/dock.conf"
+      shree-notify "Dock" "Auto-hide enabled" --app="Settings"
+      ;;
+    "Auto-Hide: Disabled"*)
+      mkdir -p "${HOME}/.config/shreeos"
+      echo "AUTOHIDE=false" > "${HOME}/.config/shreeos/dock.conf"
+      shree-notify "Dock" "Auto-hide disabled" --app="Settings"
+      ;;
+    "Restart Dock"*)
+      pkill -f "shree-dock" 2>/dev/null || true
+      shree-dock --daemon &
+      shree-notify "Dock" "Dock restarted" --app="Settings"
+      ;;
+  esac
+}
+
+handle_bluetooth() {
+  shree-bluetooth menu
+}
+
+handle_displays() {
+  if command -v xrandr >/dev/null 2>&1; then
+    st -g 75x20 -t "Display Settings" -e /bin/bash -c "
+      echo '=== Connected Displays & Available Resolutions ==='
+      echo ''
+      xrandr --query
+      echo ''
+      echo 'Press Enter to close.'
+      read -r
+    " &
+  fi
+}
+
+handle_network() {
+  shree-net menu
+}
+
+handle_sound() {
+  shree-audio menu
+}
+
+handle_storage() {
+  shree-storage show
+}
+
+handle_updates() {
+  st -g 80x22 -t "Software Updates" -e /bin/bash -c "system-update.sh; echo ''; echo 'Press Enter to close'; read -r" &
+}
+
+handle_default_apps() {
+  local type_choice
+  type_choice=$(printf "Text Files (text/plain)\nImages (image/png)\nArchives (application/zip)\nWeb Browser" | dmenu -p "Default Apps" -l 4 -c)
+  [ -z "$type_choice" ] && return
+  case "$type_choice" in
+    "Text Files"*)
+      local app
+      app=$(printf "shree-edit.desktop\nnano.desktop\nvim.desktop" | dmenu -p "Select Text Editor" -l 3 -c)
+      [ -n "$app" ] && shree-mime set "text/plain" "$app"
+      ;;
+    "Images"*)
+      local app
+      app=$(printf "shree-view.desktop\nfeh.desktop\nsxiv.desktop" | dmenu -p "Select Image Viewer" -l 3 -c)
+      [ -n "$app" ] && shree-mime set "image/png" "$app"
+      ;;
+  esac
+}
+
+show_main_menu() {
+  local categories="\
+Appearance        — Theme (Light/Dark/Auto), wallpapers & transparency
+Desktop & Dock    — Wallpaper selection, dock autohide & position
+Displays          — Resolution, refresh rates & Night Light
+Network           — Wi-Fi discovery, Ethernet & DNS configuration
+Bluetooth         — Wireless peripherals and adapter state
+Sound             — Master output volume & alert settings
+Default Apps      — File associations for editor, image viewer & browser
+Storage           — Disk usage overview & package cache cleaner
+Software Updates  — Check & apply system package upgrades
+About ShreeOS     — Hardware specs, kernel release & system identity"
+
+  local target="${1:-}"
+  if [ -z "$target" ]; then
+    target=$(echo -e "$categories" | dmenu -p "ShreeOS Settings" -l 10 -c || true)
+  fi
+
+  [ -z "$target" ] && exit 0
+
+  case "$target" in
+    Appearance*|appearance)     handle_appearance ;;
+    "Desktop & Dock"*|dock)     handle_dock ;;
+    Displays*|displays)         handle_displays ;;
+    Network*|network)           handle_network ;;
+    Bluetooth*|bluetooth)       handle_bluetooth ;;
+    Sound*|sound)               handle_sound ;;
+    "Default Apps"*|defaults)   handle_default_apps ;;
+    Storage*|storage)           handle_storage ;;
+    "Software Updates"*|updates)handle_updates ;;
+    "About ShreeOS"*|about)     shree-about & ;;
+  esac
+}
+
+show_main_menu "$@"

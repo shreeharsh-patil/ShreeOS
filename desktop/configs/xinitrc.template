@@ -1,7 +1,7 @@
 #!/bin/sh
 # /etc/X11/xinit/xinitrc — ShreeOS Desktop Session Orchestrator
 #
-# Initializes Xresources, wallpaper, compositor, top bar, and window manager.
+# Initializes Xresources, wallpaper, compositor, daemons, and window manager.
 
 # 1. Merge X11 resources (typography, subpixel rendering, terminal palette)
 if [ -f /etc/X11/Xresources ]; then
@@ -11,28 +11,49 @@ elif [ -f "$HOME/.Xresources" ]; then
 fi
 
 # 2. Set calm architectural wallpaper
-if [ -f /usr/share/wallpapers/shreeos-wallpaper.png ]; then
+if [ -f /usr/share/wallpapers/shreeos-wallpaper.svg ]; then
+  if command -v xwallpaper >/dev/null 2>&1; then
+    xwallpaper --zoom /usr/share/wallpapers/shreeos-wallpaper.svg &
+  elif command -v feh >/dev/null 2>&1; then
+    feh --bg-fill /usr/share/wallpapers/shreeos-wallpaper.svg &
+  fi
+elif [ -f /usr/share/wallpapers/shreeos-wallpaper.png ]; then
   if command -v xwallpaper >/dev/null 2>&1; then
     xwallpaper --zoom /usr/share/wallpapers/shreeos-wallpaper.png &
-  elif command -v feh >/dev/null 2>&1; then
-    feh --bg-fill /usr/share/wallpapers/shreeos-wallpaper.png &
   fi
 fi
 
-# 3. Keyboard layout
+# 3. Keyboard layout & screen settings
 setxkbmap us &
+xset s 600 dpms 600 900 1200 &
 
 # 4. Start Picom Compositor (soft window shadows, 10px corners, vsync)
 if command -v picom >/dev/null 2>&1; then
   picom --config /etc/X11/picom.conf -b &
 fi
 
-# 5. Start Top System Menu Bar Status Feed
-if [ -x /usr/bin/shree-topbar.sh ]; then
-  /usr/bin/shree-topbar.sh &
-elif [ -x /usr/bin/dwm-statusbar.sh ]; then
-  /usr/bin/dwm-statusbar.sh &
+# 5. Start Background System Daemons
+if command -v shree-clipboard >/dev/null 2>&1; then
+  shree-clipboard --daemon &
 fi
 
-# 6. Start Window Manager (dwm)
+if command -v shree-connect >/dev/null 2>&1; then
+  shree-connect --daemon &
+fi
+
+# 6. Start Top System Menu Bar Status Feed
+if [ -x /usr/bin/shree-topbar.sh ]; then
+  /usr/bin/shree-topbar.sh &
+elif [ -x /usr/bin/shree-topbar ]; then
+  /usr/bin/shree-topbar &
+fi
+
+# 7. Check First-Run Desktop Onboarding
+if [ -x /usr/bin/shree-onboarding.sh ]; then
+  /usr/bin/shree-onboarding.sh &
+elif [ -x /usr/bin/shree-onboarding ]; then
+  /usr/bin/shree-onboarding &
+fi
+
+# 8. Start Window Manager (dwm)
 exec dwm

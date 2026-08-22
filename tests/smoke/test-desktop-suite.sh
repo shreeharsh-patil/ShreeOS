@@ -8,14 +8,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "==> Testing ShreeOS Desktop Suite & Tools"
+echo "==> Testing ShreeOS Desktop Suite & System Tools"
 
-# 1. Syntax check all desktop scripts and applications
-for f in "${PROJECT_ROOT}/desktop/scripts/"*.sh "${PROJECT_ROOT}/desktop/apps/"*.sh "${PROJECT_ROOT}/scripts/shree"*; do
-  [ -f "$f" ] || continue
-  bash -n "$f" || { echo "Syntax error in $f"; exit 1; }
+# 1. Syntax check all desktop scripts, applications, installer, and CLI tools
+for dir in "${PROJECT_ROOT}/desktop/scripts" "${PROJECT_ROOT}/desktop/apps" "${PROJECT_ROOT}/installer/scripts" "${PROJECT_ROOT}/scripts"; do
+  [ -d "$dir" ] || continue
+  for f in "$dir"/*; do
+    [ -f "$f" ] || continue
+    # If it is a shell script (has shebang or .sh)
+    if head -n 1 "$f" 2>/dev/null | grep -qE '^#!/(bin|usr)'; then
+      bash -n "$f" || { echo "Syntax error in $f"; exit 1; }
+    fi
+  done
 done
-echo "  [OK] All desktop scripts and system utilities pass syntax validation"
+echo "  [OK] All desktop scripts, installer scripts, and system utilities pass syntax validation"
 
 # 2. Verify design tokens and theme configuration
 if [ -f "${PROJECT_ROOT}/branding/theme/tokens.conf" ] && [ -f "${PROJECT_ROOT}/branding/theme/tokens.css" ]; then
@@ -44,6 +50,11 @@ fi
 if [ -f "${PROJECT_ROOT}/scripts/shreeinfo" ]; then
   bash "${PROJECT_ROOT}/scripts/shreeinfo" >/dev/null
   echo "  [OK] shreeinfo banner generates successfully"
+fi
+
+if [ -f "${PROJECT_ROOT}/scripts/shree-doctor" ]; then
+  bash "${PROJECT_ROOT}/scripts/shree-doctor" >/dev/null
+  echo "  [OK] shree-doctor diagnostic suite executes successfully"
 fi
 
 echo "==> All desktop suite smoke tests passed successfully!"

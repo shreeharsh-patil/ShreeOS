@@ -11,9 +11,30 @@ PAIRED_DEVICES="${CONNECT_DIR}/paired.list"
 mkdir -p "$CONNECT_DIR"
 touch "$PAIRED_DEVICES"
 
+run_listener_daemon() {
+  local port=8899
+  local dl_dir="${HOME}/Downloads"
+  mkdir -p "$dl_dir"
+
+  while true; do
+    if command -v nc >/dev/null 2>&1; then
+      # Listen for incoming stream and save with timestamp
+      local ts
+      ts=$(date +"%Y%m%d_%H%M%S")
+      local incoming_file="${dl_dir}/Received_${ts}.dat"
+      nc -l -p "$port" > "$incoming_file" 2>/dev/null || true
+      if [ -s "$incoming_file" ]; then
+        shree-notify "ShreeOS Connect" "Received incoming file saved to $(basename "$incoming_file")" --app="Connect"
+      else
+        rm -f "$incoming_file"
+      fi
+    fi
+    sleep 2
+  done
+}
+
 discover_devices() {
   echo "Scanning local network for ShreeOS Connect peers..."
-  # Look for active hosts on local subnet via arp / ip neigh
   ip neigh show 2>/dev/null | awk '{print $1" ("$5")"}' || echo "No peer devices discovered"
 }
 
@@ -29,9 +50,8 @@ send_file_to_peer() {
   [ -z "$peer_ip" ] && exit 0
 
   shree-notify "ShreeOS Connect" "Sending $(basename "$target_file") to ${peer_ip}..." --app="Connect"
-  # Transfer file over secure local netcat / curl receiver if peer is listening
   if command -v nc >/dev/null 2>&1; then
-    nc -w 3 "$peer_ip" 8899 < "$target_file" 2>/dev/null || echo "Transfer complete"
+    nc -w 4 "$peer_ip" 8899 < "$target_file" 2>/dev/null || true
   fi
   shree-notify "ShreeOS Connect" "File drop sent to ${peer_ip}" --app="Connect"
 }
@@ -46,17 +66,18 @@ send_url_to_peer() {
   [ -z "$peer_ip" ] && exit 0
 
   if command -v nc >/dev/null 2>&1; then
-    echo "URL:${url}" | nc -w 3 "$peer_ip" 8899 2>/dev/null || true
+    echo "URL:${url}" | nc -w 4 "$peer_ip" 8899 2>/dev/null || true
   fi
   shree-notify "ShreeOS Connect" "Shared URL with ${peer_ip}" --app="Connect"
 }
 
 interactive_menu() {
-  OPTIONS="[1] Send File to Nearby Device\n[2] Share URL / Link\n[3] Discover Network Devices\n[4] Manage Paired Devices"
-  CHOICE=$(echo -e "$OPTIONS" | dmenu -p "ShreeOS Connect" -l 4 -c)
-  [ -z "$CHOICE" ] && exit 0
+  local options="[1] Send File to Nearby Device\n[2] Share URL / Link\n[3] Discover Network Devices\n[4] Manage Paired Devices"
+  local choice
+  choice=$(echo -e "$options" | dmenu -p "ShreeOS Connect" -l 4 -c)
+  [ -z "$choice" ] && exit 0
 
-  case "$CHOICE" in
+  case "$choice" in
     *"Send File"*) send_file_to_peer "${1:-}" ;;
     *"Share URL"*) send_url_to_peer ;;
     *"Discover"*)
@@ -69,8 +90,9 @@ interactive_menu() {
 }
 
 case "${1:-menu}" in
-  discover) discover_devices ;;
-  send-file) send_file_to_peer "${2:-}" ;;
-  send-url)  send_url_to_peer ;;
-  menu|*)    interactive_menu ;;
+  --daemon|daemon) run_listener_daemon ;;
+  discover)        discover_devices ;;
+  send-file)       send_file_to_peer "${2:-}" ;;
+  send-url)        send_url_to_peer ;;
+  menu|*)          interactive_menu ;;
 esac
