@@ -4,7 +4,7 @@ CC := $(CROSS_COMPILE)gcc
 CFLAGS := -std=gnu11 -Wall -Wextra -Os -g -I../src
 LDFLAGS := -static
 
-SRCS := ../src/json.c ../src/manifest.c
+SRCS := ../src/json.c ../src/manifest.c ../src/sha256.c
 TESTS := test-manifest
 
 .PHONY: all clean test

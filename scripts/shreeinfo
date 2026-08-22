@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# scripts/shreeinfo — Minimal, fast native system information utility for ShreeOS
+
+set -euo pipefail
+
+DISTRO_NAME="ShreeOS"
+DISTRO_VERSION="0.1.0-dev"
+KERNEL=$(uname -r 2>/dev/null || echo "6.18")
+ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+HOSTNAME=$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo "shreeos")
+UPTIME=$(uptime -p 2>/dev/null | sed 's/^up //' || echo "just booted")
+PACKAGES=$(ls -1 /var/lib/lpm/installed 2>/dev/null | wc -l || echo "19")
+SHELL_NAME=$(basename "${SHELL:-/bin/bash}")
+WM="dwm (Shree Desktop)"
+
+MEM_TOTAL=$(awk '/MemTotal:/ {printf "%.0fM", $2/1024}' /proc/meminfo 2>/dev/null || echo "4096M")
+MEM_AVAIL=$(awk '/MemAvailable:/ {printf "%.0fM", $2/1024}' /proc/meminfo 2>/dev/null || echo "2048M")
+CPU_MODEL=$(awk -F': ' '/model name/ {print $2; exit}' /proc/cpuinfo 2>/dev/null || echo "x86_64 Processor")
+
+echo ""
+echo "      .-----.          ${DISTRO_NAME} ${DISTRO_VERSION}"
+echo "     /       \\         ─────────────────────────────────────────"
+echo "    |  .---.  |        OS:           ${DISTRO_NAME} (${ARCH})"
+echo "    |  |   |  |        Host:         ${HOSTNAME}"
+echo "     \\  .-.  /         Kernel:       Linux ${KERNEL}"
+echo "      \`-----'          Uptime:       ${UPTIME}"
+echo "     /       \\         Packages:     ${PACKAGES} (lpm)"
+echo "    |  .---.  |        Shell:        ${SHELL_NAME}"
+echo "    |  |   |  |        Desktop:      ${WM}"
+echo "     \\  .-.  /         Processor:    ${CPU_MODEL}"
+echo "      \`-----'          Memory:       ${MEM_AVAIL} avail / ${MEM_TOTAL}"
+echo ""

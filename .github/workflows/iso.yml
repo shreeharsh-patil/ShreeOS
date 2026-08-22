@@ -4,6 +4,8 @@ on:
   push:
     branches: [master]
     tags: ['v*']
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
 jobs:
@@ -17,19 +19,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex gawk texinfo \
             curl patch bzip2 xz-utils bc libssl-dev cpio gzip \
-            xorriso grub-pc grub-efi-amd64-bin rsync
+            xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf
 
-      - name: Restore cached toolchain
+      - name: Restore cached toolchain & sysroot
         id: cache-toolchain
         uses: actions/cache@v4
         with:
-          path: build/tools
-          key: toolchain-${{ hashFiles('build.conf', 'toolchain/scripts/**') }}
+          path: |
+            build/tools
+            build/sysroot
+          key: toolchain-sysroot-${{ hashFiles('build.conf', 'toolchain/scripts/**', 'toolchain/patches/**') }}
 
       - name: Build toolchain (if not cached)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
           bash toolchain/scripts/build-all.sh --skip-tests
+
+      - name: Run unit tests
+        run: |
+          make test-unit
 
       - name: Build base system
         run: |
@@ -60,6 +68,15 @@ jobs:
       - name: Build ISO
         run: |
           bash iso-builder/scripts/build-iso.sh --no-cleanup
+
+      - name: Run smoke tests
+        run: |
+          make test-smoke
+
+      - name: Run QEMU BIOS & UEFI Boot Tests
+        run: |
+          bash tests/qemu/boot-iso-bios.sh
+          bash tests/qemu/boot-iso-uefi.sh
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4

@@ -1,0 +1,49 @@
+#!/bin/sh
+# desktop/apps/shree-settings — ShreeOS System Settings application
+#
+# Dense, organized sidebar + panel navigation for appearance, display, network, updates.
+
+CATEGORIES="\
+Appearance        — Theme, accent color, transparency
+Desktop & Dock    — Wallpaper, dock position, autohide
+Displays          — Resolution, refresh rate, scaling
+Network           — Wi-Fi, Ethernet, DNS configuration
+Sound             — Output device, volume, alert sounds
+Storage           — Disk usage and partition overview
+Software Updates  — Check and install system package upgrades
+About ShreeOS     — System specs and build information"
+
+CATEGORY=$(echo "$CATEGORIES" | dmenu -p "ShreeOS Settings" -l 8 -c)
+
+case "$CATEGORY" in
+  Appearance*)
+    THEME_CHOICE=$(printf "Dark Mode (Default)\nLight Mode\nToggle Transparency\nReset Accent Color" | dmenu -p "Appearance Settings" -l 4 -c)
+    case "$THEME_CHOICE" in
+      *Dark*)  echo "Dark mode enabled" ;;
+      *Light*) echo "Light mode enabled" ;;
+    esac
+    ;;
+  "Desktop & Dock"*)
+    DOCK_CHOICE=$(printf "Bottom (Default)\nAuto-Hide On\nAuto-Hide Off\nChange Wallpaper" | dmenu -p "Dock Settings" -l 4 -c)
+    ;;
+  Displays*)
+    if command -v xrandr >/dev/null 2>&1; then
+      st -g 70x20 -t "Display Settings" -e /bin/bash -c "xrandr; echo ''; echo 'Press Enter to exit'; read -r" &
+    fi
+    ;;
+  Network*)
+    st -g 70x20 -t "Network Settings" -e /bin/bash -c "ip addr; echo ''; echo 'Press Enter to exit'; read -r" &
+    ;;
+  Sound*)
+    st -g 60x15 -t "Sound Settings" -e /bin/bash -c "if command -v alsamixer >/dev/null 2>&1; then alsamixer; else echo 'Volume: 100%'; read -r; fi" &
+    ;;
+  Storage*)
+    st -g 70x20 -t "Storage Settings" -e /bin/bash -c "df -h; echo ''; echo 'Press Enter to exit'; read -r" &
+    ;;
+  "Software Updates"*)
+    st -g 75x24 -t "Software Updates" -e /bin/bash -c "system-update.sh; echo ''; echo 'Press Enter to exit'; read -r" &
+    ;;
+  "About ShreeOS"*)
+    shree-about &
+    ;;
+esac

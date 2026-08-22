@@ -1,0 +1,49 @@
+/* branding/theme/tokens.css — ShreeOS CSS Design Tokens */
+
+:root {
+  /* Common Accents */
+  --shree-accent: #2878FF;
+  --shree-accent-light: #3A88FF;
+  --shree-accent-hover: #1A62E8;
+
+  --shree-success: #30A46C;
+  --shree-warning: #F7B955;
+  --shree-error: #E54D2E;
+
+  --shree-radius-window: 10px;
+  --shree-radius-control: 6px;
+  --shree-radius-dock: 16px;
+  --shree-radius-menu: 8px;
+
+  --shree-font-ui: "Inter", -apple-system, system-ui, sans-serif;
+  --shree-font-mono: "JetBrains Mono", monospace;
+
+  --shree-anim-fast: 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  --shree-anim-normal: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="light"], :root {
+  --shree-bg: #F5F5F7;
+  --shree-surface: #FFFFFF;
+  --shree-surface-secondary: #F3F3F5;
+  --shree-surface-elevated: rgba(255, 255, 255, 0.82);
+  --shree-text-primary: #1D1D1F;
+  --shree-text-secondary: #6E6E73;
+  --shree-text-muted: #86868B;
+  --shree-border: rgba(0, 0, 0, 0.10);
+  --shree-shadow-window: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --shree-shadow-menu: 0 8px 20px rgba(0, 0, 0, 0.10);
+}
+
+[data-theme="dark"] {
+  --shree-bg: #0F0F10;
+  --shree-surface: #1C1C1E;
+  --shree-surface-secondary: #242426;
+  --shree-surface-elevated: rgba(35, 35, 38, 0.88);
+  --shree-text-primary: #F5F5F7;
+  --shree-text-secondary: #A1A1A6;
+  --shree-text-muted: #86868B;
+  --shree-border: rgba(255, 255, 255, 0.10);
+  --shree-shadow-window: 0 16px 40px rgba(0, 0, 0, 0.36);
+  --shree-shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.28);
+}

@@ -1,18 +1,38 @@
 #!/bin/sh
-# /etc/X11/xinit/xinitrc — X session startup for ShreeOS
+# /etc/X11/xinit/xinitrc — ShreeOS Desktop Session Orchestrator
+#
+# Initializes Xresources, wallpaper, compositor, top bar, and window manager.
 
-# Wallpaper
-if [ -f /usr/share/wallpapers/shreeos-wallpaper.png ]; then
-  xwallpaper --zoom /usr/share/wallpapers/shreeos-wallpaper.png &
+# 1. Merge X11 resources (typography, subpixel rendering, terminal palette)
+if [ -f /etc/X11/Xresources ]; then
+  xrdb -merge /etc/X11/Xresources
+elif [ -f "$HOME/.Xresources" ]; then
+  xrdb -merge "$HOME/.Xresources"
 fi
 
-# Keyboard
+# 2. Set calm architectural wallpaper
+if [ -f /usr/share/wallpapers/shreeos-wallpaper.png ]; then
+  if command -v xwallpaper >/dev/null 2>&1; then
+    xwallpaper --zoom /usr/share/wallpapers/shreeos-wallpaper.png &
+  elif command -v feh >/dev/null 2>&1; then
+    feh --bg-fill /usr/share/wallpapers/shreeos-wallpaper.png &
+  fi
+fi
+
+# 3. Keyboard layout
 setxkbmap us &
 
-# Status bar
-if [ -x /usr/bin/dwm-statusbar.sh ]; then
+# 4. Start Picom Compositor (soft window shadows, 10px corners, vsync)
+if command -v picom >/dev/null 2>&1; then
+  picom --config /etc/X11/picom.conf -b &
+fi
+
+# 5. Start Top System Menu Bar Status Feed
+if [ -x /usr/bin/shree-topbar.sh ]; then
+  /usr/bin/shree-topbar.sh &
+elif [ -x /usr/bin/dwm-statusbar.sh ]; then
   /usr/bin/dwm-statusbar.sh &
 fi
 
-# Start window manager
+# 6. Start Window Manager (dwm)
 exec dwm

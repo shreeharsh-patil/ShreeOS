@@ -1,4 +1,5 @@
 #include "manifest.h"
+#include "sha256.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,10 +19,19 @@ int cmd_query(int argc, char **argv) {
     manifest *m = manifest_load(dbdir);
     if (!m) { printf("'%s' not installed\n", argv[0]); return 1; }
 
-    printf("Name:    %s\n", m->name);
-    printf("Version: %s\n", m->version);
+    printf("Name:        %s\n", m->name);
+    printf("Version:     %s\n", m->version);
     if (m->description && *m->description)
-        printf("Desc:    %s\n", m->description);
+        printf("Description: %s\n", m->description);
+    if (m->sha256 && *m->sha256)
+        printf("SHA256:      %s\n", m->sha256);
+    if (m->ndeps > 0) {
+        printf("Depends:     ");
+        for (int i = 0; i < m->ndeps; i++) {
+            printf("%s%s", m->deps[i], (i + 1 < m->ndeps) ? ", " : "");
+        }
+        printf("\n");
+    }
     printf("Files (%d):\n", m->nfiles);
     for (int i = 0; i < m->nfiles; i++)
         printf("  %s\n", m->files[i]);
@@ -44,7 +54,7 @@ int cmd_list(int argc, char **argv) {
         snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", ent->d_name);
         manifest *m = manifest_load(dbdir);
         if (m) {
-            printf("%s-%s\n", m->name, m->version);
+            printf("%-20s %-12s %s\n", m->name, m->version, m->description ? m->description : "");
             manifest_free(m);
             found = 1;
         }
@@ -68,7 +78,6 @@ static int contains_icase(const char *haystack, const char *needle) {
     return 0;
 }
 
-/* ponytail: O(n) directory scan over installed package manifests; upgrade path: binary repository index cache */
 int cmd_search(int argc, char **argv) {
     if (argc < 1) { fprintf(stderr, "Usage: lpm search <query>\n"); return 1; }
     const char *query = argv[0];
@@ -86,7 +95,7 @@ int cmd_search(int argc, char **argv) {
         manifest *m = manifest_load(dbdir);
         if (m) {
             if (contains_icase(m->name, query) || contains_icase(m->description, query)) {
-                printf("%s-%s: %s\n", m->name, m->version, m->description ? m->description : "");
+                printf("%-20s %-12s %s\n", m->name, m->version, m->description ? m->description : "");
                 matches++;
             }
             manifest_free(m);
@@ -110,25 +119,50 @@ int cmd_verify(int argc, char **argv) {
     manifest *m = manifest_load(dbdir);
     if (!m) { fprintf(stderr, "lpm: package '%s' is not installed\n", name); return 1; }
 
+    printf("lpm: verifying %s-%s...\n", m->name, m->version);
+
     int missing_files = 0;
+    int corrupt_files = 0;
+    int verified_hashes = 0;
+
     for (int i = 0; i < m->nfiles; i++) {
-        if (access(m->files[i], F_OK) != 0) {
-            fprintf(stderr, "lpm: missing file: %s\n", m->files[i]);
+        const char *filepath = m->files[i];
+        if (access(filepath, F_OK) != 0) {
+            fprintf(stderr, "lpm: [MISSING] %s\n", filepath);
             missing_files++;
+            continue;
+        }
+
+        /* Check per-file SHA-256 hash if available in checksum table */
+        const char *expected_hash = manifest_get_checksum(m, filepath);
+        if (expected_hash && *expected_hash) {
+            char actual_hash[65] = {0};
+            if (lpm_sha256_file(filepath, actual_hash) != 0 ||
+                strcmp(actual_hash, expected_hash) != 0) {
+                fprintf(stderr, "lpm: [CORRUPTED] %s (hash mismatch)\n  expected: %s\n  actual:   %s\n",
+                        filepath, expected_hash, actual_hash);
+                corrupt_files++;
+            } else {
+                verified_hashes++;
+            }
         }
     }
 
-    if (m->sha256 && *m->sha256) {
-        printf("lpm: package sha256 checksum: %s\n", m->sha256);
-    }
-
-    if (missing_files > 0) {
-        fprintf(stderr, "lpm: verification failed for %s (%d missing file(s))\n", name, missing_files);
+    if (missing_files > 0 || corrupt_files > 0) {
+        fprintf(stderr, "lpm: verification FAILED for %s (%d missing, %d corrupt out of %d files)\n",
+                name, missing_files, corrupt_files, m->nfiles);
         manifest_free(m);
         return 1;
     }
 
-    printf("lpm: package %s-%s verified (%d files OK)\n", m->name, m->version, m->nfiles);
+    if (verified_hashes > 0) {
+        printf("lpm: package %s-%s verified OK (%d files exist, %d checksums matched)\n",
+               m->name, m->version, m->nfiles, verified_hashes);
+    } else {
+        printf("lpm: package %s-%s verified OK (%d files exist)\n",
+               m->name, m->version, m->nfiles);
+    }
+
     manifest_free(m);
     return 0;
 }

@@ -58,20 +58,34 @@ if [ -d "${ROOTFS_DIR}/skeleton/etc" ]; then
   done
 fi
 
-# 3. Compile and install init
+# 3. Compile and install init + services
 if [ "$SKIP_INIT" = false ]; then
-  lumen_step "Building custom init"
-  export CROSS_COMPILE="${LUMEN_TARGET_TRIPLET}-"
-  make -C "${LUMEN_ROOT_DIR}/init/src" clean all
-  if [ ! -f "${LUMEN_ROOT_DIR}/init/src/init" ]; then
-    lumen_die "init build failed"
+  shreeos_step "Building custom init and initctl"
+  export CROSS_COMPILE="${SHREEOS_TARGET_TRIPLET:-${LUMEN_TARGET_TRIPLET}}-"
+  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src" clean all
+  if [ ! -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/init" ]; then
+    shreeos_die "init build failed"
   fi
-  cp "${LUMEN_ROOT_DIR}/init/src/init" "${LUMEN_STAGE_ROOT}/sbin/init"
-  chmod 755 "${LUMEN_STAGE_ROOT}/sbin/init"
-  lumen_ok "Installed init to /sbin/init"
+  mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin"
+  mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/etc/services.d"
+
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/init" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init"
+  shreeos_ok "Installed init to /sbin/init"
+
+  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" ]; then
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
+    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
+    shreeos_ok "Installed initctl to /sbin/initctl"
+  fi
+
+  if [ -d "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services" ]; then
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services/"*.conf "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/etc/services.d/" 2>/dev/null || true
+    shreeos_ok "Installed service definitions to /etc/services.d"
+  fi
 else
-  if [ ! -f "${LUMEN_STAGE_ROOT}/sbin/init" ]; then
-    lumen_die "No init binary at ${LUMEN_STAGE_ROOT}/sbin/init (use --skip-init only if it already exists)"
+  if [ ! -f "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init" ]; then
+    shreeos_die "No init binary at ${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init (use --skip-init only if it already exists)"
   fi
 fi
 

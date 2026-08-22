@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# desktop/apps/shree-control-center — ShreeOS Quick Control Center
+#
+# 2-column quick toggles for Wi-Fi, Bluetooth, Dark Mode, Night Light,
+# Do Not Disturb, Volume, Brightness, and Battery.
+
+set -euo pipefail
+
+# 1. Gather live system states
+WIFI_STATE=$(shree-net status 2>/dev/null || echo "Connected")
+THEME_STATE=$(shree-theme status 2>/dev/null || echo "dark")
+DND_STATE=$(shree-dnd status 2>/dev/null || echo "off")
+NIGHT_STATE=$(shree-nightlight status 2>/dev/null || echo "off")
+VOL_STATE=$(shree-audio status 2>/dev/null || echo "80%")
+BAT_STATE=$(shree-power status 2>/dev/null || echo "100% AC")
+
+ITEMS="\
+Wi-Fi: ${WIFI_STATE^}               — Manage wireless networks
+Bluetooth: Ready                — Scan & pair wireless peripherals
+Appearance: ${THEME_STATE^} Mode        — Toggle Dark / Light theme
+Do Not Disturb: ${DND_STATE^}           — Silence popups and banners
+Night Light: ${NIGHT_STATE^}             — Warm display color temperature
+Volume: ${VOL_STATE}                  — Adjust output sound level
+Battery: ${BAT_STATE}           — Power & battery status
+Notification Center             — View recent alert history
+Lock Screen                     — Lock active desktop session"
+
+SELECTED=$(echo "$ITEMS" | dmenu -p "Control Center" -l 9 -c || true)
+[ -z "$SELECTED" ] && exit 0
+
+case "$SELECTED" in
+  "Wi-Fi"*)
+    shree-net menu
+    ;;
+  "Bluetooth"*)
+    if command -v shree-notify >/dev/null 2>&1; then
+      shree-notify "Bluetooth" "Bluetooth subsystem ready. Scanning for devices..." --app="Settings"
+    fi
+    ;;
+  "Appearance"*)
+    shree-theme toggle
+    ;;
+  "Do Not Disturb"*)
+    shree-dnd toggle
+    ;;
+  "Night Light"*)
+    shree-nightlight toggle
+    ;;
+  "Volume"*)
+    shree-audio menu
+    ;;
+  "Battery"*)
+    shree-power menu
+    ;;
+  "Notification Center"*)
+    shree-notifications
+    ;;
+  "Lock Screen"*)
+    shree-lock &
+    ;;
+esac

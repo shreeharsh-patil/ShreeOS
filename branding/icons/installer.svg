@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="inst-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2C2C2E" />
+      <stop offset="100%" stop-color="#1C1C1E" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#inst-bg)" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+  <!-- Minimal Hard Disk Platter + Downward Deployment Arrow -->
+  <rect x="30" y="74" width="68" height="24" rx="4" fill="#38383A" stroke="#48484A" stroke-width="1.5" />
+  <circle cx="86" cy="86" r="3" fill="#2878FF" />
+  <path d="M 64 32 L 64 62 M 50 48 L 64 62 L 78 48" fill="none" stroke="#2878FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

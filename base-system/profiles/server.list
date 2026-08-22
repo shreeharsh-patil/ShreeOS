@@ -1,0 +1,24 @@
+# base-system/profiles/server.list — Server runtime profile
+# Inherits minimal profile and adds networking, DNS, TLS, SSH, time sync, process monitoring
+
+# Include minimal base
+@minimal
+
+# Networking & Transport
+iproute2
+dhcpcd
+curl
+wget
+ca-certificates
+openssl
+
+# Time Synchronization & Cryptography
+chrony
+
+# Remote Access & Daemons
+openssh
+
+# Storage & Filesystem Management
+e2fsprogs
+dosfstools
+kmod

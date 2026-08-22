@@ -1,0 +1,23 @@
+# base-system/profiles/desktop.list — Desktop graphical profile
+# Inherits server profile and adds display server, window management, fonts, and terminals
+
+# Include server profile
+@server
+
+# Display Server & Graphics
+xorg-server
+xinit
+mesa
+libinput
+libx11
+libxft
+libxinerama
+
+# Window Manager & GUI Utilities
+dwm
+st
+dmenu
+
+# Fonts & Theme
+dejavu-fonts
+shreeos-wallpapers

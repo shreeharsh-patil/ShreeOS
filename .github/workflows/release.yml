@@ -18,13 +18,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex gawk texinfo \
             curl patch bzip2 xz-utils bc libssl-dev cpio gzip \
-            xorriso grub-pc grub-efi-amd64-bin rsync
+            xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf
 
-      - name: Restore cached toolchain
+      - name: Restore cached toolchain & sysroot
         uses: actions/cache@v4
         with:
-          path: build/tools
-          key: toolchain-${{ hashFiles('build.conf', 'toolchain/scripts/**') }}
+          path: |
+            build/tools
+            build/sysroot
+          key: toolchain-sysroot-${{ hashFiles('build.conf', 'toolchain/scripts/**', 'toolchain/patches/**') }}
 
       - name: Full build
         run: |
@@ -33,6 +35,13 @@ jobs:
           bash kernel/scripts/build-kernel.sh
           bash rootfs/scripts/make-rootfs.sh
           bash iso-builder/scripts/build-iso.sh
+
+      - name: Run verification test suite
+        run: |
+          make test-unit
+          make test-smoke
+          bash tests/qemu/boot-iso-bios.sh
+          bash tests/qemu/boot-iso-uefi.sh
 
       - name: Create release checksums
         run: |
@@ -50,9 +59,9 @@ jobs:
 
             ### Artifacts
             - `shreeos-*.iso` — Hybrid BIOS/UEFI bootable ISO
-            - `SHA256SUMS.txt` — Checksums
+            - `SHA256SUMS.txt` — SHA-256 Checksums
 
-            ### Build
+            ### Build from Source
             ```bash
             git clone https://github.com/shreeharsh-patil/ShreeOS.git
             cd ShreeOS
@@ -60,10 +69,10 @@ jobs:
             make all
             ```
 
-            ### Verify
+            ### Verify & Test Boot
             ```bash
             sha256sum -c SHA256SUMS.txt --ignore-missing
-            qemu-system-x86_64 -cdrom shreeos-*.iso -m 256M -nographic
+            qemu-system-x86_64 -cdrom shreeos-*.iso -m 512M
             ```
           files: |
             out/*.iso

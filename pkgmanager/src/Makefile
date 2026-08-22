@@ -11,7 +11,7 @@ CC := $(CROSS_COMPILE)gcc
 CFLAGS := -std=gnu11 -Wall -Wextra -Os -g
 LDFLAGS := -static
 
-SRCS := main.c manifest.c json.c install.c resolve.c
+SRCS := main.c manifest.c json.c install.c resolve.c sha256.c
 OBJS := $(SRCS:.c=.o)
 BIN  := lpm
 

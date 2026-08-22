@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="about-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3A88FF" />
+      <stop offset="100%" stop-color="#2878FF" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#about-bg)" stroke="rgba(255,255,255,0.15)" stroke-width="1" />
+  <!-- System Info 'i' Monogram -->
+  <circle cx="64" cy="44" r="6" fill="#FFFFFF" />
+  <rect x="58" y="58" width="12" height="34" rx="4" fill="#FFFFFF" />
+</svg>

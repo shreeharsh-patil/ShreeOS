@@ -35,7 +35,11 @@ done
 source "${PROJECT_ROOT}/scripts/common.sh" 2>/dev/null || true
 
 echo "============================================"
-lumen_step "ShreeOS Smoke Test Suite"
+if command -v shreeos_step >/dev/null 2>&1; then
+  shreeos_step "ShreeOS Smoke Test Suite"
+else
+  echo "==> ShreeOS Smoke Test Suite"
+fi
 echo "  Date:    $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "  Root:    ${PROJECT_ROOT}"
 echo "  Tests:   ${SCRIPT_DIR}"

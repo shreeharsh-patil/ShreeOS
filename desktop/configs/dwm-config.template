@@ -1,20 +1,44 @@
-# dwm configuration: keybindings
+# dwm configuration: keybindings & visual parameters
 # Installed to /etc/dwm/config.h during build
-# Mod1 = Alt key
+# MODKEY = Super (Windows / Command key)
 
-MODKEY=Mod1
+MODKEY=Mod4
 
-# Terminal: Mod1 + Shift + Enter
-[Mod1|Shift]=Return -> st
+# Universal Spotlight Search: Super + Space
+[Mod4]=space -> shree-launcher
 
-# Launcher: Mod1 + p
-[Mod1]=p -> dmenu_run
+# Global Command Palette: Super + K
+[Mod4]=k -> shree-cmdpalette
 
-# Close window: Mod1 + Shift + c
-[Mod1|Shift]=c -> killclient
+# Clipboard History: Super + V
+[Mod4]=v -> shree-clipboard
 
-# Switch to tag N: Mod1 + 1-9
-[Mod1]=1-9 -> view
+# Native File Manager: Super + E
+[Mod4]=e -> shree-files
 
-# Quit dwm: Mod1 + Shift + q
-[Mod1|Shift]=q -> quit
+# Terminal: Super + Return
+[Mod4]=Return -> st
+
+# Fullscreen Screenshot: PrintScreen
+[]=Print -> shree-screenshot full
+
+# Region Screenshot: Super + Shift + 4
+[Mod4|Shift]=4 -> shree-screenshot select
+
+# Close active window: Super + Q
+[Mod4]=q -> killclient
+
+# Switch to workspace N: Super + 1-4
+[Mod4]=1-4 -> view
+
+# Toggle bar: Super + B
+[Mod4]=b -> togglebar
+
+# Window Snapping:
+# Super + Left  -> shrink master
+# Super + Right -> expand master
+# Super + Up    -> fullscreen / monocle
+# Super + Down  -> standard tiling
+
+# Quit dwm session: Super + Shift + Q
+[Mod4|Shift]=q -> quit

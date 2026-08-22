@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <ctype.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -36,6 +37,33 @@ static void fill_str_array(const json_value *arr, char ***out, int *n) {
     }
 }
 
+static void fill_checksums(const json_value *obj, checksum_entry **out, int *n) {
+    *n = 0;
+    *out = NULL;
+    if (!obj || obj->type != JSON_OBJECT) return;
+
+    int count = 0;
+    for (json_pair *p = obj->head; p; p = p->next) {
+        if (p->key && p->value && p->value->type == JSON_STRING) {
+            count++;
+        }
+    }
+    if (count == 0) return;
+
+    *out = calloc(count, sizeof(checksum_entry));
+    if (!*out) return;
+
+    int idx = 0;
+    for (json_pair *p = obj->head; p; p = p->next) {
+        if (p->key && p->value && p->value->type == JSON_STRING) {
+            (*out)[idx].path = strdup_safe(p->key);
+            (*out)[idx].sha256 = strdup_safe(p->value->string);
+            idx++;
+        }
+    }
+    *n = idx;
+}
+
 manifest *manifest_parse(const char *json_str) {
     json_value *root = json_parse(json_str);
     if (!root) return NULL;
@@ -48,6 +76,7 @@ manifest *manifest_parse(const char *json_str) {
     m->sha256      = strdup_safe(json_string(json_get(root, "sha256")));
     fill_str_array(json_get(root, "dependencies"), &m->deps, &m->ndeps);
     fill_str_array(json_get(root, "files"),        &m->files, &m->nfiles);
+    fill_checksums(json_get(root, "checksums"),    &m->checksums, &m->nchecksums);
 
     json_free(root);
     return m;
@@ -61,7 +90,24 @@ void manifest_free(manifest *m) {
     free(m->sha256);
     if (m->deps) { for (int i = 0; i < m->ndeps; i++) free(m->deps[i]); free(m->deps); }
     if (m->files) { for (int i = 0; i < m->nfiles; i++) free(m->files[i]); free(m->files); }
+    if (m->checksums) {
+        for (int i = 0; i < m->nchecksums; i++) {
+            free(m->checksums[i].path);
+            free(m->checksums[i].sha256);
+        }
+        free(m->checksums);
+    }
     free(m);
+}
+
+const char *manifest_get_checksum(const manifest *m, const char *file_path) {
+    if (!m || !m->checksums || !file_path) return NULL;
+    for (int i = 0; i < m->nchecksums; i++) {
+        if (strcmp(m->checksums[i].path, file_path) == 0) {
+            return m->checksums[i].sha256;
+        }
+    }
+    return NULL;
 }
 
 int manifest_save(const manifest *m, const char *dir) {
@@ -73,24 +119,32 @@ int manifest_save(const manifest *m, const char *dir) {
     if (!f) return -1;
 
     fprintf(f, "{\n");
-    fprintf(f, "  \"name\": \"%s\",\n", m->name);
-    fprintf(f, "  \"version\": \"%s\",\n", m->version);
+    fprintf(f, "  \"name\": \"%s\",\n", m->name ? m->name : "");
+    fprintf(f, "  \"version\": \"%s\",\n", m->version ? m->version : "");
     if (m->description && *m->description)
         fprintf(f, "  \"description\": \"%s\",\n", m->description);
     if (m->sha256 && *m->sha256)
         fprintf(f, "  \"sha256\": \"%s\",\n", m->sha256);
     fprintf(f, "  \"dependencies\": [");
     for (int i = 0; i < m->ndeps; i++) {
-        if (i > 0) fprintf(f, ",");
+        if (i > 0) fprintf(f, ", ");
         fprintf(f, "\"%s\"", m->deps[i]);
     }
     fprintf(f, "],\n");
     fprintf(f, "  \"files\": [");
     for (int i = 0; i < m->nfiles; i++) {
-        if (i > 0) fprintf(f, ",");
+        if (i > 0) fprintf(f, ", ");
         fprintf(f, "\"%s\"", m->files[i]);
     }
-    fprintf(f, "]\n}\n");
+    fprintf(f, "],\n");
+    fprintf(f, "  \"checksums\": {\n");
+    for (int i = 0; i < m->nchecksums; i++) {
+        fprintf(f, "    \"%s\": \"%s\"%s\n",
+                m->checksums[i].path,
+                m->checksums[i].sha256,
+                (i + 1 < m->nchecksums) ? "," : "");
+    }
+    fprintf(f, "  }\n}\n");
 
     fclose(f);
     return 0;
@@ -107,8 +161,21 @@ int manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_ou
     int count = 0;
 
     for (int i = 0; i < m->ndeps; i++) {
+        /* Dep could be "foo" or "foo >= 1.0" */
+        char dep_name[128];
+        const char *space = strchr(m->deps[i], ' ');
+        if (space) {
+            size_t n = space - m->deps[i];
+            if (n >= sizeof(dep_name)) n = sizeof(dep_name) - 1;
+            strncpy(dep_name, m->deps[i], n);
+            dep_name[n] = '\0';
+        } else {
+            strncpy(dep_name, m->deps[i], sizeof(dep_name) - 1);
+            dep_name[sizeof(dep_name) - 1] = '\0';
+        }
+
         char dbdir[LPM_PATH_MAX];
-        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", m->deps[i]);
+        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", dep_name);
         manifest *dep_m = manifest_load(dbdir);
         if (!dep_m) {
             missing[count++] = strdup(m->deps[i]);
@@ -179,4 +246,88 @@ bool lpm_safe_path(const char *path) {
         p++;
     }
     return true;
+}
+
+/* Semantic / lexical version comparison */
+int lpm_version_cmp(const char *v1, const char *v2) {
+    if (!v1 && !v2) return 0;
+    if (!v1) return -1;
+    if (!v2) return 1;
+
+    const char *p1 = v1;
+    const char *p2 = v2;
+
+    while (*p1 || *p2) {
+        /* If both have digits, compare numerically */
+        if (isdigit((unsigned char)*p1) && isdigit((unsigned char)*p2)) {
+            unsigned long n1 = strtoul(p1, (char **)&p1, 10);
+            unsigned long n2 = strtoul(p2, (char **)&p2, 10);
+            if (n1 < n2) return -1;
+            if (n1 > n2) return 1;
+        } else {
+            /* Compare non-digit separator or pre-release char */
+            if (*p1 != *p2) {
+                return (int)((unsigned char)*p1) - (int)((unsigned char)*p2);
+            }
+            if (*p1) p1++;
+            if (*p2) p2++;
+        }
+    }
+    return 0;
+}
+
+bool lpm_is_lpkg_file(const char *path) {
+    if (!path) return false;
+    size_t len = strlen(path);
+    if (len >= 5 && strcmp(path + len - 5, ".lpkg") == 0) return true;
+    if (len >= 7 && strcmp(path + len - 7, ".tar.gz") == 0) return true;
+    return false;
+}
+
+int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename, char **out_sha256) {
+    if (out_version) *out_version = NULL;
+    if (out_filename) *out_filename = NULL;
+    if (out_sha256) *out_sha256 = NULL;
+
+    FILE *f = fopen(LPM_REPO_JSON, "rb");
+    if (!f) return -1;
+
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    rewind(f);
+    if (len < 0) { fclose(f); return -1; }
+    char *buf = malloc(len + 1);
+    if (!buf) { fclose(f); return -1; }
+    if (fread(buf, 1, len, f) != (size_t)len) {
+        free(buf); fclose(f); return -1;
+    }
+    buf[len] = '\0';
+    fclose(f);
+
+    json_value *root = json_parse(buf);
+    free(buf);
+    if (!root) return -1;
+
+    json_value *packages = json_get(root, "packages");
+    if (!packages || packages->type != JSON_OBJECT) {
+        json_free(root);
+        return -1;
+    }
+
+    json_value *pkg_obj = json_get(packages, pkgname);
+    if (!pkg_obj || pkg_obj->type != JSON_OBJECT) {
+        json_free(root);
+        return -1;
+    }
+
+    const char *ver = json_string(json_get(pkg_obj, "version"));
+    const char *fn = json_string(json_get(pkg_obj, "filename"));
+    const char *sha = json_string(json_get(pkg_obj, "sha256"));
+
+    if (out_version) *out_version = ver ? strdup(ver) : strdup("0.0");
+    if (out_filename) *out_filename = fn ? strdup(fn) : strdup("");
+    if (out_sha256) *out_sha256 = sha ? strdup(sha) : strdup("");
+
+    json_free(root);
+    return 0;
 }
