@@ -9,7 +9,7 @@ clean_cache() {
   local cache_dir="/var/cache/lpm/pkg"
   if [ -d "$cache_dir" ]; then
     local count
-    count=$(ls -1 "$cache_dir" 2>/dev/null | wc -l || echo 0)
+    count=$(find "$cache_dir" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l || echo 0)
     rm -rf "${cache_dir:?}"/*
     if command -v shree-notify >/dev/null 2>&1; then
       shree-notify "Storage" "Cleaned ${count} cached package archive(s)" --app="Storage"
@@ -22,14 +22,18 @@ clean_cache() {
 }
 
 empty_trash() {
-  local trash_dir="${HOME}/.local/share/Trash/files"
-  if [ -d "$trash_dir" ]; then
-    local count
-    count=$(ls -1 "$trash_dir" 2>/dev/null | wc -l || echo 0)
-    rm -rf "${trash_dir:?}"/*
-    if command -v shree-notify >/dev/null 2>&1; then
-      shree-notify "Trash Emptied" "Removed ${count} item(s) from Trash" --app="Files"
-    fi
+  local trash_files="${HOME}/.local/share/Trash/files"
+  local trash_info="${HOME}/.local/share/Trash/info"
+  local count=0
+  if [ -d "$trash_files" ]; then
+    count=$(find "$trash_files" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l || echo 0)
+    rm -rf "${trash_files:?}"/*
+  fi
+  if [ -d "$trash_info" ]; then
+    rm -rf "${trash_info:?}"/*
+  fi
+  if command -v shree-notify >/dev/null 2>&1; then
+    shree-notify "Trash Emptied" "Removed ${count} item(s) from Trash" --app="Files"
   fi
 }
 

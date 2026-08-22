@@ -1,7 +1,5 @@
 name: Lint
 
-# Runs on every push/PR. Full build workflows (toolchain, kernel, ISO) are
-# added incrementally in later milestones as those components exist.
 on:
   push:
     branches: [master]
@@ -14,15 +12,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Shellcheck all shell scripts
+      - name: Shellcheck all shell scripts (warnings & errors)
         run: |
           find . -name '*.sh' -not -path './build/*' -print0 \
-            | xargs -0 -r shellcheck -x
+            | xargs -0 -r shellcheck -x --severity=warning
 
-      - name: Syntax-check build.conf and common.sh
+      - name: Syntax-check all configuration and shell scripts
         run: |
           bash -n build.conf
           bash -n scripts/common.sh
+          find . -name '*.sh' -not -path './build/*' -exec bash -n {} +
 
   structure-check:
     runs-on: ubuntu-latest

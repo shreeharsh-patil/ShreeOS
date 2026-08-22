@@ -20,8 +20,13 @@ get_ip() {
 
 scan_networks() {
   if command -v iwlist >/dev/null 2>&1; then
-    local wlan_dev
-    wlan_dev=$(ls /sys/class/net 2>/dev/null | grep -E '^wl' | head -n1 || echo "")
+    local wlan_dev=""
+    for dev in /sys/class/net/wl* /sys/class/net/wlan*; do
+      if [ -e "$dev" ]; then
+        wlan_dev="$(basename "$dev")"
+        break
+      fi
+    done
     if [ -n "$wlan_dev" ]; then
       iwlist "$wlan_dev" scan 2>/dev/null | grep -oP 'ESSID:"\K[^"]+' | sort -u || echo ""
     fi

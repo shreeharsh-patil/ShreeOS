@@ -61,7 +61,9 @@ run_daemon() {
           chmod 600 "$HIST_FILE"
           
           # Keep last 30 entries
-          tail -n 30 "$HIST_FILE" > "${HIST_FILE}.tmp" 2>/dev/null && mv "${HIST_FILE}.tmp" "$HIST_FILE" 2>/dev/null || true
+          if tail -n 30 "$HIST_FILE" > "${HIST_FILE}.tmp" 2>/dev/null; then
+            mv "${HIST_FILE}.tmp" "$HIST_FILE" 2>/dev/null || true
+          fi
           chmod 600 "$HIST_FILE"
           last_raw="$cur_raw"
         fi
@@ -93,7 +95,7 @@ run_interactive() {
   [ -z "$selected" ] && exit 0
 
   if [ "$selected" = "[Clear Clipboard History]" ]; then
-    > "$HIST_FILE"
+    : > "$HIST_FILE"
     chmod 600 "$HIST_FILE"
     shree-notify "Clipboard" "Clipboard history cleared" --app="System"
   elif [ "$selected" = "[Toggle Clipboard Recording]" ]; then
@@ -126,7 +128,7 @@ run_interactive() {
 case "${1:-interactive}" in
   --daemon|daemon) run_daemon ;;
   clear)
-    > "$HIST_FILE"
+    : > "$HIST_FILE"
     chmod 600 "$HIST_FILE"
     ;;
   interactive|*) run_interactive ;;

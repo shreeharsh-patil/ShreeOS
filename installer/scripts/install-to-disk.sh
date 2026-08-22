@@ -108,6 +108,8 @@ else
   PART_ROOT="${DISK}3"
 fi
 
+shreeos_log "Detected partition devices (BIOS: ${PART_BIOS}, ESP: ${PART_ESP}, Root: ${PART_ROOT})"
+
 # 2. Format ESP (FAT32) and Root (ext4)
 if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "uefi" ]; then
   shreeos_log "Formatting EFI System Partition (${PART_ESP})"

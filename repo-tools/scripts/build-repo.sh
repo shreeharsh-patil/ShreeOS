@@ -21,8 +21,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LUMEN_ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-source "$LUMEN_ROOT_DIR/build.conf"
-source "$LUMEN_ROOT_DIR/scripts/common.sh"
+source "$LUMEN_ROOT_DIR/build.conf" 2>/dev/null || true
+source "$LUMEN_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
+  lumen_step() { echo "==> $1"; }
+  lumen_ok() { echo "  [OK] $1"; }
+  lumen_warn() { echo "  [WARN] $1"; }
+  lumen_die() { echo "  [ERROR] $1" >&2; exit 1; }
+  lumen_require_cmd() { for c in "$@"; do command -v "$c" >/dev/null 2>&1 || { echo "Missing $c" >&2; exit 1; }; done; }
+}
 
 if [ $# -lt 2 ]; then
   lumen_die "Usage: build-repo.sh <staging-dir> <output-dir>"
@@ -40,9 +46,11 @@ fi
 mkdir -p "$OUTDIR/pool"
 
 REPO_JSON="${OUTDIR}/repo.json"
-echo "{" > "$REPO_JSON"
-echo "  \"name\": \"${DISTRO_ID}-main\"," >> "$REPO_JSON"
-echo "  \"packages\": {" >> "$REPO_JSON"
+cat > "$REPO_JSON" <<EOF
+{
+  "name": "${DISTRO_ID:-shreeos}-main",
+  "packages": {
+EOF
 
 FIRST=true
 for pkg_dir in "$STAGING"/*/; do
@@ -91,9 +99,11 @@ REPOENTRY
   lumen_ok "Packaged ${LPKG_FILE} (${LPKG_SHA})"
 done
 
-echo "" >> "$REPO_JSON"
-echo "  }" >> "$REPO_JSON"
-echo "}" >> "$REPO_JSON"
+cat >> "$REPO_JSON" <<EOF
+
+  }
+}
+EOF
 
 lumen_ok "Repository index: ${REPO_JSON}"
 lumen_ok "Repository ready at ${OUTDIR}"

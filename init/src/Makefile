@@ -23,7 +23,7 @@ initctl: initctl.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 shree-auth: shree-auth.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS) 2>/dev/null || $(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
 
 clean:
 	rm -f $(BINS) *.o

@@ -46,11 +46,13 @@ mkdir -p "$LOG_DIR"
 echo "$(date +%s)|${APP}|${TITLE}|${BODY}|displayed" >> "${LOG_DIR}/notifications.log"
 
 # Keep last 50 notifications
-tail -n 50 "${LOG_DIR}/notifications.log" > "${LOG_DIR}/notifications.log.tmp" 2>/dev/null && mv "${LOG_DIR}/notifications.log.tmp" "${LOG_DIR}/notifications.log" 2>/dev/null || true
+if tail -n 50 "${LOG_DIR}/notifications.log" > "${LOG_DIR}/notifications.log.tmp" 2>/dev/null; then
+  mv "${LOG_DIR}/notifications.log.tmp" "${LOG_DIR}/notifications.log" 2>/dev/null || true
+fi
 
 # 3. Display Notification
 if command -v notify-send >/dev/null 2>&1; then
-  notify-send -a "$APP" "$TITLE" "$BODY"
+  notify-send -a "$APP" -i "$ICON" "$TITLE" "$BODY"
 elif command -v zenity >/dev/null 2>&1; then
   zenity --notification --text="${APP}: ${TITLE}\n${BODY}" 2>/dev/null || true
 else

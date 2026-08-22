@@ -83,13 +83,14 @@ send_file_to_peer() {
 }
 
 interactive_menu() {
+  local initial_file="${1:-}"
   local options="[1] Send File to Nearby Device\n[2] Discover Network Devices\n[3] Start Connect Receiver (Manual Session)\n[4] Manage Paired Devices"
   local choice
   choice=$(echo -e "$options" | dmenu -p "ShreeOS Connect (Experimental)" -l 4 -c)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in
-    *"Send File"*) send_file_to_peer "${1:-}" ;;
+    *"Send File"*) send_file_to_peer "$initial_file" ;;
     *"Discover"*)
       st -g 70x16 -t "Discovered Devices" -e /bin/bash -c "shree-connect discover; echo ''; read -r -p 'Press Enter to close' _" &
       ;;
@@ -106,5 +107,5 @@ case "${1:-menu}" in
   --daemon|daemon) run_listener_daemon ;;
   discover)        discover_devices ;;
   send-file)       send_file_to_peer "${2:-}" ;;
-  menu|*)          interactive_menu ;;
+  menu|*)          interactive_menu "${2:-}" ;;
 esac

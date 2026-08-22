@@ -56,7 +56,7 @@ echo "--------------------------------------------------------------------------
 echo ""
 read -r -p "Enter target disk path (e.g. /dev/sda or /dev/nvme0n1): " TARGET_DISK
 
-if [ -z "$TARGET_DISK" ] || ( [ ! -b "$TARGET_DISK" ] && [ ! -f "$TARGET_DISK" ] ); then
+if [[ -z "$TARGET_DISK" || ( ! -b "$TARGET_DISK" && ! -f "$TARGET_DISK" ) ]]; then
   shreeos_die "Invalid target disk '${TARGET_DISK}'. Aborting."
 fi
 
