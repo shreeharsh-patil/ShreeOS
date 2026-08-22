@@ -70,7 +70,6 @@ static void get_repo_url(char *buf, size_t maxlen) {
     snprintf(buf, maxlen, "http://localhost:8080");
 }
 
-/* Download package from repo to cache */
 static int download_package(const char *pkgname, char *out_path, size_t maxlen, char *expected_sha, size_t sha_len) {
     char *version = NULL, *filename = NULL, *sha256 = NULL;
     if (lpm_repo_lookup(pkgname, &version, &filename, &sha256) != 0) {
@@ -78,10 +77,14 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
         return -1;
     }
 
-    if (expected_sha && sha256 && *sha256) {
-        strncpy(expected_sha, sha256, sha_len - 1);
-        expected_sha[sha_len - 1] = '\0';
+    if (!sha256 || !*sha256) {
+        fprintf(stderr, "lpm: security error: missing expected SHA256 checksum in repository metadata for '%s'\n", pkgname);
+        free(version); free(filename); free(sha256);
+        return -1;
     }
+
+    strncpy(expected_sha, sha256, sha_len - 1);
+    expected_sha[sha_len - 1] = '\0';
 
     char repo_url[LPM_PATH_MAX];
     get_repo_url(repo_url, sizeof(repo_url));
@@ -117,7 +120,6 @@ int cmd_install(int argc, char **argv) {
     char expected_sha[65] = {0};
 
     if (!lpm_is_lpkg_file(argv[0])) {
-        /* Treat as package name to fetch from repository */
         if (!lpm_valid_pkgname(argv[0])) {
             fprintf(stderr, "lpm: invalid package name '%s'\n", argv[0]);
             lpm_unlock();
@@ -132,7 +134,7 @@ int cmd_install(int argc, char **argv) {
         lpkg_path[sizeof(lpkg_path) - 1] = '\0';
     }
 
-    /* 1. Verify package archive SHA256 if expected hash is available */
+    /* 1. Fail closed on archive checksum */
     if (expected_sha[0] != '\0') {
         char actual_sha[65] = {0};
         if (lpm_sha256_file(lpkg_path, actual_sha) != 0 || strcmp(expected_sha, actual_sha) != 0) {
@@ -156,8 +158,9 @@ int cmd_install(int argc, char **argv) {
     char *cmd = NULL;
     size_t cmdlen;
     manifest *m = NULL;
+    manifest *old_m = NULL;
 
-    /* 2. Extract manifest from package into staging directory */
+    /* 2. Extract manifest */
     cmdlen = strlen(tmpdir_esc) + strlen(lpkg_esc) + 128;
     cmd = malloc(cmdlen);
     if (!cmd) { ret = 1; goto cleanup; }
@@ -181,7 +184,7 @@ int cmd_install(int argc, char **argv) {
         goto cleanup;
     }
 
-    /* 3. Check dependencies — fail before committing if unresolved */
+    /* 3. Check dependencies */
     char **missing_deps = NULL;
     int nmissing = 0;
     if (manifest_check_deps(m, &missing_deps, &nmissing) > 0) {
@@ -195,7 +198,7 @@ int cmd_install(int argc, char **argv) {
         goto cleanup;
     }
 
-    /* 4. Validate file paths in manifest for traversal safety */
+    /* 4. Validate file paths in manifest */
     for (int i = 0; i < m->nfiles; i++) {
         if (!lpm_safe_path(m->files[i])) {
             fprintf(stderr, "lpm: security violation: unsafe path '%s' in package\n", m->files[i]);
@@ -204,16 +207,21 @@ int cmd_install(int argc, char **argv) {
         }
     }
 
-    /* 5. Detect file ownership conflicts across installed database */
+    /* 5. Detect file ownership conflicts */
     if (lpm_check_file_conflicts(m) != 0) {
         fprintf(stderr, "lpm: transaction aborted: file conflict with installed package\n");
         ret = 1;
         goto cleanup;
     }
 
+    /* Check if upgrading existing package and preserve old manifest for cleanup */
+    char dbdir[LPM_PATH_MAX];
+    snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", m->name);
+    old_m = manifest_load(dbdir);
+
     printf("lpm: preparing transaction for %s-%s\n", m->name, m->version);
 
-    /* 6. Extract payload into staging root directory */
+    /* 6. Extract payload into staging */
     char stage_root[LPM_PATH_MAX];
     snprintf(stage_root, sizeof(stage_root), "%s/root", tmpdir);
     mkdir_p(stage_root);
@@ -250,30 +258,75 @@ int cmd_install(int argc, char **argv) {
         printf("lpm: verified %d per-file checksum(s)\n", m->nchecksums);
     }
 
-    /* 8. Atomic Commit: Copy staged files to root and save manifest to database */
+    /* 8. Transaction Backup for Rollback */
+    char backup_dir[LPM_PATH_MAX];
+    snprintf(backup_dir, sizeof(backup_dir), "%s/backup", tmpdir);
+    mkdir_p(backup_dir);
+
+    for (int i = 0; i < m->nfiles; i++) {
+        if (access(m->files[i], F_OK) == 0) {
+            char backup_file[LPM_PATH_MAX];
+            snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
+            char *last_slash = strrchr(backup_file, '/');
+            if (last_slash) {
+                *last_slash = '\0';
+                char mk_cmd[LPM_PATH_MAX + 32];
+                snprintf(mk_cmd, sizeof(mk_cmd), "mkdir -p '%s'", backup_file);
+                run("%s", mk_cmd);
+                *last_slash = '/';
+            }
+            char cp_cmd[LPM_PATH_MAX * 2 + 32];
+            snprintf(cp_cmd, sizeof(cp_cmd), "cp -a '%s' '%s' 2>/dev/null", m->files[i], backup_file);
+            run("%s", cp_cmd);
+        }
+    }
+
+    /* 9. Atomic Commit: Copy staged files to root */
     printf("lpm: committing %s-%s to system root\n", m->name, m->version);
     char copy_cmd[LPM_PATH_MAX * 2 + 128];
     snprintf(copy_cmd, sizeof(copy_cmd), "cp -a %s/root/. / 2>/dev/null || (cd %s/root && tar -cf - .) | (cd / && tar -xf -)",
              tmpdir, tmpdir);
     if (run("%s", copy_cmd) != 0) {
-        fprintf(stderr, "lpm: transaction failed during commit to rootfs\n");
+        fprintf(stderr, "lpm: transaction failed during commit to rootfs. Rolling back...\n");
+        char rb_cmd[LPM_PATH_MAX * 2 + 64];
+        snprintf(rb_cmd, sizeof(rb_cmd), "cp -a %s/backup/. / 2>/dev/null", tmpdir);
+        run("%s", rb_cmd);
         ret = 1;
         goto cleanup;
     }
 
-    char dbdir[LPM_PATH_MAX];
-    snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", m->name);
+    /* 10. Update installed package database */
     mkdir_p(LPM_INSTALLED);
     mkdir_p(dbdir);
     if (manifest_save(m, dbdir) != 0) {
-        fprintf(stderr, "lpm: failed to write installed package database entry\n");
+        fprintf(stderr, "lpm: failed to write installed database entry. Rolling back...\n");
+        char rb_cmd[LPM_PATH_MAX * 2 + 64];
+        snprintf(rb_cmd, sizeof(rb_cmd), "cp -a %s/backup/. / 2>/dev/null", tmpdir);
+        run("%s", rb_cmd);
         ret = 1;
         goto cleanup;
+    }
+
+    /* 11. Cleanup obsolete files from previous package version */
+    if (old_m) {
+        for (int i = 0; i < old_m->nfiles; i++) {
+            bool still_present = false;
+            for (int j = 0; j < m->nfiles; j++) {
+                if (strcmp(old_m->files[i], m->files[j]) == 0) {
+                    still_present = true;
+                    break;
+                }
+            }
+            if (!still_present) {
+                unlink(old_m->files[i]);
+            }
+        }
     }
 
     printf("lpm: successfully installed %s-%s (%d files)\n", m->name, m->version, m->nfiles);
 
 cleanup:
+    if (old_m) manifest_free(old_m);
     if (m) manifest_free(m);
     if (tmpdir_esc) {
         char rm_cmd[LPM_PATH_MAX + 32];
@@ -331,7 +384,6 @@ int cmd_upgrade(int argc, char **argv) {
     if (lpm_lock() != 0) return 1;
 
     if (argc >= 1) {
-        /* Upgrade single package */
         const char *name = argv[0];
         char dbdir[LPM_PATH_MAX];
         snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
@@ -367,7 +419,6 @@ int cmd_upgrade(int argc, char **argv) {
         }
     }
 
-    /* Upgrade all installed packages */
     DIR *dir = opendir(LPM_INSTALLED);
     if (!dir) { printf("lpm: no packages installed\n"); lpm_unlock(); return 0; }
 
@@ -391,7 +442,7 @@ int cmd_upgrade(int argc, char **argv) {
                 if (cmd_install(1, pkg_args) == 0) {
                     upgraded_count++;
                 }
-                lpm_lock();
+                if (lpm_lock() != 0) break;
             }
             free(repo_ver); free(filename); free(sha256);
         }

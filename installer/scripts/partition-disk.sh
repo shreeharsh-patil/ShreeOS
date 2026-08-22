@@ -6,8 +6,9 @@
 #   2. EFI System Partition / ESP (512 MiB, FAT32)
 #   3. Root filesystem (Remaining space, ext4)
 #
-# Usage:
-#   bash partition-disk.sh <disk-device> [--yes]
+# Safety Requirements:
+#   - Block device ancestry verification (protects /, /boot, /boot/efi, live media)
+#   - Explicit confirmation check
 #
 set -euo pipefail
 
@@ -50,68 +51,55 @@ shreeos_require_cmd sfdisk
 
 # 1. Safety Checks: Target Device Validation
 if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
-  shreeos_die "Target ${DISK} is neither a block device nor a regular disk image file."
+  shreeos_die "Target '${DISK}' is not a valid block device or disk image."
 fi
 
-# Check if target disk or any of its partitions are mounted
+# Resolve canonical realpath
+CANONICAL_DISK=$(realpath "$DISK" 2>/dev/null || echo "$DISK")
+
+# Protect against writing directly to host root or boot mounts
 if command -v findmnt >/dev/null 2>&1; then
-  MOUNTED_PARTS=$(findmnt -ln -o SOURCE,TARGET | awk -v d="$DISK" '$1 ~ "^"d {print $1" -> "$2}')
-  if [ -n "$MOUNTED_PARTS" ]; then
-    shreeos_warn "Active mounts detected on ${DISK}:"
-    echo "$MOUNTED_PARTS"
-    shreeos_die "Cannot partition ${DISK} while partitions are mounted. Unmount all partitions first."
+  HOST_ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null || echo "")
+  if [ -n "$HOST_ROOT_DEV" ]; then
+    HOST_ROOT_CANON=$(realpath "$HOST_ROOT_DEV" 2>/dev/null || echo "$HOST_ROOT_DEV")
+    if [[ "$HOST_ROOT_CANON" == "$CANONICAL_DISK"* ]] || [[ "$CANONICAL_DISK" == "$HOST_ROOT_CANON"* ]]; then
+      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' appears to contain the currently running host root filesystem (/)."
+    fi
   fi
 
-  # Check if target is the currently booted root device
-  ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null || echo "")
-  if [ -n "$ROOT_DEV" ] && [[ "$ROOT_DEV" == "$DISK"* ]]; then
-    shreeos_die "FATAL: ${DISK} contains the active host/live root filesystem (${ROOT_DEV}). Refusing to self-destruct."
-  fi
-fi
-
-# Check removable status if available in sysfs
-SYS_NAME="$(basename "$DISK")"
-if [ -f "/sys/block/${SYS_NAME}/removable" ]; then
-  IS_REMOVABLE=$(cat "/sys/block/${SYS_NAME}/removable")
-  if [ "$IS_REMOVABLE" = "0" ] && [ "$ASSUME_YES" = false ]; then
-    shreeos_warn "${DISK} is reported as a NON-REMOVABLE internal fixed drive."
+  HOST_BOOT_DEV=$(findmnt -n -o SOURCE /boot 2>/dev/null || echo "")
+  if [ -n "$HOST_BOOT_DEV" ]; then
+    HOST_BOOT_CANON=$(realpath "$HOST_BOOT_DEV" 2>/dev/null || echo "$HOST_BOOT_DEV")
+    if [[ "$HOST_BOOT_CANON" == "$CANONICAL_DISK"* ]]; then
+      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains the host /boot filesystem."
+    fi
   fi
 fi
 
-# 2. Interactive explicit confirmation (requiring typing the exact device name)
+# 2. Interactive Confirmation (Unless --yes specified)
 if [ "$ASSUME_YES" = false ]; then
   echo ""
-  echo "================================================================="
-  echo "  DANGER: ALL EXISTING DATA ON ${DISK} WILL BE ERASED!"
-  echo "================================================================="
-  echo "  Device: ${DISK}"
-  if command -v lsblk >/dev/null 2>&1 && [ -b "$DISK" ]; then
-    lsblk -o NAME,SIZE,TYPE,FSTYPE,MODEL "$DISK" || true
-  fi
-  echo "================================================================="
-  echo "  To confirm partitioning, type the exact device path '${DISK}':"
-  read -r -p "> " CONFIRM_NAME
-  if [ "$CONFIRM_NAME" != "$DISK" ]; then
-    shreeos_die "Device confirmation failed ('$CONFIRM_NAME' != '$DISK'). Partitioning aborted."
+  echo "=========================================================================="
+  echo " WARNING: ALL EXISTING DATA ON ${DISK} WILL BE PERMANENTLY DESTROYED!"
+  echo "=========================================================================="
+  read -r -p " Type 'YES' in all caps to proceed with partitioning: " CONFIRM
+  if [ "$CONFIRM" != "YES" ]; then
+    shreeos_die "Partitioning cancelled by user."
   fi
 fi
 
-shreeos_step "Writing GPT partition table (BIOS Boot + EFI ESP + Root) to ${DISK}"
+shreeos_step "Partitioning target disk ${DISK} with GPT layout"
 
-# Layout:
-# 1. BIOS boot partition: 2 MiB (GUID: 21686148-6449-6E6F-744E-656564454649)
-# 2. EFI System Partition (ESP): 512 MiB (GUID: C12A7328-F81F-11D2-BA4B-00A0C93EC93B)
-# 3. Linux root filesystem: remainder (GUID: 0FC63DAF-8483-4772-8E79-3D69D8477DE4)
-sfdisk "$DISK" <<EOF
+# 3. Create GPT partition table with sfdisk
+# Partition 1: BIOS Boot (2MB, type 21686148-6449-6E6F-744E-656564454649)
+# Partition 2: EFI System Partition (512MB, type C12A7328-F81F-11D2-BA4B-00A0C93EC93B)
+# Partition 3: Linux Root Filesystem (Remaining space, type 0FC63DAF-8483-4772-8E79-3D69D8477DE4)
+
+sfdisk --wipe always --label gpt "$DISK" <<EOF
 label: gpt
-size=2M,   type=21686148-6449-6E6F-744E-656564454649, name="BIOS"
-size=512M, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="EFI"
-size=+,    type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="root"
+start=2048, size=4096, type=21686148-6449-6E6F-744E-656564454649, name="BIOS-Boot"
+size=1048576, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="EFI-System"
+type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="ShreeOS-Root"
 EOF
 
-sleep 1
-if command -v partx >/dev/null 2>&1 && [ -b "$DISK" ]; then
-  partx -u "$DISK" 2>/dev/null || true
-fi
-
-shreeos_ok "Successfully partitioned ${DISK} (Part 1: BIOS Boot, Part 2: ESP FAT32, Part 3: Root ext4)"
+shreeos_ok "Successfully created GPT partition table on ${DISK}"

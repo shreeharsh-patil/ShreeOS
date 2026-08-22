@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # desktop/scripts/shree-record.sh — ShreeOS Screen Recording Tool
 #
-# Supports fullscreen, window, and selected region video recording using ffmpeg.
+# Supports fullscreen screen video recording using ffmpeg.
 
 set -euo pipefail
 
@@ -35,22 +35,23 @@ start_recording() {
     return
   fi
 
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    shree-notify "Screen Recording" "ffmpeg is required for video capture" --app="System" --urgent
+    return
+  fi
+
   local ts
   ts=$(date +"%Y-%m-%d_%H-%M-%S")
   local out_file="${REC_DIR}/Recording_${ts}.mp4"
-  local mode="${1:-full}"
+  local disp="${DISPLAY:-:0}"
 
   local res
   res=$(xrandr 2>/dev/null | grep '\*' | awk '{print $1}' | head -n1 || echo "1920x1080")
 
   shree-notify "Recording Started" "Capturing screen to $(basename "$out_file")..." --app="System"
 
-  if command -v ffmpeg >/dev/null 2>&1; then
-    ffmpeg -f x11grab -video_size "$res" -framerate 30 -i :0.0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$out_file" >/dev/null 2>&1 &
-    echo "$!" > "$PID_FILE"
-  else
-    shree-notify "Screen Recording" "ffmpeg is required for video capture. Install via LPM: lpm install ffmpeg" --app="System"
-  fi
+  ffmpeg -f x11grab -video_size "$res" -framerate 30 -i "${disp}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$out_file" >/dev/null 2>&1 &
+  echo "$!" > "$PID_FILE"
 }
 
 interactive_menu() {
@@ -61,19 +62,18 @@ interactive_menu() {
     return
   fi
 
-  local options="Start Fullscreen Recording\nStart Region Recording\nCancel"
+  local options="Start Screen Recording\nCancel"
   local choice
-  choice=$(echo -e "$options" | dmenu -p "Screen Recorder" -l 3 -c)
+  choice=$(echo -e "$options" | dmenu -p "Screen Recorder" -l 2 -c)
   [ -z "$choice" ] && return
 
   case "$choice" in
-    "Start Fullscreen"*) start_recording full ;;
-    "Start Region"*)     start_recording select ;;
+    "Start Screen Recording"*) start_recording ;;
   esac
 }
 
 case "${1:-menu}" in
-  start) start_recording "${2:-full}" ;;
+  start) start_recording ;;
   stop)  stop_recording ;;
   status)
     if is_recording; then echo "recording"; else echo "idle"; fi

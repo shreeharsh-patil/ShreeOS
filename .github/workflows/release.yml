@@ -18,7 +18,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex gawk texinfo \
             curl patch bzip2 xz-utils bc libssl-dev cpio gzip \
-            xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf
+            xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf \
+            libx11-dev libxinerama-dev libxft-dev libxcrypt-dev
 
       - name: Restore cached toolchain & sysroot
         uses: actions/cache@v4
@@ -28,20 +29,21 @@ jobs:
             build/sysroot
           key: toolchain-sysroot-${{ hashFiles('build.conf', 'toolchain/scripts/**', 'toolchain/patches/**') }}
 
-      - name: Full build
+      - name: Build Toolchain (if not cached)
         run: |
           bash toolchain/scripts/build-all.sh --skip-tests
-          bash base-system/scripts/build-all.sh
-          bash kernel/scripts/build-kernel.sh
-          bash rootfs/scripts/make-rootfs.sh
-          bash iso-builder/scripts/build-iso.sh
+
+      - name: Build Desktop ISO Profile
+        run: |
+          make PROFILE=desktop iso
 
       - name: Run verification test suite
         run: |
           make test-unit
-          make test-smoke
+          bash tests/smoke/run-all.sh
           bash tests/qemu/boot-iso-bios.sh
           bash tests/qemu/boot-iso-uefi.sh
+          make test-all
 
       - name: Create release checksums
         run: |
@@ -58,7 +60,7 @@ jobs:
             ## ShreeOS ${{ github.ref_name }}
 
             ### Artifacts
-            - `shreeos-*.iso` — Hybrid BIOS/UEFI bootable ISO
+            - `shreeos-*.iso` — Hybrid BIOS/UEFI bootable Desktop ISO
             - `SHA256SUMS.txt` — SHA-256 Checksums
 
             ### Build from Source
@@ -66,13 +68,13 @@ jobs:
             git clone https://github.com/shreeharsh-patil/ShreeOS.git
             cd ShreeOS
             git checkout ${{ github.ref_name }}
-            make all
+            make PROFILE=desktop iso
             ```
 
             ### Verify & Test Boot
             ```bash
             sha256sum -c SHA256SUMS.txt --ignore-missing
-            qemu-system-x86_64 -cdrom shreeos-*.iso -m 512M
+            qemu-system-x86_64 -cdrom out/shreeos-*.iso -m 512M
             ```
           files: |
             out/*.iso

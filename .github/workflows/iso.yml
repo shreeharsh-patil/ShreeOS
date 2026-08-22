@@ -19,7 +19,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex gawk texinfo \
             curl patch bzip2 xz-utils bc libssl-dev cpio gzip \
-            xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf
+            xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf \
+            libx11-dev libxinerama-dev libxft-dev libxcrypt-dev
 
       - name: Restore cached toolchain & sysroot
         id: cache-toolchain
@@ -35,48 +36,23 @@ jobs:
         run: |
           bash toolchain/scripts/build-all.sh --skip-tests
 
-      - name: Run unit tests
+      - name: Run unit & security tests
         run: |
           make test-unit
+          bash tests/smoke/run-all.sh
 
-      - name: Build base system
+      - name: Build Desktop ISO Profile
         run: |
-          bash base-system/scripts/build-all.sh
-
-      - name: Build kernel
-        run: |
-          bash kernel/scripts/build-kernel.sh --skip-init
-
-      - name: Build initramfs
-        run: |
-          make -C kernel/initramfs clean all
-
-      - name: Build kernel with initramfs
-        run: |
-          bash kernel/scripts/build-kernel.sh
-
-      - name: Build init (PID 1)
-        run: |
-          export CROSS_COMPILE=x86_64-shreeos-linux-gnu-
-          make -C init/src clean all
-
-      - name: Build rootfs
-        run: |
-          bash base-system/scripts/setup-rootfs.sh
-          bash rootfs/scripts/make-rootfs.sh --skip-archive
-
-      - name: Build ISO
-        run: |
-          bash iso-builder/scripts/build-iso.sh --no-cleanup
-
-      - name: Run smoke tests
-        run: |
-          make test-smoke
+          make PROFILE=desktop iso
 
       - name: Run QEMU BIOS & UEFI Boot Tests
         run: |
           bash tests/qemu/boot-iso-bios.sh
           bash tests/qemu/boot-iso-uefi.sh
+
+      - name: Run Comprehensive Test Suite
+        run: |
+          make test-all
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4

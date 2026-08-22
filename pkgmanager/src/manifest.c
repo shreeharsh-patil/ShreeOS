@@ -346,16 +346,15 @@ int lpm_lock(void) {
     mkdir_p(LPM_DB);
     lock_fd = open(LPM_LOCK_FILE, O_RDWR | O_CREAT, 0600);
     if (lock_fd < 0) {
-        /* Fall back if running unprivileged or in test environment */
-        return 0;
+        fprintf(stderr, "lpm: error: cannot create or open transaction lock %s: %s\n",
+                LPM_LOCK_FILE, strerror(errno));
+        return -1;
     }
     if (flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
-        if (errno == EWOULDBLOCK || errno == EAGAIN) {
-            fprintf(stderr, "lpm: error: another package manager transaction is currently running.\n");
-            close(lock_fd);
-            lock_fd = -1;
-            return -1;
-        }
+        fprintf(stderr, "lpm: error: another package manager transaction is currently running.\n");
+        close(lock_fd);
+        lock_fd = -1;
+        return -1;
     }
 #endif
     return 0;

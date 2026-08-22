@@ -6,21 +6,25 @@
 #   PROFILE=server  (headless networking/server environment)
 #
 # Targets:
-#   toolchain    — Phase 1: cross-compilation toolchain
-#   base-system  — Phase 2: base userland packages
-#   kernel       — Phase 3: Linux kernel
-#   packages     — Phase 4: lpm package manager & utilities
-#   desktop      — Phase 5: window manager, UI apps & design system
-#   rootfs       — Phase 6: init + full root filesystem assembly
-#   iso          — Phase 7: bootable hybrid ISO
-#   all          — Complete end-to-end pipeline
-#   test-unit    — Package manager unit tests
-#   test-smoke   — Desktop & system smoke tests
-#   test-qemu    — Automated QEMU boot & install tests
-#   test-all     — All test suites
-#   qemu         — Run graphical or serial QEMU virtual machine
-#   clean        — Remove build artifacts
-#   distclean    — Full reset
+#   toolchain       — Phase 1: cross-compilation toolchain
+#   base-system     — Phase 2: base userland packages
+#   kernel          — Phase 3: Linux kernel
+#   packages        — Phase 4: lpm package manager & init binaries
+#   desktop         — Phase 5: window manager & desktop suite (PROFILE=desktop)
+#   rootfs          — Phase 6: init & rootfs assembly
+#   iso             — Phase 7: bootable hybrid ISO
+#   all             — Full end-to-end pipeline
+#   test-unit       — LPM package manager unit tests
+#   test-security   — System security audit tests
+#   test-auth       — Authentication & credential tests
+#   test-installer  — Disk installer validation tests
+#   test-pkgmanager — LPM transaction & hash verification tests
+#   test-desktop    — Desktop suite syntax & token tests
+#   test-smoke      — Smoke test aggregator
+#   test-qemu       — Automated QEMU boot & install tests
+#   test-all        — All automated test suites
+#   qemu            — Launch built ISO in QEMU (UEFI)
+#   qemu-bios       — Launch built ISO in QEMU (BIOS)
 
 PROFILE ?= desktop
 BUILD_DIR := build
@@ -33,24 +37,29 @@ export PROFILE
 
 .PHONY: help
 help:
-	@echo "ShreeOS Build System (Profile: $(PROFILE))"
+	@echo "ShreeOS Build System (Active Profile: $(PROFILE))"
 	@echo ""
 	@echo "Core Pipeline Targets:"
 	@echo "  make toolchain            Phase 1: Cross-compilation toolchain"
 	@echo "  make base-system          Phase 2: Base userland packages"
 	@echo "  make kernel               Phase 3: Linux kernel"
-	@echo "  make packages             Phase 4: lpm package manager & tools"
+	@echo "  make packages             Phase 4: lpm package manager & init tools"
 	@echo "  make desktop              Phase 5: Window manager & desktop suite"
 	@echo "  make rootfs               Phase 6: Init & rootfs assembly"
 	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
 	@echo "  make all                  Build everything end-to-end"
 	@echo ""
 	@echo "Testing & Execution Targets:"
-	@echo "  make test-unit            Run LPM package manager unit tests"
-	@echo "  make test-smoke           Run desktop & toolchain smoke tests"
+	@echo "  make test-unit            Run LPM package manager C unit tests"
+	@echo "  make test-security        Run system security audits"
+	@echo "  make test-auth            Run authentication & credential tests"
+	@echo "  make test-installer       Run disk installer validation tests"
+	@echo "  make test-pkgmanager      Run LPM transaction tests"
+	@echo "  make test-smoke           Run desktop & system smoke suite"
 	@echo "  make test-qemu            Run automated QEMU ISO & installed disk tests"
-	@echo "  make test-all             Run all tests (unit + smoke + qemu)"
-	@echo "  make qemu                 Launch built ISO in QEMU (UEFI)"
+	@echo "  make test-all             Run all automated test suites"
+	@echo "  make qemu                 Launch built ISO in QEMU (UEFI mode)"
+	@echo "  make qemu-bios            Launch built ISO in QEMU (BIOS mode)"
 	@echo ""
 	@echo "Maintenance Targets:"
 	@echo "  make clean                Remove build staging and markers"
@@ -96,7 +105,7 @@ $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain
 	bash kernel/scripts/build-kernel.sh
 	@touch $@
 
-# -- Phase 4: Package Manager -----------------------------------------
+# -- Phase 4: Package Manager & Init ----------------------------------
 .PHONY: packages
 packages: $(MARKER_DIR)/.packages
 
@@ -105,29 +114,29 @@ $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain
 	$(MAKE) -C init/src
 	@touch $@
 
-# -- Phase 5: Desktop Suite (Only staged for PROFILE=desktop) --------
+# -- Phase 5: Desktop Suite (Profile-aware) ---------------------------
 .PHONY: desktop
-desktop: $(MARKER_DIR)/.desktop
+desktop: $(MARKER_DIR)/.desktop-$(PROFILE)
 
-$(MARKER_DIR)/.desktop: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages
+$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages
 ifeq ($(PROFILE),desktop)
 	bash desktop/wm/build-all.sh
 endif
 	@touch $@
 
-# -- Phase 6: RootFS Assembly -----------------------------------------
+# -- Phase 6: RootFS Assembly (Profile-aware) -------------------------
 .PHONY: rootfs
-rootfs: $(MARKER_DIR)/.rootfs
+rootfs: $(MARKER_DIR)/.rootfs-$(PROFILE)
 
-$(MARKER_DIR)/.rootfs: $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop
+$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE)
 	bash rootfs/scripts/make-rootfs.sh
 	@touch $@
 
-# -- Phase 7: ISO Creation --------------------------------------------
+# -- Phase 7: ISO Creation (Profile-aware) ----------------------------
 .PHONY: iso
-iso: $(MARKER_DIR)/.iso
+iso: $(MARKER_DIR)/.iso-$(PROFILE)
 
-$(MARKER_DIR)/.iso: $(MARKER_DIR)/.rootfs
+$(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE)
 	bash iso-builder/scripts/build-iso.sh
 	@touch $@
 
@@ -149,10 +158,30 @@ qemu:
 qemu-bios:
 	bash tests/qemu/boot-iso-bios.sh
 
-# -- Tests -----------------------------------------------------------
+# -- Individual & Aggregate Tests ------------------------------------
 .PHONY: test-unit
 test-unit:
 	$(MAKE) -C pkgmanager/tests test
+
+.PHONY: test-security
+test-security:
+	bash tests/security/test-security.sh
+
+.PHONY: test-auth
+test-auth:
+	bash tests/auth/test-auth.sh
+
+.PHONY: test-installer
+test-installer:
+	bash tests/installer/test-installer-validation.sh
+
+.PHONY: test-pkgmanager
+test-pkgmanager:
+	bash tests/pkgmanager/test-lpm-transactions.sh
+
+.PHONY: test-desktop
+test-desktop:
+	bash tests/smoke/test-desktop-suite.sh
 
 .PHONY: test-smoke
 test-smoke:
@@ -163,7 +192,7 @@ test-qemu:
 	bash tests/qemu/run-all-qemu-tests.sh
 
 .PHONY: test-all
-test-all: test-unit test-smoke test-qemu
+test-all: test-unit test-security test-auth test-installer test-pkgmanager test-desktop test-qemu
 
 .PHONY: tests
 tests: test-smoke

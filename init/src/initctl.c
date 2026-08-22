@@ -2,7 +2,7 @@
  * init/src/initctl.c — ShreeOS Init Control Utility
  *
  * Communicates with PID 1 via Unix domain socket IPC (/run/init.sock)
- * and fallback control signals.
+ * and fallback control signals. Returns non-zero on command failure.
  */
 
 #include <stdio.h>
@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
         char req[128]; snprintf(req, sizeof(req), "START %s", argv[2]);
         if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
             printf("%s", resp);
-            return 0;
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
         }
         return 1;
     } else if (strcmp(cmd, "stop") == 0) {
@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
         char req[128]; snprintf(req, sizeof(req), "STOP %s", argv[2]);
         if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
             printf("%s", resp);
-            return 0;
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
         }
         return 1;
     } else if (strcmp(cmd, "restart") == 0) {
@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
         char req[128]; snprintf(req, sizeof(req), "RESTART %s", argv[2]);
         if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
             printf("%s", resp);
-            return 0;
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
         }
         return 1;
     } else if (strcmp(cmd, "status") == 0) {
@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
             char req[128]; snprintf(req, sizeof(req), "STATUS %s", argv[2]);
             if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
                 printf("%s", resp);
-                return 0;
+                return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
             }
         }
         if (send_ipc_command("LIST", resp, sizeof(resp)) == 0) {
@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
     } else if (strcmp(cmd, "reload") == 0) {
         if (send_ipc_command("RELOAD", resp, sizeof(resp)) == 0) {
             printf("%s", resp);
-            return 0;
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
         }
         if (kill(1, SIGHUP) == 0) {
             printf("initctl: sent SIGHUP reload signal to PID 1\n");

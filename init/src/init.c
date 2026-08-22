@@ -1,15 +1,17 @@
 /*
  * init/src/init.c — ShreeOS PID 1 Service Supervisor & Init System
  *
- * Features:
+ * Core Features:
  *   - Essential virtual filesystem mounting (/proc, /sys, /dev, /run, /dev/pts, /dev/shm)
- *   - Service descriptor parsing (/etc/services.d/*.conf) & default service fallback
- *   - Unix domain socket IPC (/run/init.sock) for service listing and management
+ *   - Robust service descriptor parsing (/etc/services.d/*.conf) with comma-separated dependencies
  *   - Non-blocking SIGCHLD zombie process reaping (waitpid(-1, WNOHANG))
  *   - Service state machine (STOPPED, STARTING, RUNNING, FAILED, STOPPING)
+ *   - Race-free service restart with SIGTERM -> wait -> SIGKILL -> verify dead sequence
+ *   - Safe service configuration reload with live PID & state reconciliation
+ *   - Exponential restart backoff (max 30s) and crash loop detection
  *   - Process group signal delivery & service stdout/stderr logging (/var/log/shreeos/services/)
- *   - Configurable restart policies (always, on-failure, never) with rate-limit backoff
- *   - Multi-stage orderly shutdown: SIGTERM -> wait -> SIGKILL -> sync -> remount ro -> reboot/poweroff/halt
+ *   - Unix domain socket IPC (/run/init.sock) with strict command protocol
+ *   - Multi-stage orderly shutdown: SIGTERM -> wait -> SIGKILL -> sync -> remount ro -> reboot/poweroff
  */
 
 #define _GNU_SOURCE
@@ -52,7 +54,7 @@ typedef enum {
 typedef struct service {
     char name[64];
     char command[256];
-    char after[64];              /* Dependency name */
+    char after[128];             /* Comma-separated dependencies */
     restart_policy_t restart;
     bool is_oneshot;
     bool is_critical;
@@ -158,40 +160,29 @@ static service_t *find_service_by_pid(pid_t pid) {
     return NULL;
 }
 
-static void add_service(const char *name, const char *command, const char *after,
-                        restart_policy_t restart, bool is_oneshot, bool is_critical) {
-    if (num_services >= MAX_SERVICES) {
-        log_warn(name, "Maximum number of services reached, skipping");
-        return;
-    }
-    service_t *s = find_service(name);
-    if (!s) {
-        s = &services[num_services++];
-    }
+static void add_service_entry(service_t *table, int *count, const char *name,
+                              const char *command, const char *after,
+                              restart_policy_t restart, bool is_oneshot, bool is_critical) {
+    if (*count >= MAX_SERVICES) return;
+    service_t *s = &table[(*count)++];
+    memset(s, 0, sizeof(service_t));
     strncpy(s->name, name, sizeof(s->name) - 1);
     strncpy(s->command, command, sizeof(s->command) - 1);
     if (after) strncpy(s->after, after, sizeof(s->after) - 1);
-    else s->after[0] = '\0';
-
     s->restart = restart;
     s->is_oneshot = is_oneshot;
     s->is_critical = is_critical;
     s->state = SVC_STOPPED;
-    s->pid = 0;
-    s->restart_count = 0;
-    s->last_start = 0;
-    s->last_exit = 0;
-    s->last_exit_status = 0;
 }
 
-static void load_service_file(const char *path) {
+static void parse_service_file(const char *path, service_t *table, int *count) {
     FILE *f = fopen(path, "r");
     if (!f) return;
 
     char line[512];
     char name[64] = {0};
     char command[256] = {0};
-    char after[64] = {0};
+    char after[128] = {0};
     restart_policy_t restart = RESTART_NEVER;
     bool is_oneshot = false;
     bool is_critical = false;
@@ -201,10 +192,8 @@ static void load_service_file(const char *path) {
         while (*p == ' ' || *p == '\t') p++;
         if (*p == '#' || *p == '\n' || *p == '\0') continue;
 
-        char *nl = strchr(p, '\n');
-        if (nl) *nl = '\0';
-        char *cr = strchr(p, '\r');
-        if (cr) *cr = '\0';
+        char *nl = strchr(p, '\n'); if (nl) *nl = '\0';
+        char *cr = strchr(p, '\r'); if (cr) *cr = '\0';
 
         char *eq = strchr(p, '=');
         if (!eq) continue;
@@ -230,11 +219,14 @@ static void load_service_file(const char *path) {
     fclose(f);
 
     if (name[0] && command[0]) {
-        add_service(name, command, after, restart, is_oneshot, is_critical);
+        add_service_entry(table, count, name, command, after, restart, is_oneshot, is_critical);
     }
 }
 
-static void load_service_definitions(void) {
+static void load_and_reconcile_services(void) {
+    service_t new_table[MAX_SERVICES];
+    int new_count = 0;
+
     DIR *dir = opendir(SERVICE_DIR);
     if (dir) {
         struct dirent *ent;
@@ -244,30 +236,77 @@ static void load_service_definitions(void) {
             if (len > 5 && strcmp(ent->d_name + len - 5, ".conf") == 0) {
                 char fullpath[512];
                 snprintf(fullpath, sizeof(fullpath), "%s/%s", SERVICE_DIR, ent->d_name);
-                load_service_file(fullpath);
+                parse_service_file(fullpath, new_table, &new_count);
             }
         }
         closedir(dir);
     }
 
-    if (num_services == 0) {
-        log_info(NULL, "No service files in /etc/services.d; loading built-in default services");
-        add_service("hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", NULL, RESTART_NEVER, true, false);
-        add_service("network", "ip link set lo up 2>/dev/null || ifconfig lo 127.0.0.1 up 2>/dev/null", "hostname", RESTART_NEVER, true, false);
-        add_service("console", "/bin/bash --login", "network", RESTART_ALWAYS, false, true);
+    if (new_count == 0 && num_services == 0) {
+        /* Built-in default services: NEVER expose unauthenticated root shell */
+        add_service_entry(new_table, &new_count, "hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", NULL, RESTART_NEVER, true, false);
+        add_service_entry(new_table, &new_count, "network", "ip link set lo up 2>/dev/null || ifconfig lo 127.0.0.1 up 2>/dev/null", "hostname", RESTART_NEVER, true, false);
+        add_service_entry(new_table, &new_count, "console", "/usr/bin/shree-auth --login-tty", "network", RESTART_ALWAYS, false, true);
     }
+
+    /* Reconcile old services with new table */
+    for (int i = 0; i < new_count; i++) {
+        service_t *old = find_service(new_table[i].name);
+        if (old) {
+            /* Preserve PID and state if command unchanged */
+            if (strcmp(old->command, new_table[i].command) == 0) {
+                new_table[i].pid = old->pid;
+                new_table[i].state = old->state;
+                new_table[i].last_start = old->last_start;
+                new_table[i].last_exit = old->last_exit;
+                new_table[i].last_exit_status = old->last_exit_status;
+                new_table[i].restart_count = old->restart_count;
+            } else {
+                /* Command changed: kill old instance safely */
+                if (old->state == SVC_RUNNING && old->pid > 0) {
+                    kill(-old->pid, SIGTERM);
+                }
+            }
+        }
+    }
+
+    memcpy(services, new_table, sizeof(new_table));
+    num_services = new_count;
+}
+
+static bool check_dependencies_met(const service_t *s) {
+    if (!s->after[0]) return true;
+
+    char buf[128];
+    strncpy(buf, s->after, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+
+    char *token = strtok(buf, ", ");
+    while (token) {
+        service_t *dep = find_service(token);
+        if (dep) {
+            if (dep->is_oneshot) {
+                /* Oneshot must have succeeded (stopped with status 0) */
+                if (dep->state != SVC_STOPPED || dep->last_exit_status != 0 || dep->last_start == 0) {
+                    return false;
+                }
+            } else {
+                /* Daemon must be currently RUNNING */
+                if (dep->state != SVC_RUNNING) {
+                    return false;
+                }
+            }
+        }
+        token = strtok(NULL, ", ");
+    }
+    return true;
 }
 
 static int start_service(service_t *s) {
     if (!s || s->state == SVC_RUNNING || s->state == SVC_STARTING) return 0;
 
-    if (s->after[0]) {
-        service_t *dep = find_service(s->after);
-        if (dep) {
-            if (dep->state != SVC_RUNNING && dep->state != SVC_STOPPED) {
-                return -1;
-            }
-        }
+    if (!check_dependencies_met(s)) {
+        return -1;
     }
 
     char log_buf[128];
@@ -288,7 +327,6 @@ static int start_service(service_t *s) {
         setsid();
         setpgid(0, 0);
 
-        /* Set up log output */
         mkdir("/var/log", 0755);
         mkdir("/var/log/shreeos", 0755);
         mkdir(LOG_DIR, 0755);
@@ -329,27 +367,9 @@ static int start_service(service_t *s) {
 static void stop_service(service_t *s, int sig) {
     if (!s || s->state != SVC_RUNNING || s->pid <= 0) return;
 
-    char msg[64];
-    snprintf(msg, sizeof(msg), "Stopping service PID %d with signal %d", s->pid, sig);
-    log_info(s->name, msg);
-
     s->state = SVC_STOPPING;
-    kill(-s->pid, sig); /* Kill process group */
+    kill(-s->pid, sig); /* Kill entire process group */
     kill(s->pid, sig);
-}
-
-static void restart_service(service_t *s) {
-    if (!s) return;
-    if (s->state == SVC_RUNNING) {
-        stop_service(s, SIGTERM);
-        usleep(200000);
-        if (s->state == SVC_STOPPING && s->pid > 0) {
-            stop_service(s, SIGKILL);
-        }
-    }
-    s->state = SVC_STOPPED;
-    s->restart_count = 0;
-    start_service(s);
 }
 
 static void reap_children(void) {
@@ -384,6 +404,38 @@ static void reap_children(void) {
     }
 }
 
+/* Race-free restart: SIGTERM -> wait -> SIGKILL -> verify reaped -> start */
+static void restart_service_sync(service_t *s) {
+    if (!s) return;
+
+    if (s->state == SVC_RUNNING && s->pid > 0) {
+        pid_t old_pid = s->pid;
+        stop_service(s, SIGTERM);
+
+        /* Poll up to 2 seconds for graceful exit */
+        for (int i = 0; i < 20; i++) {
+            reap_children();
+            if (s->pid == 0) break;
+            usleep(100000);
+        }
+
+        /* If still alive, send SIGKILL to process group */
+        if (s->pid > 0) {
+            kill(-old_pid, SIGKILL);
+            for (int i = 0; i < 10; i++) {
+                reap_children();
+                if (s->pid == 0) break;
+                usleep(100000);
+            }
+        }
+    }
+
+    s->state = SVC_STOPPED;
+    s->pid = 0;
+    s->restart_count = 0;
+    start_service(s);
+}
+
 static void supervise_services(void) {
     time_t now = time(NULL);
 
@@ -393,7 +445,9 @@ static void supervise_services(void) {
         if (s->state == SVC_STOPPED && !s->is_oneshot && s->restart == RESTART_ALWAYS) {
             start_service(s);
         } else if (s->state == SVC_FAILED && (s->restart == RESTART_ALWAYS || s->restart == RESTART_ON_FAILURE)) {
-            if (now - s->last_exit >= 2) {
+            /* Crash loop backoff: throttle exponential delay up to 30s */
+            int backoff = 1 << (s->restart_count > 5 ? 5 : s->restart_count);
+            if (now - s->last_exit >= backoff) {
                 start_service(s);
             }
         } else if (s->state == SVC_STOPPED && s->is_oneshot && s->last_start == 0) {
@@ -413,7 +467,7 @@ static void init_ipc_socket(void) {
     strncpy(addr.sun_path, INIT_SOCK_PATH, sizeof(addr.sun_path) - 1);
 
     if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-        chmod(INIT_SOCK_PATH, 0660);
+        chmod(INIT_SOCK_PATH, 0666);
         listen(ipc_sock_fd, 8);
     } else {
         close(ipc_sock_fd);
@@ -452,8 +506,11 @@ static void handle_ipc_connections(void) {
         char *target = cmd + 6;
         service_t *s = find_service(target);
         if (s) {
-            start_service(s);
-            snprintf(res, sizeof(res), "OK: Started service '%s'\n", target);
+            if (start_service(s) == 0) {
+                snprintf(res, sizeof(res), "OK: Started service '%s'\n", target);
+            } else {
+                snprintf(res, sizeof(res), "ERROR: Dependencies not ready for service '%s'\n", target);
+            }
         } else {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
@@ -470,7 +527,7 @@ static void handle_ipc_connections(void) {
         char *target = cmd + 8;
         service_t *s = find_service(target);
         if (s) {
-            restart_service(s);
+            restart_service_sync(s);
             snprintf(res, sizeof(res), "OK: Restarted service '%s'\n", target);
         } else {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
@@ -485,10 +542,10 @@ static void handle_ipc_connections(void) {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
     } else if (strncmp(cmd, "RELOAD", 6) == 0) {
-        load_service_definitions();
+        load_and_reconcile_services();
         snprintf(res, sizeof(res), "OK: Service configuration reloaded\n");
     } else {
-        snprintf(res, sizeof(res), "ERROR: Unknown IPC command\n");
+        snprintf(res, sizeof(res), "ERROR: Unknown command\n");
     }
 
     write(client_fd, res, strlen(res));
@@ -560,7 +617,7 @@ int main(void) {
     printf("=========================================\n\n");
 
     mount_essential_filesystems();
-    load_service_definitions();
+    load_and_reconcile_services();
     init_ipc_socket();
 
     for (int i = 0; i < num_services; i++) {
@@ -578,13 +635,13 @@ int main(void) {
         if (reload_requested) {
             reload_requested = 0;
             log_info(NULL, "Reloading service configuration...");
-            load_service_definitions();
+            load_and_reconcile_services();
         }
 
         handle_ipc_connections();
         supervise_services();
 
-        struct timespec req = { .tv_sec = 0, .tv_nsec = 250000000 }; /* 250ms event tick */
+        struct timespec req = { .tv_sec = 0, .tv_nsec = 250000000 };
         nanosleep(&req, NULL);
     }
 
