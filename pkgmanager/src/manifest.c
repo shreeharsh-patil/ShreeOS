@@ -331,3 +331,76 @@ int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename
     json_free(root);
     return 0;
 }
+
+#include <fcntl.h>
+#include <dirent.h>
+
+#ifndef _WIN32
+#include <sys/file.h>
+#endif
+
+static int lock_fd = -1;
+
+int lpm_lock(void) {
+#ifndef _WIN32
+    mkdir_p(LPM_DB);
+    lock_fd = open(LPM_LOCK_FILE, O_RDWR | O_CREAT, 0600);
+    if (lock_fd < 0) {
+        /* Fall back if running unprivileged or in test environment */
+        return 0;
+    }
+    if (flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            fprintf(stderr, "lpm: error: another package manager transaction is currently running.\n");
+            close(lock_fd);
+            lock_fd = -1;
+            return -1;
+        }
+    }
+#endif
+    return 0;
+}
+
+void lpm_unlock(void) {
+#ifndef _WIN32
+    if (lock_fd >= 0) {
+        flock(lock_fd, LOCK_UN);
+        close(lock_fd);
+        lock_fd = -1;
+        unlink(LPM_LOCK_FILE);
+    }
+#endif
+}
+
+int lpm_check_file_conflicts(const manifest *m) {
+    if (!m || !m->name) return 0;
+    DIR *dir = opendir(LPM_INSTALLED);
+    if (!dir) return 0;
+
+    struct dirent *ent;
+    while ((ent = readdir(dir))) {
+        if (ent->d_name[0] == '.') continue;
+        if (strcmp(ent->d_name, m->name) == 0) continue; /* Same package upgrade */
+
+        char dbdir[LPM_PATH_MAX];
+        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", ent->d_name);
+        manifest *other = manifest_load(dbdir);
+        if (!other) continue;
+
+        for (int i = 0; i < m->nfiles; i++) {
+            for (int j = 0; j < other->nfiles; j++) {
+                if (strcmp(m->files[i], other->files[j]) == 0) {
+                    fprintf(stderr, "lpm: file conflict: '%s' is already owned by package '%s'\n",
+                            m->files[i], other->name);
+                    manifest_free(other);
+                    closedir(dir);
+                    return -1;
+                }
+            }
+        }
+        manifest_free(other);
+    }
+    closedir(dir);
+    return 0;
+}
+

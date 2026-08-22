@@ -1,56 +1,69 @@
 # ShreeOS top-level build orchestration
 #
+# Profiles:
+#   PROFILE=desktop (default: complete graphical desktop environment)
+#   PROFILE=minimal (minimal headless rescue/embedded environment)
+#   PROFILE=server  (headless networking/server environment)
+#
 # Targets:
 #   toolchain    — Phase 1: cross-compilation toolchain
 #   base-system  — Phase 2: base userland packages
-#   kernel       — Phase 3: Linux kernel + initramfs
-#   rootfs       — Phase 4: init + root filesystem assembly
-#   iso          — Phase 5: bootable hybrid ISO
-#   packages     — Phase 6: lpm package manager
-#   desktop      — Phase 7: WM + configs
-#   installer    — Phase 7: disk installer
-#   all          — Phases 1-7 end-to-end
-#   test-unit    — run package manager unit tests
-#   test-smoke   — run build smoke tests
-#   test-qemu    — run automated QEMU boot test suite
-#   test-all     — run all test suites
-#   clean        — remove build artifacts (keeps sources)
-#   distclean    — full reset
+#   kernel       — Phase 3: Linux kernel
+#   packages     — Phase 4: lpm package manager & utilities
+#   desktop      — Phase 5: window manager, UI apps & design system
+#   rootfs       — Phase 6: init + full root filesystem assembly
+#   iso          — Phase 7: bootable hybrid ISO
+#   all          — Complete end-to-end pipeline
+#   test-unit    — Package manager unit tests
+#   test-smoke   — Desktop & system smoke tests
+#   test-qemu    — Automated QEMU boot & install tests
+#   test-all     — All test suites
+#   qemu         — Run graphical or serial QEMU virtual machine
+#   clean        — Remove build artifacts
+#   distclean    — Full reset
 
+PROFILE ?= desktop
 BUILD_DIR := build
 MARKER_DIR := $(BUILD_DIR)/.markers
 SHELL := /usr/bin/env bash
 
-# Default target
+export PROFILE
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
 help:
-	@echo "ShreeOS build targets:"
+	@echo "ShreeOS Build System (Profile: $(PROFILE))"
 	@echo ""
-	@echo "  make toolchain     Phase 1: Cross-compilation toolchain"
-	@echo "  make base-system   Phase 2: Base userland packages"
-	@echo "  make kernel        Phase 3: Linux kernel + initramfs"
-	@echo "  make rootfs        Phase 4: Init + root filesystem"
-	@echo "  make iso           Phase 5: Bootable hybrid ISO"
-	@echo "  make packages      Phase 6: lpm package manager"
-	@echo "  make desktop       Phase 7: Window manager + configs"
-	@echo "  make installer     Phase 7: Disk installer"
-	@echo "  make all           Phases 1-7 end-to-end"
-	@echo "  make test-unit     Run package manager unit tests"
-	@echo "  make test-smoke    Run base smoke tests"
-	@echo "  make test-qemu     Run automated QEMU boot suite"
-	@echo "  make test-all      Run all tests (unit + smoke + qemu)"
-	@echo "  make clean         Remove build artifacts"
-	@echo "  make distclean     Full reset"
+	@echo "Core Pipeline Targets:"
+	@echo "  make toolchain            Phase 1: Cross-compilation toolchain"
+	@echo "  make base-system          Phase 2: Base userland packages"
+	@echo "  make kernel               Phase 3: Linux kernel"
+	@echo "  make packages             Phase 4: lpm package manager & tools"
+	@echo "  make desktop              Phase 5: Window manager & desktop suite"
+	@echo "  make rootfs               Phase 6: Init & rootfs assembly"
+	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
+	@echo "  make all                  Build everything end-to-end"
 	@echo ""
-	@echo "Options: FORCE=1 to rebuild an already-completed target"
+	@echo "Testing & Execution Targets:"
+	@echo "  make test-unit            Run LPM package manager unit tests"
+	@echo "  make test-smoke           Run desktop & toolchain smoke tests"
+	@echo "  make test-qemu            Run automated QEMU ISO & installed disk tests"
+	@echo "  make test-all             Run all tests (unit + smoke + qemu)"
+	@echo "  make qemu                 Launch built ISO in QEMU (UEFI)"
+	@echo ""
+	@echo "Maintenance Targets:"
+	@echo "  make clean                Remove build staging and markers"
+	@echo "  make distclean            Full reset including build/ and out/"
+	@echo ""
+	@echo "Options:"
+	@echo "  PROFILE=desktop|minimal|server  (default: desktop)"
+	@echo "  FORCE=1                         (rebuild all stages)"
 
 # Marker directory creation
 $(MARKER_DIR):
 	mkdir -p $(MARKER_DIR)
 
-# Handle FORCE=1 by removing marker if requested
 ifdef FORCE
 $(shell rm -f $(MARKER_DIR)/.* 2>/dev/null)
 endif
@@ -83,15 +96,34 @@ $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain
 	bash kernel/scripts/build-kernel.sh
 	@touch $@
 
-# -- Phase 4: Init + RootFS ------------------------------------------
+# -- Phase 4: Package Manager -----------------------------------------
+.PHONY: packages
+packages: $(MARKER_DIR)/.packages
+
+$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain
+	$(MAKE) -C pkgmanager/src
+	$(MAKE) -C init/src
+	@touch $@
+
+# -- Phase 5: Desktop Suite (Only staged for PROFILE=desktop) --------
+.PHONY: desktop
+desktop: $(MARKER_DIR)/.desktop
+
+$(MARKER_DIR)/.desktop: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages
+ifeq ($(PROFILE),desktop)
+	bash desktop/wm/build-all.sh
+endif
+	@touch $@
+
+# -- Phase 6: RootFS Assembly -----------------------------------------
 .PHONY: rootfs
 rootfs: $(MARKER_DIR)/.rootfs
 
-$(MARKER_DIR)/.rootfs: $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel
+$(MARKER_DIR)/.rootfs: $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop
 	bash rootfs/scripts/make-rootfs.sh
 	@touch $@
 
-# -- Phase 5: ISO -----------------------------------------------------
+# -- Phase 7: ISO Creation --------------------------------------------
 .PHONY: iso
 iso: $(MARKER_DIR)/.iso
 
@@ -99,30 +131,23 @@ $(MARKER_DIR)/.iso: $(MARKER_DIR)/.rootfs
 	bash iso-builder/scripts/build-iso.sh
 	@touch $@
 
-# -- Phase 6: Package Manager -----------------------------------------
-.PHONY: packages
-packages: $(MARKER_DIR)/.packages
-
-$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain
-	$(MAKE) -C pkgmanager/src
-	@touch $@
-
-# -- Phase 7: Desktop + Installer ------------------------------------
-.PHONY: desktop
-desktop: $(MARKER_DIR)/.desktop
-
-$(MARKER_DIR)/.desktop: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel
-	bash desktop/wm/build-all.sh
-	@touch $@
-
 .PHONY: installer
 installer:
-	@echo "Installer is run on-demand (needs target disk):"
+	@echo "Installer is executed on-demand (e.g. within live ISO or target disk):"
 	@echo "  bash installer/scripts/install-to-disk.sh /dev/sda"
 
 # -- All -------------------------------------------------------------
 .PHONY: all
-all: toolchain base-system kernel rootfs iso packages desktop
+all: toolchain base-system kernel packages desktop rootfs iso
+
+# -- QEMU ------------------------------------------------------------
+.PHONY: qemu
+qemu:
+	bash tests/qemu/boot-iso-uefi.sh
+
+.PHONY: qemu-bios
+qemu-bios:
+	bash tests/qemu/boot-iso-bios.sh
 
 # -- Tests -----------------------------------------------------------
 .PHONY: test-unit
@@ -151,6 +176,7 @@ clean:
 	rm -rf $(BUILD_DIR)/rootfs $(BUILD_DIR)/rootfs.cpio.gz
 	rm -rf out/*.iso
 	$(MAKE) -C pkgmanager/src clean
+	$(MAKE) -C init/src clean
 
 .PHONY: distclean
 distclean: clean

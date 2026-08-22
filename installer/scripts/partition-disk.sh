@@ -26,6 +26,13 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
   lumen_require_cmd() { shreeos_require_cmd "$@"; }
 }
 
+for arg in "$@"; do
+  if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+    echo "Usage: partition-disk.sh <disk-device> [--yes]"
+    exit 0
+  fi
+done
+
 if [ $# -lt 1 ]; then
   shreeos_die "Usage: partition-disk.sh <disk-device> [--yes]"
 fi

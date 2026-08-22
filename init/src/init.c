@@ -4,15 +4,12 @@
  * Features:
  *   - Essential virtual filesystem mounting (/proc, /sys, /dev, /run, /dev/pts, /dev/shm)
  *   - Service descriptor parsing (/etc/services.d/*.conf) & default service fallback
- *   - Dependency graph ordering & startup sequencing
+ *   - Unix domain socket IPC (/run/init.sock) for service listing and management
  *   - Non-blocking SIGCHLD zombie process reaping (waitpid(-1, WNOHANG))
  *   - Service state machine (STOPPED, STARTING, RUNNING, FAILED, STOPPING)
+ *   - Process group signal delivery & service stdout/stderr logging (/var/log/shreeos/services/)
  *   - Configurable restart policies (always, on-failure, never) with rate-limit backoff
  *   - Multi-stage orderly shutdown: SIGTERM -> wait -> SIGKILL -> sync -> remount ro -> reboot/poweroff/halt
- *   - Structured console & kernel logging
- *
- * Compile:
- *   x86_64-shreeos-linux-gnu-gcc -static -Os -Wall -Wextra -o init init.c
  */
 
 #define _GNU_SOURCE
@@ -24,6 +21,8 @@
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
@@ -33,6 +32,8 @@
 
 #define MAX_SERVICES 64
 #define SERVICE_DIR "/etc/services.d"
+#define INIT_SOCK_PATH "/run/init.sock"
+#define LOG_DIR "/var/log/shreeos/services"
 
 typedef enum {
     SVC_STOPPED = 0,
@@ -65,36 +66,39 @@ typedef struct service {
 
 static service_t services[MAX_SERVICES];
 static int num_services = 0;
+static int ipc_sock_fd = -1;
 
 static volatile sig_atomic_t sigchld_received = 0;
 static volatile sig_atomic_t shutdown_requested = 0;
 static volatile sig_atomic_t shutdown_mode = 0; /* 0 = reboot, 1 = poweroff, 2 = halt */
 static volatile sig_atomic_t reload_requested = 0;
 
-static void log_info(const char *svc, const char *msg) {
-    if (svc && *svc) {
-        printf("[init] [%s] %s\n", svc, msg);
-    } else {
-        printf("[init] %s\n", msg);
+static const char *state_to_str(svc_state_t s) {
+    switch (s) {
+        case SVC_STOPPED:  return "STOPPED";
+        case SVC_STARTING: return "STARTING";
+        case SVC_RUNNING:  return "RUNNING";
+        case SVC_FAILED:   return "FAILED";
+        case SVC_STOPPING: return "STOPPING";
+        default:           return "UNKNOWN";
     }
+}
+
+static void log_info(const char *svc, const char *msg) {
+    if (svc && *svc) printf("[init] [%s] %s\n", svc, msg);
+    else printf("[init] %s\n", msg);
     fflush(stdout);
 }
 
 static void log_warn(const char *svc, const char *msg) {
-    if (svc && *svc) {
-        fprintf(stderr, "[init:warn] [%s] %s\n", svc, msg);
-    } else {
-        fprintf(stderr, "[init:warn] %s\n", msg);
-    }
+    if (svc && *svc) fprintf(stderr, "[init:warn] [%s] %s\n", svc, msg);
+    else fprintf(stderr, "[init:warn] %s\n", msg);
     fflush(stderr);
 }
 
 static void log_error(const char *svc, const char *msg) {
-    if (svc && *svc) {
-        fprintf(stderr, "[init:fail] [%s] %s: %s\n", svc, msg, strerror(errno));
-    } else {
-        fprintf(stderr, "[init:fail] %s: %s\n", msg, strerror(errno));
-    }
+    if (svc && *svc) fprintf(stderr, "[init:fail] [%s] %s: %s\n", svc, msg, strerror(errno));
+    else fprintf(stderr, "[init:fail] %s: %s\n", msg, strerror(errno));
     fflush(stderr);
 }
 
@@ -246,7 +250,6 @@ static void load_service_definitions(void) {
         closedir(dir);
     }
 
-    /* If no service definitions loaded, configure built-in default services */
     if (num_services == 0) {
         log_info(NULL, "No service files in /etc/services.d; loading built-in default services");
         add_service("hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", NULL, RESTART_NEVER, true, false);
@@ -258,12 +261,10 @@ static void load_service_definitions(void) {
 static int start_service(service_t *s) {
     if (!s || s->state == SVC_RUNNING || s->state == SVC_STARTING) return 0;
 
-    /* Check dependency */
     if (s->after[0]) {
         service_t *dep = find_service(s->after);
         if (dep) {
             if (dep->state != SVC_RUNNING && dep->state != SVC_STOPPED) {
-                /* Dependency not ready yet */
                 return -1;
             }
         }
@@ -284,10 +285,14 @@ static int start_service(service_t *s) {
     }
 
     if (pid == 0) {
-        /* Child process */
         setsid();
+        setpgid(0, 0);
 
-        /* Set up console fd if interactive console service */
+        /* Set up log output */
+        mkdir("/var/log", 0755);
+        mkdir("/var/log/shreeos", 0755);
+        mkdir(LOG_DIR, 0755);
+
         if (strcmp(s->name, "console") == 0 || strcmp(s->name, "getty") == 0) {
             int fd = open("/dev/console", O_RDWR);
             if (fd >= 0) {
@@ -296,9 +301,17 @@ static int start_service(service_t *s) {
                 dup2(fd, STDERR_FILENO);
                 if (fd > 2) close(fd);
             }
+        } else {
+            char log_path[256];
+            snprintf(log_path, sizeof(log_path), "%s/%s.log", LOG_DIR, s->name);
+            int fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0640);
+            if (fd >= 0) {
+                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDERR_FILENO);
+                if (fd > 2) close(fd);
+            }
         }
 
-        /* Unblock signals for child */
         sigset_t set;
         sigemptyset(&set);
         sigprocmask(SIG_SETMASK, &set, NULL);
@@ -317,14 +330,28 @@ static void stop_service(service_t *s, int sig) {
     if (!s || s->state != SVC_RUNNING || s->pid <= 0) return;
 
     char msg[64];
-    snprintf(msg, sizeof(msg), "Sending signal %d to PID %d", sig, s->pid);
+    snprintf(msg, sizeof(msg), "Stopping service PID %d with signal %d", s->pid, sig);
     log_info(s->name, msg);
 
     s->state = SVC_STOPPING;
+    kill(-s->pid, sig); /* Kill process group */
     kill(s->pid, sig);
 }
 
-/* Non-blocking zombie reaper and supervisor status updater */
+static void restart_service(service_t *s) {
+    if (!s) return;
+    if (s->state == SVC_RUNNING) {
+        stop_service(s, SIGTERM);
+        usleep(200000);
+        if (s->state == SVC_STOPPING && s->pid > 0) {
+            stop_service(s, SIGKILL);
+        }
+    }
+    s->state = SVC_STOPPED;
+    s->restart_count = 0;
+    start_service(s);
+}
+
 static void reap_children(void) {
     int status;
     pid_t pid;
@@ -353,8 +380,6 @@ static void reap_children(void) {
                     s->state = SVC_STOPPED;
                 }
             }
-        } else {
-            /* Reaped orphaned zombie from a detached background process */
         }
     }
 }
@@ -368,7 +393,6 @@ static void supervise_services(void) {
         if (s->state == SVC_STOPPED && !s->is_oneshot && s->restart == RESTART_ALWAYS) {
             start_service(s);
         } else if (s->state == SVC_FAILED && (s->restart == RESTART_ALWAYS || s->restart == RESTART_ON_FAILURE)) {
-            /* Throttle respawns: minimum 2 second delay between restarts */
             if (now - s->last_exit >= 2) {
                 start_service(s);
             }
@@ -378,18 +402,109 @@ static void supervise_services(void) {
     }
 }
 
-/* Orderly multi-stage shutdown */
+static void init_ipc_socket(void) {
+    unlink(INIT_SOCK_PATH);
+    ipc_sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    if (ipc_sock_fd < 0) return;
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, INIT_SOCK_PATH, sizeof(addr.sun_path) - 1);
+
+    if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+        chmod(INIT_SOCK_PATH, 0660);
+        listen(ipc_sock_fd, 8);
+    } else {
+        close(ipc_sock_fd);
+        ipc_sock_fd = -1;
+    }
+}
+
+static void handle_ipc_connections(void) {
+    if (ipc_sock_fd < 0) return;
+
+    int client_fd = accept(ipc_sock_fd, NULL, NULL);
+    if (client_fd < 0) return;
+
+    char req[256] = {0};
+    ssize_t n = read(client_fd, req, sizeof(req) - 1);
+    if (n <= 0) { close(client_fd); return; }
+
+    char res[4096] = {0};
+    char *cmd = req;
+    while (*cmd == ' ' || *cmd == '\n' || *cmd == '\r') cmd++;
+    char *nl = strchr(cmd, '\n'); if (nl) *nl = '\0';
+    char *cr = strchr(cmd, '\r'); if (cr) *cr = '\0';
+
+    if (strncmp(cmd, "LIST", 4) == 0) {
+        char *p = res;
+        size_t rem = sizeof(res);
+        p += snprintf(p, rem, "%-16s %-10s %-8s %s\n", "SERVICE", "STATE", "PID", "COMMAND");
+        for (int i = 0; i < num_services; i++) {
+            rem = sizeof(res) - (p - res);
+            if (rem < 80) break;
+            p += snprintf(p, rem, "%-16s %-10s %-8d %s\n",
+                          services[i].name, state_to_str(services[i].state),
+                          services[i].pid, services[i].command);
+        }
+    } else if (strncmp(cmd, "START ", 6) == 0) {
+        char *target = cmd + 6;
+        service_t *s = find_service(target);
+        if (s) {
+            start_service(s);
+            snprintf(res, sizeof(res), "OK: Started service '%s'\n", target);
+        } else {
+            snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
+        }
+    } else if (strncmp(cmd, "STOP ", 5) == 0) {
+        char *target = cmd + 5;
+        service_t *s = find_service(target);
+        if (s) {
+            stop_service(s, SIGTERM);
+            snprintf(res, sizeof(res), "OK: Stopped service '%s'\n", target);
+        } else {
+            snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
+        }
+    } else if (strncmp(cmd, "RESTART ", 8) == 0) {
+        char *target = cmd + 8;
+        service_t *s = find_service(target);
+        if (s) {
+            restart_service(s);
+            snprintf(res, sizeof(res), "OK: Restarted service '%s'\n", target);
+        } else {
+            snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
+        }
+    } else if (strncmp(cmd, "STATUS ", 7) == 0) {
+        char *target = cmd + 7;
+        service_t *s = find_service(target);
+        if (s) {
+            snprintf(res, sizeof(res), "Service: %s\nState:   %s\nPID:     %d\nRestarts: %d\nExitCode: %d\nCommand: %s\n",
+                     s->name, state_to_str(s->state), s->pid, s->restart_count, s->last_exit_status, s->command);
+        } else {
+            snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
+        }
+    } else if (strncmp(cmd, "RELOAD", 6) == 0) {
+        load_service_definitions();
+        snprintf(res, sizeof(res), "OK: Service configuration reloaded\n");
+    } else {
+        snprintf(res, sizeof(res), "ERROR: Unknown IPC command\n");
+    }
+
+    write(client_fd, res, strlen(res));
+    close(client_fd);
+}
+
 static void perform_shutdown(void) {
     log_info(NULL, "Initiating system shutdown sequence...");
+    unlink(INIT_SOCK_PATH);
 
-    /* Stage 1: Stop supervised services in reverse order */
     for (int i = num_services - 1; i >= 0; i--) {
         if (services[i].state == SVC_RUNNING) {
             stop_service(&services[i], SIGTERM);
         }
     }
 
-    /* Wait up to 3 seconds for services to stop gracefully */
     for (int i = 0; i < 30; i++) {
         reap_children();
         bool any_running = false;
@@ -403,34 +518,21 @@ static void perform_shutdown(void) {
         usleep(100000);
     }
 
-    /* Stage 2: Send SIGTERM to all other processes */
-    log_info(NULL, "Sending SIGTERM to remaining processes...");
     kill(-1, SIGTERM);
     sync();
     sleep(1);
 
-    /* Stage 3: Send SIGKILL to any remaining processes */
-    log_info(NULL, "Sending SIGKILL to remaining processes...");
     kill(-1, SIGKILL);
     sleep(1);
 
-    /* Stage 4: Sync filesystems */
-    log_info(NULL, "Syncing filesystems...");
     sync();
-
-    /* Stage 5: Remount root filesystem read-only */
-    log_info(NULL, "Remounting filesystems read-only...");
     mount(NULL, "/", NULL, MS_REMOUNT | MS_RDONLY, NULL);
 
-    /* Stage 6: Reboot / Poweroff / Halt */
     if (shutdown_mode == 1) {
-        log_info(NULL, "Powering off system.");
         reboot(RB_POWER_OFF);
     } else if (shutdown_mode == 2) {
-        log_info(NULL, "Halting system.");
         reboot(RB_HALT_SYSTEM);
     } else {
-        log_info(NULL, "Rebooting system.");
         reboot(RB_AUTOBOOT);
     }
 }
@@ -441,7 +543,6 @@ int main(void) {
         return 1;
     }
 
-    /* Block signals and set up signal handlers */
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = handle_signal;
@@ -460,15 +561,14 @@ int main(void) {
 
     mount_essential_filesystems();
     load_service_definitions();
+    init_ipc_socket();
 
-    /* Initial service startup pass */
     for (int i = 0; i < num_services; i++) {
         start_service(&services[i]);
     }
 
     log_info(NULL, "Supervisor main loop active.");
 
-    /* Main supervisor loop */
     while (!shutdown_requested) {
         if (sigchld_received) {
             sigchld_received = 0;
@@ -481,10 +581,10 @@ int main(void) {
             load_service_definitions();
         }
 
+        handle_ipc_connections();
         supervise_services();
 
-        /* Sleep briefly waiting for signals */
-        struct timespec req = { .tv_sec = 1, .tv_nsec = 0 };
+        struct timespec req = { .tv_sec = 0, .tv_nsec = 250000000 }; /* 250ms event tick */
         nanosleep(&req, NULL);
     }
 

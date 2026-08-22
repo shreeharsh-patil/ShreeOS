@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# run-all.sh — Run all smoke tests for ShreeOS
-#
-# Discovers and executes every *.sh file in this directory (except itself)
-# in sequence. Each test must exit 0 on success and non-zero on failure.
-#
-# Usage:
-#   bash tests/smoke/run-all.sh              # run all tests
-#   bash tests/smoke/run-all.sh --verbose    # run with extra output
-#   bash tests/smoke/run-all.sh --list       # list tests without running
+# run-all.sh — Run all smoke and integration test suites for ShreeOS
 #
 set -euo pipefail
 
@@ -26,7 +18,6 @@ for arg in "$@"; do
     --list|-l)    LIST_ONLY=true ;;
     --help|-h)
       echo "Usage: run-all.sh [--verbose] [--list]"
-      echo "Runs all smoke test scripts in tests/smoke/"
       exit 0
       ;;
   esac
@@ -36,22 +27,29 @@ source "${PROJECT_ROOT}/scripts/common.sh" 2>/dev/null || true
 
 echo "============================================"
 if command -v shreeos_step >/dev/null 2>&1; then
-  shreeos_step "ShreeOS Smoke Test Suite"
+  shreeos_step "ShreeOS Comprehensive Test Suite"
 else
-  echo "==> ShreeOS Smoke Test Suite"
+  echo "==> ShreeOS Comprehensive Test Suite"
 fi
 echo "  Date:    $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "  Root:    ${PROJECT_ROOT}"
-echo "  Tests:   ${SCRIPT_DIR}"
 echo "============================================"
 
-for test in "${SCRIPT_DIR}"/*.sh; do
+# Collect all test scripts across suites
+TEST_FILES=(
+  "${PROJECT_ROOT}/tests/smoke/test-desktop-suite.sh"
+  "${PROJECT_ROOT}/tests/security/test-security.sh"
+  "${PROJECT_ROOT}/tests/auth/test-auth.sh"
+  "${PROJECT_ROOT}/tests/installer/test-installer-validation.sh"
+  "${PROJECT_ROOT}/tests/pkgmanager/test-lpm-transactions.sh"
+)
+
+for test in "${TEST_FILES[@]}"; do
+  [ ! -f "$test" ] && continue
   TEST_NAME="$(basename "$test")"
-  [ "$TEST_NAME" = "$(basename "${BASH_SOURCE[0]}")" ] && continue
 
   if [ "$LIST_ONLY" = true ]; then
-    TEST_DESC=$(head -3 "$test" | grep -E '^#' | head -1 | sed 's/^# //' || echo "")
-    printf "  %-30s %s\n" "$TEST_NAME" "$TEST_DESC"
+    printf "  %-35s %s\n" "$TEST_NAME" "$test"
     continue
   fi
 

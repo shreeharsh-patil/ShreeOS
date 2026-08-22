@@ -2,13 +2,10 @@
 # installer/scripts/install-to-disk.sh — Install ShreeOS to a target disk
 #
 # Partitions (BIOS Boot + EFI ESP + Root ext4), formats, copies rootfs,
-# installs GRUB (UEFI & BIOS), and configures first boot.
+# installs GRUB (UEFI & BIOS), and configures first boot with secure credentials.
 #
 # Usage:
-#   bash install-to-disk.sh /dev/sda              # interactive
-#   bash install-to-disk.sh /dev/sda --yes         # non-interactive
-#   bash install-to-disk.sh /dev/sda --yes \
-#     --hostname=shreeos --root-password=changeme
+#   bash install-to-disk.sh /dev/sda --yes --hostname=shreeos --timezone=UTC --credentials-file=/tmp/creds.txt
 #
 set -euo pipefail
 
@@ -27,8 +24,15 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
   lumen_require_cmd() { shreeos_require_cmd "$@"; }
 }
 
+for arg in "$@"; do
+  if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+    echo "Usage: install-to-disk.sh <disk-device> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...]"
+    exit 0
+  fi
+done
+
 if [ $# -lt 1 ]; then
-  shreeos_die "Usage: install-to-disk.sh <disk-device> [--yes] [--hostname=...] [--root-password=...]"
+  shreeos_die "Usage: install-to-disk.sh <disk-device> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...]"
 fi
 
 DISK="$1"
@@ -36,22 +40,27 @@ shift
 
 ASSUME_YES=false
 HOSTNAME="${DISTRO_CODENAME:-shreeos}"
-ROOT_PASSWORD="shreeos"
+TIMEZONE="UTC"
+CREDS_FILE=""
 USERNAME=""
-USER_PASSWORD=""
 
 for arg in "$@"; do
   case "$arg" in
     --yes) ASSUME_YES=true ;;
     --hostname=*) HOSTNAME="${arg#*=}" ;;
-    --root-password=*) ROOT_PASSWORD="${arg#*=}" ;;
+    --timezone=*) TIMEZONE="${arg#*=}" ;;
+    --credentials-file=*) CREDS_FILE="${arg#*=}" ;;
     --username=*) USERNAME="${arg#*=}" ;;
-    --user-password=*) USER_PASSWORD="${arg#*=}" ;;
-    --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--root-password=...] [--username=...] [--user-password=...]"; exit 0 ;;
+    --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...]"; exit 0 ;;
   esac
 done
 
-shreeos_require_cmd sfdisk mkfs.ext4 grub-install
+shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid
+
+# Validate hostname strictly: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$
+if ! [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+  shreeos_die "Invalid hostname '${HOSTNAME}'. Must match RFC 1123 hostname format."
+fi
 
 if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
@@ -134,35 +143,69 @@ else
   shreeos_die "No rootfs found at ${STAGE_ROOT} or ${ROOTFS_CPIO}"
 fi
 
-# 5. Configure first-boot
+# 5. Configure system identity and credentials
 shreeos_log "Configuring system identity and credentials..."
 mkdir -p "${TARGET}/etc"
 echo "${HOSTNAME}" > "${TARGET}/etc/hostname"
 
-if [ -f "${TARGET}/etc/shadow" ] && command -v mkpasswd >/dev/null 2>&1; then
-  SALT="$(head -c 16 /dev/urandom | base64 | head -c 16)"
-  HASHED_PW="$(echo "$ROOT_PASSWORD" | mkpasswd -m sha-512 -S "$SALT" 2>/dev/null || echo "")"
-  if [ -n "$HASHED_PW" ]; then
-    sed -i "s|^root:[^:]*:|root:${HASHED_PW}:|" "${TARGET}/etc/shadow"
-  fi
+# Configure timezone
+echo "${TIMEZONE}" > "${TARGET}/etc/timezone"
+if [ -f "${TARGET}/usr/share/zoneinfo/${TIMEZONE}" ]; then
+  ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${TARGET}/etc/localtime"
 fi
 
-if [ -n "${USERNAME}" ] && [ -f "${SCRIPT_DIR}/configure-user.sh" ]; then
-  bash "${SCRIPT_DIR}/configure-user.sh" "$TARGET" "$USERNAME" "${USER_PASSWORD:-$ROOT_PASSWORD}"
+# Read root & user passwords from secure credential file if provided
+if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
+  # Credential file format: ROOT_PW on line 1, USER_PW on line 2
+  ROOT_PW=$(sed -n '1p' "$CREDS_FILE")
+  USER_PW=$(sed -n '2p' "$CREDS_FILE")
+  
+  if [ -n "$ROOT_PW" ]; then
+    SALT="$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)"
+    HASHED_PW=""
+    if command -v openssl >/dev/null 2>&1; then
+      HASHED_PW=$(openssl passwd -6 -salt "$SALT" "$ROOT_PW" 2>/dev/null || echo "")
+    elif command -v mkpasswd >/dev/null 2>&1; then
+      HASHED_PW=$(echo "$ROOT_PW" | mkpasswd -m sha-512 -S "$SALT" 2>/dev/null || echo "")
+    fi
+
+    if [ -z "$HASHED_PW" ]; then
+      shreeos_die "Failed to securely hash root administrator password. Installation aborted."
+    fi
+
+    if [ -f "${TARGET}/etc/shadow" ]; then
+      sed -i "s|^root:[^:]*:|root:${HASHED_PW}:|" "${TARGET}/etc/shadow"
+    else
+      echo "root:${HASHED_PW}:19000:0:99999:7:::" > "${TARGET}/etc/shadow"
+    fi
+    chmod 600 "${TARGET}/etc/shadow"
+  fi
+
+  if [ -n "${USERNAME}" ] && [ -f "${SCRIPT_DIR}/configure-user.sh" ]; then
+    USER_TMP_CRED=$(mktemp /tmp/user-cred-XXXXXX)
+    chmod 600 "$USER_TMP_CRED"
+    echo "$USER_PW" > "$USER_TMP_CRED"
+    bash "${SCRIPT_DIR}/configure-user.sh" "$TARGET" "$USERNAME" "$USER_TMP_CRED"
+    rm -f "$USER_TMP_CRED"
+  fi
 fi
 
 # 6. Install Bootloader (UEFI + BIOS)
 shreeos_log "Installing GRUB bootloader to ${DISK}"
 bash "${SHREEOS_ROOT_DIR}/bootloader/scripts/install-grub-disk.sh" "$TARGET" "$DISK"
 
-# 7. Generate fstab with UUIDs
+# 7. Generate fstab with UUIDs (Fail closed if Root UUID cannot be discovered)
 ROOT_UUID=$(blkid -s UUID -o value "$PART_ROOT" 2>/dev/null || echo "")
 ESP_UUID=$(blkid -s UUID -o value "$PART_ESP" 2>/dev/null || echo "")
 
+if [ -z "$ROOT_UUID" ]; then
+  shreeos_die "CRITICAL: Could not discover filesystem UUID for root partition (${PART_ROOT}). Aborting to prevent unbootable disk."
+fi
+
 cat > "${TARGET}/etc/fstab" <<FSTAB
 # /etc/fstab — Static file system information
-$( [ -n "$ROOT_UUID" ] && echo "UUID=${ROOT_UUID} / ext4 defaults 0 1" || echo "${PART_ROOT} / ext4 defaults 0 1" )
-$( [ -n "$ESP_UUID" ] && echo "UUID=${ESP_UUID} /boot/efi vfat umask=0077 0 2" || echo "# ${PART_ESP} /boot/efi vfat umask=0077 0 2" )
+UUID=${ROOT_UUID} / ext4 defaults 0 1
+$( [ -n "$ESP_UUID" ] && echo "UUID=${ESP_UUID} /boot/efi vfat umask=0077 0 2" )
 proc /proc proc defaults 0 0
 sysfs /sys sysfs defaults 0 0
 devtmpfs /dev devtmpfs defaults 0 0

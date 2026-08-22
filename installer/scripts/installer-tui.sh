@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # installer/scripts/installer-tui.sh — ShreeOS Terminal User Interface (TUI) Installer
 #
-# Multi-stage installation workflow:
+# Multi-stage installation workflow with secure credential handling:
 #   1. Welcome & Hardware Overview
 #   2. Target Disk Selection & Safety Safeguards
-#   3. Hostname & User Account Configuration
+#   3. Hostname & User Account Configuration (No Default Passwords, Strict Validation)
 #   4. Timezone & Locale Setup
 #   5. Safety Review & Exact Confirmation
 #   6. Automated Partitioning, Copying & Bootloader Setup
@@ -64,21 +64,59 @@ clear
 # Stage 3: User & Hostname Configuration
 echo "==> Step 3 of 5: Identity & Credentials"
 echo ""
-read -r -p "System Hostname [default: shreeos]: " USER_HOSTNAME
-USER_HOSTNAME="${USER_HOSTNAME:-shreeos}"
 
-read -r -p "Primary User Account Name [default: shree]: " USERNAME
-USERNAME="${USERNAME:-shree}"
+while true; do
+  read -r -p "System Hostname [default: shreeos]: " USER_HOSTNAME
+  USER_HOSTNAME="${USER_HOSTNAME:-shreeos}"
+  if [[ "$USER_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+    break
+  else
+    echo "Invalid hostname. Must contain alphanumeric characters and hyphens only."
+  fi
+done
 
-echo -n "Root Administrator Password [default: shreeos]: "
-read -r -s ROOT_PW
+while true; do
+  read -r -p "Primary User Account Name: " USERNAME
+  if [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+    break
+  else
+    echo "Invalid username. Must start with lowercase letter or underscore, 1-32 characters, no colons/slashes/spaces."
+  fi
+done
+
 echo ""
-ROOT_PW="${ROOT_PW:-shreeos}"
+while true; do
+  echo -n "Enter Root Administrator Password: "
+  read -r -s ROOT_PW
+  echo ""
+  echo -n "Confirm Root Administrator Password: "
+  read -r -s ROOT_PW_CONFIRM
+  echo ""
+  if [ -z "$ROOT_PW" ]; then
+    echo "Error: Password cannot be empty."
+  elif [ "$ROOT_PW" != "$ROOT_PW_CONFIRM" ]; then
+    echo "Error: Passwords do not match. Please try again."
+  else
+    break
+  fi
+done
 
-echo -n "User (${USERNAME}) Password [default: shreeos]: "
-read -r -s USER_PW
 echo ""
-USER_PW="${USER_PW:-shreeos}"
+while true; do
+  echo -n "Enter Password for User (${USERNAME}): "
+  read -r -s USER_PW
+  echo ""
+  echo -n "Confirm Password for User (${USERNAME}): "
+  read -r -s USER_PW_CONFIRM
+  echo ""
+  if [ -z "$USER_PW" ]; then
+    echo "Error: Password cannot be empty."
+  elif [ "$USER_PW" != "$USER_PW_CONFIRM" ]; then
+    echo "Error: Passwords do not match. Please try again."
+  else
+    break
+  fi
+done
 
 clear
 # Stage 4: Timezone Setup
@@ -108,13 +146,23 @@ if [ "$CONFIRM_DISK" != "$TARGET_DISK" ]; then
   shreeos_die "Disk confirmation failed ('$CONFIRM_DISK' != '$TARGET_DISK'). Installation cancelled."
 fi
 
+# Create secure temporary credential file mode 0600
+CREDS_FILE=$(mktemp /tmp/shreeos-creds-XXXXXX)
+chmod 600 "$CREDS_FILE"
+printf "%s\n%s\n" "$ROOT_PW" "$USER_PW" > "$CREDS_FILE"
+
+# Clean credentials on exit
+trap 'rm -f "$CREDS_FILE"' EXIT
+
 echo ""
 echo "==> Starting installation process..."
 bash "${SCRIPT_DIR}/install-to-disk.sh" "$TARGET_DISK" --yes \
   --hostname="$USER_HOSTNAME" \
-  --root-password="$ROOT_PW" \
+  --timezone="$USER_TZ" \
   --username="$USERNAME" \
-  --user-password="$USER_PW"
+  --credentials-file="$CREDS_FILE"
+
+rm -f "$CREDS_FILE"
 
 echo ""
 echo "┌──────────────────────────────────────────────────────────────────────────┐"

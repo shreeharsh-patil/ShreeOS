@@ -76,7 +76,15 @@ if [ "$SKIP_INIT" = false ]; then
   if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" ]; then
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
     chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/initctl" 2>/dev/null || true
     shreeos_ok "Installed initctl to /sbin/initctl"
+  fi
+
+  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" ]; then
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth"
+    chmod 4755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth" 2>/dev/null || chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/shree-auth" 2>/dev/null || true
+    shreeos_ok "Installed shree-auth to /usr/bin/shree-auth"
   fi
 
   if [ -d "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services" ]; then

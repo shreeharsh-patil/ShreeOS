@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# desktop/scripts/shree-login.sh — ShreeOS Graphical Login & Display Session Manager
+# desktop/scripts/shree-login.sh — ShreeOS Display Session & Login Manager
 #
-# Presents a clean, calm user selection and authentication screen,
-# initializing user environment and launching the desktop session.
+# Presents clean graphical user selection, authenticates credentials securely
+# using shree-auth, drops root privileges, and executes the user session.
 
 set -euo pipefail
 
@@ -18,8 +18,6 @@ run_login_screen() {
   echo "│                                                                            │"
   echo "└────────────────────────────────────────────────────────────────────────────┘"
   echo ""
-  echo "  Select User Account to Log In:"
-  echo "  ──────────────────────────────────────────────────────────────────────────"
   
   local user_list
   user_list=$(get_users)
@@ -36,15 +34,21 @@ run_login_screen() {
     exit 0
   fi
 
-  echo "  Logging into account: ${sel_user}"
+  echo "  Authenticating account: ${sel_user}"
   echo ""
-  
-  # Launch desktop session for selected user
-  export USER="$sel_user"
-  export HOME="/home/${sel_user}"
-  [ ! -d "$HOME" ] && export HOME="/root"
 
-  exec startx
+  # Delegate to audited shree-auth binary which verifies /etc/shadow,
+  # switches UID/GID, sets up groups, sanitizes environment, and execs startx
+  if [ -x /usr/bin/shree-auth ]; then
+    exec /usr/bin/shree-auth "$sel_user" --session /usr/bin/startx
+  elif [ -x /sbin/shree-auth ]; then
+    exec /sbin/shree-auth "$sel_user" --session /usr/bin/startx
+  elif command -v su >/dev/null 2>&1; then
+    exec su - "$sel_user" -c "/usr/bin/startx"
+  else
+    echo "CRITICAL ERROR: No secure authentication backend found (/usr/bin/shree-auth or su)." >&2
+    exit 1
+  fi
 }
 
 run_login_screen

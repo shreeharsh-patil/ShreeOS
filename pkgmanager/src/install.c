@@ -111,21 +111,22 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
 
 int cmd_install(int argc, char **argv) {
     if (argc < 1) { fprintf(stderr, "Usage: lpm install <package-name | file.lpkg>\n"); return 1; }
-    
+    if (lpm_lock() != 0) return 1;
+
     char lpkg_path[LPM_PATH_MAX];
     char expected_sha[65] = {0};
-    bool downloaded = false;
 
     if (!lpm_is_lpkg_file(argv[0])) {
         /* Treat as package name to fetch from repository */
         if (!lpm_valid_pkgname(argv[0])) {
             fprintf(stderr, "lpm: invalid package name '%s'\n", argv[0]);
+            lpm_unlock();
             return 1;
         }
         if (download_package(argv[0], lpkg_path, sizeof(lpkg_path), expected_sha, sizeof(expected_sha)) != 0) {
+            lpm_unlock();
             return 1;
         }
-        downloaded = true;
     } else {
         strncpy(lpkg_path, argv[0], sizeof(lpkg_path) - 1);
         lpkg_path[sizeof(lpkg_path) - 1] = '\0';
@@ -134,23 +135,22 @@ int cmd_install(int argc, char **argv) {
     /* 1. Verify package archive SHA256 if expected hash is available */
     if (expected_sha[0] != '\0') {
         char actual_sha[65] = {0};
-        if (lpm_sha256_file(lpkg_path, actual_sha) == 0) {
-            if (strcmp(expected_sha, actual_sha) != 0) {
-                fprintf(stderr, "lpm: FATAL: SHA256 mismatch for %s\n  expected: %s\n  got:      %s\n",
-                        lpkg_path, expected_sha, actual_sha);
-                return 1;
-            }
-            printf("lpm: package archive integrity verified (SHA256: %.12s...)\n", actual_sha);
+        if (lpm_sha256_file(lpkg_path, actual_sha) != 0 || strcmp(expected_sha, actual_sha) != 0) {
+            fprintf(stderr, "lpm: FATAL: SHA256 mismatch for %s\n  expected: %s\n  got:      %s\n",
+                    lpkg_path, expected_sha, actual_sha);
+            lpm_unlock();
+            return 1;
         }
+        printf("lpm: package archive integrity verified (SHA256: %.12s...)\n", actual_sha);
     }
 
     char *lpkg_esc = shell_escape(lpkg_path);
-    if (!lpkg_esc) { fprintf(stderr, "lpm: memory error\n"); return 1; }
+    if (!lpkg_esc) { fprintf(stderr, "lpm: memory error\n"); lpm_unlock(); return 1; }
 
     char tmpdir[] = "/tmp/lpm-stage-XXXXXX";
-    if (!mkdtemp(tmpdir)) { perror("mkdtemp"); free(lpkg_esc); return 1; }
+    if (!mkdtemp(tmpdir)) { perror("mkdtemp"); free(lpkg_esc); lpm_unlock(); return 1; }
     char *tmpdir_esc = shell_escape(tmpdir);
-    if (!tmpdir_esc) { free(lpkg_esc); return 1; }
+    if (!tmpdir_esc) { free(lpkg_esc); lpm_unlock(); return 1; }
 
     int ret = 0;
     char *cmd = NULL;
@@ -195,7 +195,7 @@ int cmd_install(int argc, char **argv) {
         goto cleanup;
     }
 
-    /* 4. Validate file paths in manifest */
+    /* 4. Validate file paths in manifest for traversal safety */
     for (int i = 0; i < m->nfiles; i++) {
         if (!lpm_safe_path(m->files[i])) {
             fprintf(stderr, "lpm: security violation: unsafe path '%s' in package\n", m->files[i]);
@@ -204,9 +204,16 @@ int cmd_install(int argc, char **argv) {
         }
     }
 
+    /* 5. Detect file ownership conflicts across installed database */
+    if (lpm_check_file_conflicts(m) != 0) {
+        fprintf(stderr, "lpm: transaction aborted: file conflict with installed package\n");
+        ret = 1;
+        goto cleanup;
+    }
+
     printf("lpm: preparing transaction for %s-%s\n", m->name, m->version);
 
-    /* 5. Extract payload into staging root directory */
+    /* 6. Extract payload into staging root directory */
     char stage_root[LPM_PATH_MAX];
     snprintf(stage_root, sizeof(stage_root), "%s/root", tmpdir);
     mkdir_p(stage_root);
@@ -222,7 +229,7 @@ int cmd_install(int argc, char **argv) {
         goto cleanup;
     }
 
-    /* 6. Verify per-file checksums in staging */
+    /* 7. Verify per-file checksums in staging */
     if (m->nchecksums > 0) {
         int checksum_mismatches = 0;
         for (int i = 0; i < m->nchecksums; i++) {
@@ -243,7 +250,7 @@ int cmd_install(int argc, char **argv) {
         printf("lpm: verified %d per-file checksum(s)\n", m->nchecksums);
     }
 
-    /* 7. Atomic Commit: Copy staged files to root and save manifest to database */
+    /* 8. Atomic Commit: Copy staged files to root and save manifest to database */
     printf("lpm: committing %s-%s to system root\n", m->name, m->version);
     char copy_cmd[LPM_PATH_MAX * 2 + 128];
     snprintf(copy_cmd, sizeof(copy_cmd), "cp -a %s/root/. / 2>/dev/null || (cd %s/root && tar -cf - .) | (cd / && tar -xf -)",
@@ -276,6 +283,7 @@ cleanup:
     }
     free(cmd);
     free(lpkg_esc);
+    lpm_unlock();
     return ret;
 }
 
@@ -287,11 +295,12 @@ int cmd_remove(int argc, char **argv) {
         fprintf(stderr, "lpm: invalid package name '%s'\n", name);
         return 1;
     }
+    if (lpm_lock() != 0) return 1;
 
     char dbdir[LPM_PATH_MAX];
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
     manifest *m = manifest_load(dbdir);
-    if (!m) { fprintf(stderr, "lpm: '%s' not installed\n", name); return 1; }
+    if (!m) { fprintf(stderr, "lpm: '%s' not installed\n", name); lpm_unlock(); return 1; }
 
     /* Remove package files */
     for (int i = m->nfiles - 1; i >= 0; i--) {
@@ -310,6 +319,7 @@ int cmd_remove(int argc, char **argv) {
 
     printf("lpm: removed %s-%s\n", m->name, m->version);
     manifest_free(m);
+    lpm_unlock();
     return 0;
 }
 
@@ -318,6 +328,7 @@ int cmd_upgrade(int argc, char **argv) {
         fprintf(stderr, "lpm: no repository index found. Run 'lpm update' first.\n");
         return 1;
     }
+    if (lpm_lock() != 0) return 1;
 
     if (argc >= 1) {
         /* Upgrade single package */
@@ -328,6 +339,7 @@ int cmd_upgrade(int argc, char **argv) {
         if (!cur) {
             printf("lpm: package '%s' is not installed. Installing...\n", name);
             char *pkg_args[] = { (char *)name };
+            lpm_unlock();
             return cmd_install(1, pkg_args);
         }
 
@@ -335,6 +347,7 @@ int cmd_upgrade(int argc, char **argv) {
         if (lpm_repo_lookup(name, &repo_ver, &filename, &sha256) != 0) {
             printf("lpm: '%s' is up to date (not in repository index)\n", name);
             manifest_free(cur);
+            lpm_unlock();
             return 0;
         }
 
@@ -343,18 +356,20 @@ int cmd_upgrade(int argc, char **argv) {
             manifest_free(cur);
             free(repo_ver); free(filename); free(sha256);
             char *pkg_args[] = { (char *)name };
+            lpm_unlock();
             return cmd_install(1, pkg_args);
         } else {
             printf("lpm: %s-%s is already up to date\n", cur->name, cur->version);
             manifest_free(cur);
             free(repo_ver); free(filename); free(sha256);
+            lpm_unlock();
             return 0;
         }
     }
 
     /* Upgrade all installed packages */
     DIR *dir = opendir(LPM_INSTALLED);
-    if (!dir) { printf("lpm: no packages installed\n"); return 0; }
+    if (!dir) { printf("lpm: no packages installed\n"); lpm_unlock(); return 0; }
 
     struct dirent *ent;
     int upgraded_count = 0;
@@ -372,15 +387,18 @@ int cmd_upgrade(int argc, char **argv) {
             if (lpm_version_cmp(cur->version, repo_ver) < 0) {
                 printf("lpm: upgrade available for %s: %s -> %s\n", ent->d_name, cur->version, repo_ver);
                 char *pkg_args[] = { ent->d_name };
+                lpm_unlock();
                 if (cmd_install(1, pkg_args) == 0) {
                     upgraded_count++;
                 }
+                lpm_lock();
             }
             free(repo_ver); free(filename); free(sha256);
         }
         manifest_free(cur);
     }
     closedir(dir);
+    lpm_unlock();
 
     if (upgraded_count == 0) {
         printf("lpm: all packages are up to date\n");

@@ -2,7 +2,7 @@
 # scripts/shreectl — ShreeOS Central Administration & Control Interface
 #
 # Unified CLI for system metrics, service control, network management,
-# software updates, snapshots, diagnostics, logs, and power state.
+# software updates, package DB backups, diagnostics, logs, and power state.
 
 set -euo pipefail
 
@@ -23,13 +23,13 @@ shreectl — ShreeOS Central System Administration Interface
 
 Usage:
   shreectl info                        Display system summary and hardware specs
-  shreectl services [list|restart <s]| Check and control supervised system services
+  shreectl services [list|start|stop|restart|status] Check and control supervised services
   shreectl network [status|ip|restart] Manage network interfaces and connectivity
-  shreectl update [check|apply]        Check and apply atomic package updates
+  shreectl update [check|apply]        Check and apply package updates
   shreectl doctor                      Run comprehensive system health diagnostics
-  shreectl logs [init|kernel|system]   View system and service supervisor logs
-  shreectl users [list|add|remove]     Manage user accounts and permissions
-  shreectl snapshots [list|create|rollback] Manage package transaction restore points
+  shreectl logs [service-name|kernel|system] View service and system supervisor logs
+  shreectl users [list]                Manage user accounts and permissions
+  shreectl backup-db [list|create|restore] Manage LPM package database restore points
   shreectl poweroff                    Power off computer cleanly
   shreectl reboot                      Reboot system cleanly
 EOF
@@ -41,16 +41,36 @@ cmd_info() {
 
 cmd_services() {
   local sub="${1:-list}"
-  shift || true
+  shift 2>/dev/null || true
   case "$sub" in
-    list|status)
-      initctl status
+    list)
+      initctl list 2>/dev/null || initctl status
+      ;;
+    status)
+      local svc="${1:-}"
+      if [ -n "$svc" ]; then
+        initctl status "$svc"
+      else
+        initctl status
+      fi
+      ;;
+    start)
+      local svc="${1:-}"
+      [ -z "$svc" ] && { echo "Usage: shreectl services start <service>"; exit 1; }
+      initctl start "$svc"
+      ;;
+    stop)
+      local svc="${1:-}"
+      [ -z "$svc" ] && { echo "Usage: shreectl services stop <service>"; exit 1; }
+      initctl stop "$svc"
       ;;
     restart)
       local svc="${1:-}"
-      if [ -z "$svc" ]; then echo "Usage: shreectl services restart <service>"; exit 1; fi
+      [ -z "$svc" ] && { echo "Usage: shreectl services restart <service>"; exit 1; }
+      initctl restart "$svc"
+      ;;
+    reload)
       initctl reload
-      shreeos_ok "Requested reload for service: ${svc}"
       ;;
     *)
       initctl "$sub" "$@"
@@ -60,7 +80,7 @@ cmd_services() {
 
 cmd_network() {
   local sub="${1:-status}"
-  shift || true
+  shift 2>/dev/null || true
   case "$sub" in
     status) shree-net status ;;
     ip)     shree-net ip ;;
@@ -84,11 +104,18 @@ cmd_doctor() {
 }
 
 cmd_logs() {
-  local target="${1:-init}"
-  case "$target" in
-    kernel) dmesg 2>/dev/null | tail -n 50 || echo "Kernel logs unavailable" ;;
-    init|system|*) cat /var/log/messages 2>/dev/null | tail -n 50 || dmesg 2>/dev/null | tail -n 30 || echo "Logs unavailable" ;;
-  esac
+  local target="${1:-system}"
+  if [ -f "/var/log/shreeos/services/${target}.log" ]; then
+    tail -n 50 "/var/log/shreeos/services/${target}.log"
+  elif [ "$target" = "kernel" ]; then
+    dmesg 2>/dev/null | tail -n 50 || echo "Kernel logs unavailable"
+  else
+    if [ -d "/var/log/shreeos/services" ]; then
+      echo "Available service logs:"
+      ls -1 /var/log/shreeos/services/ 2>/dev/null || true
+    fi
+    dmesg 2>/dev/null | tail -n 30 || echo "Logs unavailable"
+  fi
 }
 
 cmd_users() {
@@ -104,28 +131,28 @@ cmd_users() {
   esac
 }
 
-cmd_snapshots() {
+cmd_backup_db() {
   local sub="${1:-list}"
   local snap_dir="/var/lib/lpm/snapshots"
   mkdir -p "$snap_dir"
   case "$sub" in
     list)
-      echo "ShreeOS Package Transaction Snapshots:"
-      ls -lh "$snap_dir" 2>/dev/null || echo "No snapshots recorded"
+      echo "LPM Package Database Backups:"
+      ls -lh "$snap_dir" 2>/dev/null || echo "No backups recorded"
       ;;
     create)
       local id
-      id="snap_$(date +%Y%m%d_%H%M%S)"
+      id="db_$(date +%Y%m%d_%H%M%S)"
       cp -r /var/lib/lpm/installed "${snap_dir}/${id}" 2>/dev/null || true
-      shreeos_ok "Created transaction snapshot: ${id}"
+      shreeos_ok "Created package DB backup: ${id}"
       ;;
-    rollback)
+    restore)
       local id="${2:-}"
       if [ -z "$id" ] || [ ! -d "${snap_dir}/${id}" ]; then
-        shreeos_die "Usage: shreectl snapshots rollback <snapshot_id>"
+        shreeos_die "Usage: shreectl backup-db restore <backup_id>"
       fi
       cp -r "${snap_dir}/${id}/"* /var/lib/lpm/installed/
-      shreeos_ok "Rolled back package database to snapshot: ${id}"
+      shreeos_ok "Restored package DB from: ${id}"
       ;;
   esac
 }
@@ -136,16 +163,16 @@ COMMAND="$1"
 shift
 
 case "$COMMAND" in
-  info)       cmd_info "$@" ;;
-  services)   cmd_services "$@" ;;
-  network)    cmd_network "$@" ;;
-  update)     cmd_update "$@" ;;
-  doctor)     cmd_doctor "$@" ;;
-  logs)       cmd_logs "$@" ;;
-  users)      cmd_users "$@" ;;
-  snapshots)  cmd_snapshots "$@" ;;
-  reboot)     initctl reboot ;;
-  poweroff)   initctl poweroff ;;
-  --help|-h)  usage ;;
-  *)          echo "shreectl: unknown command '$COMMAND'"; usage; exit 1 ;;
+  info)        cmd_info "$@" ;;
+  services)    cmd_services "$@" ;;
+  network)     cmd_network "$@" ;;
+  update)      cmd_update "$@" ;;
+  doctor)      cmd_doctor "$@" ;;
+  logs)        cmd_logs "$@" ;;
+  users)       cmd_users "$@" ;;
+  backup-db|snapshots) cmd_backup_db "$@" ;;
+  reboot)      initctl reboot ;;
+  poweroff)    initctl poweroff ;;
+  --help|-h)   usage ;;
+  *)           echo "shreectl: unknown command '$COMMAND'"; usage; exit 1 ;;
 esac

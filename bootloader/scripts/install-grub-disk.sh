@@ -2,14 +2,10 @@
 # bootloader/scripts/install-grub-disk.sh — Install GRUB2 to a target installed disk
 #
 # Installs both UEFI (x86_64-efi to ESP) and BIOS (i386-pc to MBR/GPT) bootloaders
-# onto the target installation disk and configures GRUB with proper root UUID.
+# onto the target installation disk and configures GRUB with mandatory root UUID.
 #
 # Usage:
 #   bash bootloader/scripts/install-grub-disk.sh <target-mount> <disk-device> [--efi-dir=<path>] [--cmdline=...]
-#
-# Examples:
-#   bash bootloader/scripts/install-grub-disk.sh /mnt /dev/sda
-#   bash bootloader/scripts/install-grub-disk.sh /mnt /dev/nvme0n1 --efi-dir=/mnt/boot/efi
 #
 set -euo pipefail
 
@@ -50,7 +46,7 @@ if [ ! -d "$TARGET" ]; then
   shreeos_die "Target mount directory '${TARGET}' does not exist."
 fi
 
-shreeos_require_cmd grub-install
+shreeos_require_cmd grub-install blkid
 
 shreeos_step "Installing GRUB2 to target disk ${DISK} (Target root: ${TARGET})"
 
@@ -72,7 +68,7 @@ if grub-install \
   shreeos_ok "GRUB UEFI (x86_64-efi) installed successfully"
   UEFI_SUCCESS=true
 else
-  shreeos_warn "grub-install for x86_64-efi returned an error (grub-efi-amd64 may be missing on host or ESP not ready)"
+  shreeos_warn "grub-install for x86_64-efi failed (grub-efi-amd64 may be missing on host or ESP not mounted)"
 fi
 
 # 2. Install BIOS Bootloader (i386-pc)
@@ -85,30 +81,34 @@ if grub-install \
   shreeos_ok "GRUB BIOS (i386-pc) installed successfully on ${DISK}"
   BIOS_SUCCESS=true
 else
-  shreeos_warn "grub-install for i386-pc returned an error (grub-pc may be missing on host or non-block device)"
+  shreeos_warn "grub-install for i386-pc failed (grub-pc may be missing on host or non-block device)"
 fi
 
 if [ "$UEFI_SUCCESS" = false ] && [ "$BIOS_SUCCESS" = false ]; then
   shreeos_die "FATAL: Both UEFI and BIOS GRUB installations failed on ${DISK}."
 fi
 
-# 3. Detect Root UUID and Generate Target grub.cfg
-shreeos_log "Generating GRUB configuration for installed system"
+# 3. Detect Root UUID and Generate Target grub.cfg (Fail closed if missing)
+shreeos_log "Discovering root filesystem UUID for ${TARGET}..."
 
+TARGET_DEV=$(findmnt -n -o SOURCE "$TARGET" 2>/dev/null || echo "")
 ROOT_UUID=""
-# Attempt to find UUID for the root filesystem
-if command -v blkid >/dev/null 2>&1; then
-  # Find partition mounted at $TARGET
-  TARGET_DEV=$(findmnt -n -o SOURCE "$TARGET" 2>/dev/null || echo "")
-  if [ -n "$TARGET_DEV" ]; then
-    ROOT_UUID=$(blkid -s UUID -o value "$TARGET_DEV" 2>/dev/null || echo "")
+
+if [ -n "$TARGET_DEV" ]; then
+  ROOT_UUID=$(blkid -s UUID -o value "$TARGET_DEV" 2>/dev/null || echo "")
+fi
+
+if [ -z "$ROOT_UUID" ]; then
+  # Try checking block device of partition 3
+  if [ -b "${DISK}p3" ]; then
+    ROOT_UUID=$(blkid -s UUID -o value "${DISK}p3" 2>/dev/null || echo "")
+  elif [ -b "${DISK}3" ]; then
+    ROOT_UUID=$(blkid -s UUID -o value "${DISK}3" 2>/dev/null || echo "")
   fi
 fi
 
-ROOT_PARAM="root=UUID=${ROOT_UUID}"
 if [ -z "$ROOT_UUID" ]; then
-  # Fallback if blkid or mountpoint lookup isn't available
-  ROOT_PARAM="root=/dev/sda3"
+  shreeos_die "CRITICAL BOOT ERROR: Could not determine filesystem UUID for root partition. Refusing to install unbootable fallback."
 fi
 
 cat > "${TARGET}/boot/grub/grub.cfg" <<EOF
@@ -133,7 +133,7 @@ insmod fat
 menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage ${ROOT_PARAM} ro quiet ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet ${CMDLINE_EXTRA}
     if [ -f /boot/rootfs.cpio.gz ]; then
         echo "Loading initramfs..."
         initrd /boot/rootfs.cpio.gz
@@ -141,14 +141,14 @@ menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
     echo "Booting ${DISTRO_NAME:-ShreeOS}..."
 }
 
-menuentry "${DISTRO_NAME:-ShreeOS} (Recovery / Single-User Mode)" {
-    echo "Loading Linux kernel in single-user mode..."
+menuentry "${DISTRO_NAME:-ShreeOS} (Recovery Mode)" {
+    echo "Loading Linux kernel in single-user recovery mode..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage ${ROOT_PARAM} ro single ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single ${CMDLINE_EXTRA}
     if [ -f /boot/rootfs.cpio.gz ]; then
         initrd /boot/rootfs.cpio.gz
     fi
 }
 EOF
 
-shreeos_ok "Generated ${TARGET}/boot/grub/grub.cfg (Root UUID: ${ROOT_UUID:-none})"
+shreeos_ok "Generated ${TARGET}/boot/grub/grub.cfg with Root UUID ${ROOT_UUID}"

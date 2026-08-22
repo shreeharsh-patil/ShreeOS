@@ -9,6 +9,7 @@
 #define LPM_REPO_JSON LPM_DB "/repo.json"
 #define LPM_REPOS_CONF "/etc/lpm/repos.conf"
 #define LPM_CACHE_DIR "/var/cache/lpm/pkg"
+#define LPM_LOCK_FILE LPM_DB "/lock"
 
 /* Path buffer size: Linux PATH_MAX = 4096, ensure we match target */
 #ifndef LPM_PATH_MAX
@@ -74,5 +75,27 @@ bool lpm_is_lpkg_file(const char *path);
  * Returns 0 on success, -1 if not found.
  */
 int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename, char **out_sha256);
+
+/*
+ * Exclusive process locking around package mutations
+ */
+int lpm_lock(void);
+void lpm_unlock(void);
+
+/*
+ * File conflict detection across installed package database
+ */
+int lpm_check_file_conflicts(const manifest *m);
+
+/* Command declarations */
+int cmd_install(int argc, char **argv);
+int cmd_remove(int argc, char **argv);
+int cmd_upgrade(int argc, char **argv);
+int cmd_query(int argc, char **argv);
+int cmd_list(int argc, char **argv);
+int cmd_search(int argc, char **argv);
+int cmd_verify(int argc, char **argv);
+int cmd_update(int argc, char **argv);
+int cmd_info(int argc, char **argv);
 
 #endif

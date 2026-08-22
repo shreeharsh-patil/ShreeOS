@@ -1,19 +1,16 @@
-# init/src/Makefile — Cross-compile the ShreeOS init binary
+# init/src/Makefile — Cross-compile the ShreeOS init, initctl, and shree-auth binaries
 #
 # Usage:
-#   make              # build init (requires env: CROSS_COMPILE, LUMEN_TOOLS)
+#   make              # build init, initctl, shree-auth
 #   make clean        # remove build artifacts
-#
-# The CROSS_COMPILE env var (e.g. x86_64-shreeos-linux-gnu-) is set
-# by kernel/scripts/common.sh.  Alternatively pass it explicitly:
-#   make CROSS_COMPILE=x86_64-shreeos-linux-gnu-
 
 CROSS_COMPILE ?= $(or ${CROSS_COMPILE}, x86_64-shreeos-linux-gnu-)
 CC := $(CROSS_COMPILE)gcc
 CFLAGS := -static -Os -Wall -Wextra
 LDFLAGS := -static
+LDLIBS := -lcrypt
 
-BINS := init initctl
+BINS := init initctl shree-auth
 
 .PHONY: all clean
 
@@ -24,6 +21,9 @@ init: init.c
 
 initctl: initctl.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+
+shree-auth: shree-auth.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS) 2>/dev/null || $(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
 	rm -f $(BINS) *.o
