@@ -7,13 +7,13 @@
 set -euo pipefail
 
 # 1. Gather live system states
-WIFI_STATE=$(shree-net status 2>/dev/null || echo "Connected")
-BT_STATE=$(shree-bluetooth status 2>/dev/null || echo "not available")
+WIFI_STATE=$(shreectl wifi status --json 2>/dev/null || echo "Not available")
+BT_STATE=$(shreectl bluetooth status --json 2>/dev/null || echo "Not available")
 THEME_STATE=$(shree-theme status 2>/dev/null || echo "dark")
 DND_STATE=$(shree-dnd status 2>/dev/null || echo "off")
 NIGHT_STATE=$(shree-nightlight status 2>/dev/null || echo "off")
-VOL_STATE=$(shree-audio status 2>/dev/null || echo "80%")
-BAT_STATE=$(shree-power status 2>/dev/null || echo "100% AC")
+VOL_STATE=$(shreectl audio volume --json 2>/dev/null || echo "Not available")
+BAT_STATE=$(shreectl battery --json 2>/dev/null || echo "Not available")
 
 ITEMS="\
 Wi-Fi: ${WIFI_STATE^}               — Manage wireless networks
@@ -31,10 +31,10 @@ SELECTED=$(echo "$ITEMS" | dmenu -p "Control Center" -l 9 -c || true)
 
 case "$SELECTED" in
   "Wi-Fi"*)
-    shree-net menu
+    st -g 88x28 -t "Wi-Fi" -e shree-hardware-ui wifi &
     ;;
   "Bluetooth"*)
-    shree-bluetooth menu
+    st -g 88x28 -t "Bluetooth" -e shree-hardware-ui bluetooth &
     ;;
   "Appearance"*)
     shree-theme toggle
@@ -46,10 +46,10 @@ case "$SELECTED" in
     shree-nightlight toggle
     ;;
   "Volume"*)
-    shree-audio menu
+    st -g 88x24 -t "Audio" -e shree-hardware-ui audio &
     ;;
   "Battery"*)
-    shree-power menu
+    st -g 72x20 -t "Power" -e shree-hardware-ui battery &
     ;;
   "Notification Center"*)
     shree-notifications

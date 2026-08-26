@@ -33,6 +33,9 @@ int shreed_collect_pci(const char *root, char *buffer, size_t size);
 int shreed_collect_usb(const char *root, char *buffer, size_t size);
 int shreed_collect_network(const char *root, char *buffer, size_t size);
 int shreed_collect_ethernet(const char *root, char *buffer, size_t size);
+int shreed_collect_drivers(const char *root, char *buffer, size_t size, bool missing_only);
+int shreed_collect_firmware(const char *root, char *buffer, size_t size);
+int shreed_collect_diagnostics(const char *root, char *buffer, size_t size);
 int shreed_collect_hardware(const char *root, char *buffer, size_t size);
 
 #endif

@@ -39,6 +39,11 @@ int main(int argc, char **argv) {
     TEST("no interfaces is graceful", shreed_collect_network("/missing-shreed-fixture", response, sizeof(response)) == 0 &&
          strstr(response, "\"count\":0") != NULL);
     TEST("malformed interface data is ignored", strstr(response, "bad@name") == NULL);
+    TEST("driver inventory", shreed_collect_drivers(root, response, sizeof(response), false) == 0 && strstr(response, "0000_00_02.0") != NULL);
+    TEST("missing driver", shreed_collect_drivers(root, response, sizeof(response), true) == 0 &&
+         strstr(response, "\"driver\":null") != NULL && strstr(response, "attention_required") != NULL);
+    TEST("firmware report is conservative", shreed_collect_firmware(root, response, sizeof(response)) == 0 && strstr(response, "no automatic download") != NULL);
+    TEST("diagnostic report is read-only", shreed_collect_diagnostics(root, response, sizeof(response)) == 0 && strstr(response, "\"read_only\":true") != NULL);
     TEST("hardware summary fixture", shreed_collect_hardware(root, response, sizeof(response)) == 0 &&
          strstr(response, "Fixture CPU 9000") != NULL && strstr(response, "Fixture NVMe") != NULL);
     TEST("missing hardware is graceful", shreed_collect_cpu("/missing-shreed-fixture", response, sizeof(response)) == 0 &&

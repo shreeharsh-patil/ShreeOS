@@ -77,6 +77,10 @@ static void queue_collector_response(shreed_client_t *client, const char *root,
         case SHREED_REQUEST_NETWORK:
         case SHREED_REQUEST_INTERFACES: result = shreed_collect_network(root, response, sizeof(response)); break;
         case SHREED_REQUEST_ETHERNET: result = shreed_collect_ethernet(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_DRIVERS: result = shreed_collect_drivers(root, response, sizeof(response), false); break;
+        case SHREED_REQUEST_DRIVERS_MISSING: result = shreed_collect_drivers(root, response, sizeof(response), true); break;
+        case SHREED_REQUEST_FIRMWARE: result = shreed_collect_firmware(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_DIAGNOSE: result = shreed_collect_diagnostics(root, response, sizeof(response)); break;
         default: result = -1; break;
     }
     if (result == 0 && shreed_queue_response(client, response) == 0) return;
@@ -114,6 +118,10 @@ static void process_request(shreed_client_t *client, const char *root) {
         case SHREED_REQUEST_NETWORK:
         case SHREED_REQUEST_INTERFACES:
         case SHREED_REQUEST_ETHERNET:
+        case SHREED_REQUEST_DRIVERS:
+        case SHREED_REQUEST_DRIVERS_MISSING:
+        case SHREED_REQUEST_FIRMWARE:
+        case SHREED_REQUEST_DIAGNOSE:
             queue_collector_response(client, root, request.type);
             break;
         default:

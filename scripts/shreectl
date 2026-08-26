@@ -34,6 +34,9 @@ Usage:
   shreectl audio <devices|status|volume|mute|unmute> [--json]
   shreectl battery|power [--json]
   shreectl brightness [0-100] [--json]
+  shreectl drivers [missing] [--json]
+  shreectl firmware [--json]
+  shreectl hardware diagnose [--json]
   shreectl update [check|apply]        Check and apply package updates
   shreectl doctor                      Run comprehensive system health diagnostics
   shreectl logs [service-name|kernel|system] View service and system supervisor logs
@@ -109,12 +112,23 @@ cmd_daemon() {
 cmd_hardware() {
   local action="$1"
   shift
+  if [ "$action" = hardware ] && [ "${1:-}" = diagnose ]; then
+    shift
+    if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--json" ]; }; then
+      echo "Usage: shreectl hardware diagnose [--json]" >&2
+      return 1
+    fi
+    shreedctl diagnose "$@"
+    return
+  fi
   if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--json" ]; }; then
     echo "Usage: shreectl ${action} [--json]" >&2
     return 1
   fi
   shreedctl "$action" "$@"
 }
+
+cmd_drivers() { if [ "${1:-}" = missing ]; then shift; shreedctl drivers_missing "$@"; else shreedctl drivers "$@"; fi; }
 
 cmd_network() {
   local sub="network"
@@ -223,6 +237,8 @@ case "$COMMAND" in
   services)    cmd_services "$@" ;;
   daemon)      cmd_daemon "$@" ;;
   hardware|cpu|gpu|memory|disks|pci|usb) cmd_hardware "$COMMAND" "$@" ;;
+  drivers)     cmd_drivers "$@" ;;
+  firmware)    shreedctl firmware "$@" ;;
   network)     cmd_network "$@" ;;
   ethernet)    cmd_ethernet "$@" ;;
   wifi)        cmd_wifi "$@" ;;

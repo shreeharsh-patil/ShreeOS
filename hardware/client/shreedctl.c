@@ -40,7 +40,7 @@ static int read_all(int fd, void *buffer, size_t length) {
 }
 
 static void usage(void) {
-    fprintf(stderr, "Usage: shreedctl <ping|status|hardware|cpu|gpu|memory|disks|pci|usb|network|interfaces|ethernet> [--json] [--socket <path>]\n");
+    fprintf(stderr, "Usage: shreedctl <ping|status|hardware|cpu|gpu|memory|disks|pci|usb|network|interfaces|ethernet|drivers|drivers_missing|firmware|diagnose> [--json] [--socket <path>]\n");
 }
 
 static bool supported_action(const char *action) {
@@ -49,7 +49,9 @@ static bool supported_action(const char *action) {
            strcmp(action, "gpu") == 0 || strcmp(action, "memory") == 0 ||
            strcmp(action, "disks") == 0 || strcmp(action, "pci") == 0 ||
            strcmp(action, "usb") == 0 || strcmp(action, "network") == 0 ||
-           strcmp(action, "interfaces") == 0 || strcmp(action, "ethernet") == 0;
+           strcmp(action, "interfaces") == 0 || strcmp(action, "ethernet") == 0 ||
+           strcmp(action, "drivers") == 0 || strcmp(action, "drivers_missing") == 0 ||
+           strcmp(action, "firmware") == 0 || strcmp(action, "diagnose") == 0;
 }
 
 static bool json_string(const char *json, const char *key, char *output, size_t size) {

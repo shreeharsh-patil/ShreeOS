@@ -5,7 +5,7 @@ CFLAGS := -std=gnu11 -Wall -Wextra -Werror -O2 -I../include
 TEST := test-shreed
 COLLECTOR_TEST := test-collectors
 TEST_DAEMON := shreed-test-daemon
-DEVICE_SRCS := ../devices/common.c ../devices/cpu.c ../devices/gpu.c ../devices/memory.c ../devices/storage.c ../devices/pci.c ../devices/usb.c ../devices/network.c ../devices/hardware.c
+DEVICE_SRCS := ../devices/common.c ../devices/cpu.c ../devices/gpu.c ../devices/memory.c ../devices/storage.c ../devices/pci.c ../devices/usb.c ../devices/network.c ../devices/diagnostics.c ../devices/hardware.c
 FULL_DAEMON_SRCS := ../daemon/shreed.c ../daemon/ipc.c ../daemon/events.c ../daemon/security.c $(DEVICE_SRCS)
 DAEMON_SRCS := ../daemon/ipc.c ../daemon/events.c ../daemon/security.c
 

@@ -32,6 +32,15 @@ changes are received from the Linux rtnetlink API and emit
 `NETWORK_INTERFACE_ADDED`, `NETWORK_INTERFACE_REMOVED`, `NETWORK_CONNECTED`,
 `NETWORK_DISCONNECTED`, and `IP_ADDRESS_CHANGED` event objects.
 
+## Driver and firmware diagnostics
+
+`drivers`, `drivers_missing`, `firmware`, and `diagnose` are read-only IPC
+actions. Driver state comes from each device's kernel-owned sysfs `driver`
+link; a missing link is reported as an actionable attention item, never as a
+guessed driver. Firmware remains `unknown` unless an explicit kernel/sysfs
+failure is available. ShreeOS will not download firmware automatically; future
+`lpm` firmware packages can supply files under `/lib/firmware`.
+
 Optional device modules use the same event stream. BlueZ device changes emit
 `BLUETOOTH_DEVICE_ADDED`/`BLUETOOTH_DEVICE_REMOVED`; ALSA changes emit
 `AUDIO_DEVICE_ADDED`/`AUDIO_DEVICE_REMOVED` and `VOLUME_CHANGED`; sysfs power

@@ -145,6 +145,10 @@ int main(int argc, char **argv) {
          strstr(response, "\"interfaces\"") != NULL && strstr(response, "\"dns_servers\"") != NULL);
     TEST("Ethernet IPC query", exchange(socket_path, "{\"action\":\"ethernet\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"interfaces\"") != NULL);
+    TEST("drivers IPC query", exchange(socket_path, "{\"action\":\"drivers\"}", response, sizeof(response)) == 0 &&
+         strstr(response, "\"devices\"") != NULL);
+    TEST("diagnose IPC query", exchange(socket_path, "{\"action\":\"diagnose\"}", response, sizeof(response)) == 0 &&
+         strstr(response, "\"read_only\":true") != NULL);
     TEST("event subscription acknowledgement", exchange(socket_path, "{\"action\":\"subscribe\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"subscription\":\"hardware") != NULL);
     TEST("invalid JSON produces structured error", exchange(socket_path, "{\"secret\":\"do-not-log\"}", response, sizeof(response)) == 0 &&

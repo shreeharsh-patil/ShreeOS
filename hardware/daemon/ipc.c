@@ -69,6 +69,10 @@ int shreed_parse_request(const char *payload, size_t length,
     else if (strcmp(action, "network") == 0) request->type = SHREED_REQUEST_NETWORK;
     else if (strcmp(action, "interfaces") == 0) request->type = SHREED_REQUEST_INTERFACES;
     else if (strcmp(action, "ethernet") == 0) request->type = SHREED_REQUEST_ETHERNET;
+    else if (strcmp(action, "drivers") == 0) request->type = SHREED_REQUEST_DRIVERS;
+    else if (strcmp(action, "drivers_missing") == 0) request->type = SHREED_REQUEST_DRIVERS_MISSING;
+    else if (strcmp(action, "firmware") == 0) request->type = SHREED_REQUEST_FIRMWARE;
+    else if (strcmp(action, "diagnose") == 0) request->type = SHREED_REQUEST_DIAGNOSE;
     else return -1;
 
     return 0;
