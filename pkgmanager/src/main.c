@@ -28,7 +28,7 @@ static void usage(void) {
         "  lpm search  <query>                Search packages in repository and installed DB\n"
         "  lpm verify  <package>              Verify installed package file integrity and SHA256\n"
         "  lpm history                         Show SafeUpdate transactions\n"
-        "  lpm rollback [transaction-id]       Restore a rollback snapshot\n"
+        "  lpm rollback [--force-live] [id]    Restore a rollback snapshot (Recovery Mode required by default)\n"
         "  lpm repair                          Verify all packages\n"
         "  lpm update                         Update repository package index (repo.json)\n"
     );

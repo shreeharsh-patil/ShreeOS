@@ -37,7 +37,7 @@ if [ -z "$DISK_IMAGE" ]; then
       CREDS_FILE=$(mktemp /tmp/test-creds-XXXXXX)
       chmod 600 "$CREDS_FILE"
       printf "testrootpass\ntestuserpass\n" > "$CREDS_FILE"
-      bash "${PROJECT_ROOT}/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE" 2>/dev/null || true
+      bash "${PROJECT_ROOT}/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
       rm -f "$CREDS_FILE"
     fi
   fi
@@ -51,8 +51,7 @@ MEMORY="${MEMORY:-256M}"
 lumen_step "Booting disk image: ${DISK_IMAGE}"
 
 if [ ! -f "$DISK_IMAGE" ]; then
-  lumen_warn "Disk image not found: ${DISK_IMAGE}. Skipping test."
-  exit 0
+  lumen_die "Disk image not found: ${DISK_IMAGE}"
 fi
 
 LOG_FILE=$(mktemp /tmp/shreeos-qemu-disk.XXXXXX)
@@ -87,7 +86,7 @@ if [ "$FOUND" = true ]; then
   rm -f "$LOG_FILE"
   exit 0
 else
-  lumen_warn "Disk boot test completed without marker (Log saved to ${LOG_FILE})"
+  lumen_warn "Disk boot test failed without marker (Log saved to ${LOG_FILE})"
   rm -f "$LOG_FILE"
-  exit 0
+  exit 1
 fi

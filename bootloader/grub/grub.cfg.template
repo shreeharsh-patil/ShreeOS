@@ -1,6 +1,6 @@
 # bootloader/grub/grub.cfg.template — GRUB2 configuration for ShreeOS
 # Templated with DISTRO_NAME and DISTRO_VERSION at ISO build time.
-# Uses loopback so GRUB can find its files when booting from ISO.
+# The ISO builder puts the kernel and initramfs directly under /boot.
 
 set default="${DISTRO_NAME}"
 set timeout=5
@@ -15,19 +15,16 @@ if loadfont $prefix/fonts/unicode.pf2; then
 fi
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION}" --id="${DISTRO_NAME}" {
-  loopback loop /boot/rootfs.squashfs
   linux /boot/bzImage root=/dev/sr0 console=ttyS0 quiet
   initrd /boot/initramfs.cpio.gz
 }
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (recovery mode)" --id="recovery" {
-  loopback loop /boot/rootfs.squashfs
   linux /boot/bzImage root=/dev/sr0 console=ttyS0 single quiet
   initrd /boot/initramfs.cpio.gz
 }
 
 menuentry "${DISTRO_NAME} Previous Working State" --id="previous-working-state" {
-  loopback loop /boot/rootfs.squashfs
   linux /boot/bzImage root=/dev/sr0 shreeos.rollback=1 console=ttyS0 quiet
   initrd /boot/initramfs.cpio.gz
 }

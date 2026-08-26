@@ -7,7 +7,7 @@ set -euo pipefail
 
 if grep -qw 'shreeos.rollback=1' /proc/cmdline 2>/dev/null; then
   echo "ShreeOS rollback boot requested. Applying newest valid rollback payload..."
-  lpm rollback && exit 1
+  LPM_RECOVERY=1 lpm rollback && exit 1
   echo "Rollback payload missing or corrupt; remaining in Recovery Mode."
 fi
 
@@ -58,7 +58,7 @@ while true; do
       lpm history || true
       read -r -p "Enter snapshot ID to restore: " SNAP_ID
       if [ -n "$SNAP_ID" ]; then
-        lpm rollback "$SNAP_ID" || echo "Rollback failed; transaction data remains available for retry."
+        LPM_RECOVERY=1 lpm rollback "$SNAP_ID" || echo "Rollback failed; transaction data remains available for retry."
       fi
       read -r -p "Press Enter to return..." _
       ;;

@@ -5,6 +5,8 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <net/if.h>
+#include <dirent.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -18,8 +20,39 @@ static int read_int_file(const char *path) {
     return value;
 }
 
-void shreed_events_subscribe(shreed_client_t *client) {
-    if (client) client->subscribed = true;
+/* A compact state fingerprint avoids fixed device names while keeping the
+ * optional fallback monitor cheap. Netlink remains the primary monitor. */
+static unsigned long class_fingerprint(const char *directory, const char *wanted_type,
+                                       const char *value_name) {
+    DIR *dir = opendir(directory); struct dirent *entry; unsigned long hash = 5381;
+    if (!dir) return 0;
+    while ((entry = readdir(dir))) {
+        char type_path[512], value_path[512], type[64] = ""; int value;
+        if (entry->d_name[0] == '.') continue;
+        if (wanted_type) {
+            snprintf(type_path, sizeof(type_path), "%s/%s/type", directory, entry->d_name);
+            FILE *file = fopen(type_path, "r");
+            if (!file || !fgets(type, sizeof(type), file)) { if (file) fclose(file); continue; }
+            fclose(file); type[strcspn(type, "\r\n")] = 0;
+            if (strcmp(type, wanted_type) != 0) continue;
+        }
+        snprintf(value_path, sizeof(value_path), "%s/%s/%s", directory, entry->d_name, value_name);
+        value = read_int_file(value_path);
+        for (const unsigned char *p = (const unsigned char *)entry->d_name; *p; ++p) hash = ((hash << 5) + hash) ^ *p;
+        hash = ((hash << 5) + hash) ^ (unsigned long)(value + 1);
+    }
+    closedir(dir); return hash;
+}
+
+bool shreed_events_subscribe(shreed_client_t clients[], shreed_client_t *client) {
+    size_t subscribers = 0;
+    if (!clients || !client) return false;
+    for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {
+        if (clients[index].fd >= 0 && clients[index].subscribed) subscribers++;
+    }
+    if (subscribers >= SHREED_MAX_SUBSCRIBERS) return false;
+    client->subscribed = true;
+    return true;
 }
 
 void shreed_events_emit(shreed_client_t clients[], const char *event, const char *interface) {
@@ -84,16 +117,16 @@ void shreed_events_process_network(int fd, shreed_client_t clients[]) {
 }
 
 void shreed_events_poll_optional(shreed_client_t clients[]) {
-    static int bluetooth = -1, audio = -1, battery = -2, ac = -1, brightness = -2;
-    int now_bluetooth = access("/sys/class/bluetooth", R_OK) == 0;
-    int now_audio = access("/proc/asound/cards", R_OK) == 0;
-    int now_battery = read_int_file("/sys/class/power_supply/BAT0/capacity");
-    int now_ac = read_int_file("/sys/class/power_supply/AC/online");
-    int now_brightness = read_int_file("/sys/class/backlight/intel_backlight/brightness");
-    if (bluetooth >= 0 && bluetooth != now_bluetooth) shreed_events_emit(clients, now_bluetooth ? "BLUETOOTH_DEVICE_ADDED" : "BLUETOOTH_DEVICE_REMOVED", "bluetooth");
-    if (audio >= 0 && audio != now_audio) shreed_events_emit(clients, now_audio ? "AUDIO_DEVICE_ADDED" : "AUDIO_DEVICE_REMOVED", "audio");
-    if (battery >= 0 && now_battery >= 0 && battery != now_battery) { shreed_events_emit(clients, "BATTERY_CHANGED", "battery"); if (now_battery <= 15) shreed_events_emit(clients, "BATTERY_LOW", "battery"); }
-    if (ac >= 0 && now_ac >= 0 && ac != now_ac) shreed_events_emit(clients, now_ac ? "POWER_CONNECTED" : "POWER_DISCONNECTED", "power");
-    if (brightness >= 0 && now_brightness >= 0 && brightness != now_brightness) shreed_events_emit(clients, "BRIGHTNESS_CHANGED", "backlight");
+    static unsigned long bluetooth = ULONG_MAX, audio = ULONG_MAX, battery = ULONG_MAX, ac = ULONG_MAX, brightness = ULONG_MAX;
+    unsigned long now_bluetooth = class_fingerprint("/sys/class/bluetooth", NULL, "uevent");
+    unsigned long now_audio = class_fingerprint("/sys/class/sound", NULL, "uevent");
+    unsigned long now_battery = class_fingerprint("/sys/class/power_supply", "Battery", "capacity");
+    unsigned long now_ac = class_fingerprint("/sys/class/power_supply", "Mains", "online");
+    unsigned long now_brightness = class_fingerprint("/sys/class/backlight", NULL, "brightness");
+    if (bluetooth != ULONG_MAX && bluetooth != now_bluetooth) shreed_events_emit(clients, now_bluetooth ? "BLUETOOTH_DEVICE_ADDED" : "BLUETOOTH_DEVICE_REMOVED", "bluetooth");
+    if (audio != ULONG_MAX && audio != now_audio) shreed_events_emit(clients, now_audio ? "AUDIO_DEVICE_ADDED" : "AUDIO_DEVICE_REMOVED", "audio");
+    if (battery != ULONG_MAX && battery != now_battery) shreed_events_emit(clients, "BATTERY_CHANGED", "battery");
+    if (ac != ULONG_MAX && ac != now_ac) shreed_events_emit(clients, now_ac ? "POWER_CONNECTED" : "POWER_DISCONNECTED", "power");
+    if (brightness != ULONG_MAX && brightness != now_brightness) shreed_events_emit(clients, "BRIGHTNESS_CHANGED", "backlight");
     bluetooth = now_bluetooth; audio = now_audio; battery = now_battery; ac = now_ac; brightness = now_brightness;
 }

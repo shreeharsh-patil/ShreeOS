@@ -153,7 +153,11 @@ fi
 
 # 4. Verify base system essentials
 if ! grep -q '^shree-hardware:' "${LUMEN_STAGE_ROOT}/etc/group" 2>/dev/null; then
-  echo 'shree-hardware:x:986:' >> "${LUMEN_STAGE_ROOT}/etc/group"
+  shree_hardware_gid=986
+  while awk -F: -v gid="$shree_hardware_gid" '$3 == gid { found=1 } END { exit !found }' "${LUMEN_STAGE_ROOT}/etc/group"; do
+    shree_hardware_gid=$((shree_hardware_gid + 1))
+  done
+  printf 'shree-hardware:x:%s:\n' "$shree_hardware_gid" >> "${LUMEN_STAGE_ROOT}/etc/group"
 fi
 
 # 4. Verify base system essentials

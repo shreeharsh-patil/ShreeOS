@@ -49,7 +49,7 @@ static int safe_exec(const char *file, char *const argv[]) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-static void get_repo_url(char *buf, size_t maxlen) {
+static int get_repo_url(char *buf, size_t maxlen) {
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {
         if (fgets(buf, maxlen, f)) {
@@ -57,12 +57,16 @@ static void get_repo_url(char *buf, size_t maxlen) {
             while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' || buf[len-1] == ' ')) {
                 buf[--len] = '\0';
             }
-            fclose(f);
-            if (len > 0) return;
+            if (len > 0) goto validate;
         }
         fclose(f);
     }
     snprintf(buf, maxlen, "http://localhost:8080");
+validate:
+    if (strncmp(buf, "https://", 8) == 0 || strncmp(buf, "http://localhost", 16) == 0 ||
+        strncmp(buf, "http://127.0.0.1", 16) == 0) return 0;
+    fprintf(stderr, "lpm: refusing insecure repository URL '%s' (HTTPS is required except localhost development repositories)\n", buf);
+    return -1;
 }
 
 static int download_package(const char *pkgname, char *out_path, size_t maxlen, char *expected_sha, size_t sha_len) {
@@ -82,7 +86,10 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
     expected_sha[sha_len - 1] = '\0';
 
     char repo_url[LPM_PATH_MAX];
-    get_repo_url(repo_url, sizeof(repo_url));
+    if (get_repo_url(repo_url, sizeof(repo_url)) != 0) {
+        free(version); free(filename); free(sha256);
+        return -1;
+    }
 
     mkdir_p(LPM_CACHE_DIR);
     const char *basename_fn = strrchr(filename, '/');
@@ -424,7 +431,34 @@ int cmd_install(int argc, char **argv) {
                 }
             }
             if (!still_present) {
-                unlink(old_m->files[i]);
+                char obsolete_backup[LPM_PATH_MAX];
+                FILE *ledger = NULL;
+                if (!lpm_safe_path(old_m->files[i])) {
+                    fprintf(stderr, "lpm: refusing unsafe obsolete path '%s'\n", old_m->files[i]);
+                    ret = 1;
+                    goto cleanup;
+                }
+                if (access(old_m->files[i], F_OK) != 0) continue;
+                snprintf(obsolete_backup, sizeof(obsolete_backup), "%s%s", backup_dir, old_m->files[i]);
+                {
+                    char *last_slash = strrchr(obsolete_backup, '/');
+                    if (!last_slash) { ret = 1; goto cleanup; }
+                    *last_slash = '\0';
+                    if (mkdir_p(obsolete_backup) != 0 && errno != EEXIST) { ret = 1; goto cleanup; }
+                    *last_slash = '/';
+                }
+                if (copy_file(old_m->files[i], obsolete_backup) != 0 ||
+                    !(ledger = fopen(rollback_ledger, "a"))) {
+                    fprintf(stderr, "lpm: could not back up obsolete file '%s'\n", old_m->files[i]);
+                    if (ledger) fclose(ledger);
+                    ret = 1;
+                    goto cleanup;
+                }
+                if (fprintf(ledger, "E %s\n", old_m->files[i]) < 0 || fclose(ledger) != 0 ||
+                    unlink(old_m->files[i]) != 0) {
+                    ret = 1;
+                    goto cleanup;
+                }
             }
         }
     }

@@ -43,6 +43,7 @@ ASSUME_YES=false
 HOSTNAME="${DISTRO_CODENAME:-shreeos}"
 TIMEZONE="UTC"
 CREDS_FILE=""
+CREDS_FILE_OWNED=false
 USERNAME=""
 BOOT_MODE="both"
 
@@ -55,6 +56,7 @@ for arg in "$@"; do
     --username=*) USERNAME="${arg#*=}" ;;
     --boot-mode=*) BOOT_MODE="${arg#*=}" ;;
     --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...]"; exit 0 ;;
+    *) shreeos_die "Unknown installer option: ${arg}" ;;
   esac
 done
 
@@ -72,7 +74,7 @@ cleanup() {
     shreeos_log "Detaching loop device ${LOOP_DEV}..."
     losetup -d "$LOOP_DEV" 2>/dev/null || true
   fi
-  if [ -n "${CREDS_FILE:-}" ] && [ -f "${CREDS_FILE}" ]; then
+  if [ "${CREDS_FILE_OWNED:-false}" = true ] && [ -n "${CREDS_FILE:-}" ] && [ -f "${CREDS_FILE}" ]; then
     rm -f "${CREDS_FILE}"
   fi
 }
@@ -85,9 +87,26 @@ if ! [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
   shreeos_die "Invalid hostname '${HOSTNAME}'. Must match RFC 1123 format."
 fi
 
+case "$BOOT_MODE" in
+  bios|uefi|both) ;;
+  *) shreeos_die "Invalid --boot-mode '${BOOT_MODE}'; expected bios, uefi, or both." ;;
+esac
+
 # Validate timezone: reject .. and traversal
-if [[ "$TIMEZONE" == *".."* ]] || [[ "$TIMEZONE" == /* ]] || ! [[ "$TIMEZONE" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)?$ ]]; then
+if [[ "$TIMEZONE" == *".."* ]] || [[ "$TIMEZONE" == /* ]] || ! [[ "$TIMEZONE" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]]; then
   shreeos_die "Invalid timezone specification '${TIMEZONE}'."
+fi
+
+if [ -n "$CREDS_FILE" ]; then
+  if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
+    shreeos_die "Credentials file must be a regular, non-symlink file."
+  fi
+  if [ "$(stat -c '%u' "$CREDS_FILE")" != "$(id -u)" ] || [ $((8#$(stat -c '%a' "$CREDS_FILE") & 077)) -ne 0 ]; then
+    shreeos_die "Credentials file must be owned by the invoking user and have mode 0600."
+  fi
+  if [ "$(sed -n '$=' "$CREDS_FILE")" -gt 2 ]; then
+    shreeos_die "Credentials file must contain only root and optional user password lines."
+  fi
 fi
 
 # If UEFI requested, require FAT formatting utility
@@ -170,7 +189,7 @@ fi
 # 4. Copy rootfs payload
 shreeos_log "Copying root filesystem contents..."
 STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
-ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/rootfs.cpio.gz"
+ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/initramfs.cpio.gz"
 
 if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if command -v rsync >/dev/null 2>&1; then
@@ -190,9 +209,10 @@ mkdir -p "${TARGET}/etc"
 echo "${HOSTNAME}" > "${TARGET}/etc/hostname"
 
 echo "${TIMEZONE}" > "${TARGET}/etc/timezone"
-if [ -f "${TARGET}/usr/share/zoneinfo/${TIMEZONE}" ]; then
-  ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${TARGET}/etc/localtime"
+if [ ! -f "${TARGET}/usr/share/zoneinfo/${TIMEZONE}" ]; then
+  shreeos_die "Timezone '${TIMEZONE}' is not present in the target zoneinfo database."
 fi
+ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${TARGET}/etc/localtime"
 
 # Read root & user passwords from secure credential file if provided
 if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then

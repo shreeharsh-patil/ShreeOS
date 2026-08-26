@@ -52,7 +52,13 @@ static int create_listener(const char *socket_path) {
     }
     {
         struct group *group = getgrnam("shree-hardware");
-        if (group && chown(socket_path, 0, group->gr_gid) != 0) {
+        if (!group) {
+            errno = ENOENT;
+            close(fd);
+            unlink(socket_path);
+            return -1;
+        }
+        if (chown(socket_path, 0, group->gr_gid) != 0) {
             close(fd);
             unlink(socket_path);
             return -1;
@@ -96,7 +102,7 @@ static void queue_collector_response(shreed_client_t *client, const char *root,
     queue_error(client, "COLLECTOR_FAILURE", "Hardware information could not be encoded");
 }
 
-static void process_request(shreed_client_t *client, const char *root) {
+static void process_request(shreed_client_t clients[], shreed_client_t *client, const char *root) {
     shreed_request_t request;
 
     if (shreed_parse_request(client->payload, client->payload_length, &request) != 0) {
@@ -113,9 +119,12 @@ static void process_request(shreed_client_t *client, const char *root) {
                 "{\"ok\":true,\"result\":{\"service\":\"shreed\",\"status\":\"healthy\",\"version\":\"1\"}}");
             break;
         case SHREED_REQUEST_SUBSCRIBE:
-            shreed_events_subscribe(client);
-            (void)shreed_queue_response(client,
-                "{\"ok\":true,\"result\":{\"subscription\":\"hardware\",\"state\":\"active\"}}");
+            if (shreed_events_subscribe(clients, client)) {
+                (void)shreed_queue_response(client,
+                    "{\"ok\":true,\"result\":{\"subscription\":\"hardware\",\"state\":\"active\"}}");
+            } else {
+                queue_error(client, "SUBSCRIBER_LIMIT", "Too many event subscribers");
+            }
             break;
         case SHREED_REQUEST_HARDWARE:
         case SHREED_REQUEST_CPU:
@@ -148,16 +157,28 @@ static void accept_clients(int listener, shreed_client_t clients[], int log_fd) 
             }
             return;
         }
-        if (!shreed_authorize_peer(fd)) {
+        uid_t peer_uid = (uid_t)-1;
+        size_t uid_clients = 0;
+        if (!shreed_authorize_peer(fd, &peer_uid)) {
             close(fd);
             shreed_log(log_fd, "rejected unauthenticated local peer");
+            continue;
+        }
+        for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {
+            if (clients[index].fd >= 0 && clients[index].peer_uid == peer_uid) uid_clients++;
+        }
+        if (uid_clients >= SHREED_MAX_CLIENTS_PER_UID) {
+            close(fd);
+            shreed_log(log_fd, "rejected peer exceeding per-UID IPC limit");
             continue;
         }
         for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {
             if (clients[index].fd < 0) {
                 memset(&clients[index], 0, sizeof(clients[index]));
                 clients[index].fd = fd;
+                clients[index].peer_uid = peer_uid;
                 clients[index].accepted_at = time(NULL);
+                clients[index].last_activity = clients[index].accepted_at;
                 fd = -1;
                 break;
             }
@@ -235,7 +256,8 @@ int main(int argc, char **argv) {
         }
         for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {
             if (clients[index].fd < 0) continue;
-            if (!clients[index].subscribed && time(NULL) - clients[index].accepted_at > SHREED_CLIENT_IDLE_SECONDS) {
+            if ((!clients[index].subscribed && time(NULL) - clients[index].accepted_at > SHREED_CLIENT_IDLE_SECONDS) ||
+                (clients[index].subscribed && time(NULL) - clients[index].last_activity > SHREED_SUBSCRIBER_IDLE_SECONDS)) {
                 close_client(&clients[index]);
                 continue;
             }
@@ -267,7 +289,7 @@ int main(int argc, char **argv) {
             }
             if (poll_fds[item].revents & POLLIN) {
                 result = shreed_read_frame(client);
-                if (result == 1) process_request(client, root);
+                if (result == 1) { client->last_activity = time(NULL); process_request(clients, client, root); }
                 else if (result == -2) queue_error(client, "MALFORMED_FRAME", "Frame length is invalid");
                 else if (result < 0) close_client(client);
             }

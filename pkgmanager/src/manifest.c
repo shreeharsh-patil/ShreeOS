@@ -24,6 +24,27 @@ static char *strdup_safe(const char *s) {
     return s ? strdup(s) : strdup("");
 }
 
+/* Emit one JSON string without ever treating package metadata as format text. */
+static int json_write_string(FILE *f, const char *value) {
+    const unsigned char *p = (const unsigned char *)(value ? value : "");
+    if (fputc('"', f) == EOF) return -1;
+    for (; *p; ++p) {
+        switch (*p) {
+            case '"': if (fputs("\\\"", f) == EOF) return -1; break;
+            case '\\': if (fputs("\\\\", f) == EOF) return -1; break;
+            case '\b': if (fputs("\\b", f) == EOF) return -1; break;
+            case '\f': if (fputs("\\f", f) == EOF) return -1; break;
+            case '\n': if (fputs("\\n", f) == EOF) return -1; break;
+            case '\r': if (fputs("\\r", f) == EOF) return -1; break;
+            case '\t': if (fputs("\\t", f) == EOF) return -1; break;
+            default:
+                if (*p < 0x20) { if (fprintf(f, "\\u%04x", *p) < 0) return -1; }
+                else if (fputc(*p, f) == EOF) return -1;
+        }
+    }
+    return fputc('"', f) == EOF ? -1 : 0;
+}
+
 static void fill_str_array(const json_value *arr, char ***out, int *n) {
     *n = 0;
     *out = NULL;
@@ -118,36 +139,39 @@ int manifest_save(const manifest *m, const char *dir) {
     FILE *f = fopen(path, "wb");
     if (!f) return -1;
 
-    fprintf(f, "{\n");
-    fprintf(f, "  \"name\": \"%s\",\n", m->name ? m->name : "");
-    fprintf(f, "  \"version\": \"%s\",\n", m->version ? m->version : "");
-    if (m->description && *m->description)
-        fprintf(f, "  \"description\": \"%s\",\n", m->description);
-    if (m->sha256 && *m->sha256)
-        fprintf(f, "  \"sha256\": \"%s\",\n", m->sha256);
+    if (fputs("{\n  \"name\": ", f) == EOF || json_write_string(f, m->name) || fputs(",\n  \"version\": ", f) == EOF || json_write_string(f, m->version)) goto fail;
+    if (m->description && *m->description) {
+        if (fputs(",\n  \"description\": ", f) == EOF || json_write_string(f, m->description)) goto fail;
+    }
+    if (m->sha256 && *m->sha256) {
+        if (fputs(",\n  \"sha256\": ", f) == EOF || json_write_string(f, m->sha256)) goto fail;
+    }
+    if (fputs(",\n", f) == EOF) goto fail;
     fprintf(f, "  \"dependencies\": [");
     for (int i = 0; i < m->ndeps; i++) {
         if (i > 0) fprintf(f, ", ");
-        fprintf(f, "\"%s\"", m->deps[i]);
+        if (json_write_string(f, m->deps[i])) goto fail;
     }
     fprintf(f, "],\n");
     fprintf(f, "  \"files\": [");
     for (int i = 0; i < m->nfiles; i++) {
         if (i > 0) fprintf(f, ", ");
-        fprintf(f, "\"%s\"", m->files[i]);
+        if (json_write_string(f, m->files[i])) goto fail;
     }
     fprintf(f, "],\n");
     fprintf(f, "  \"checksums\": {\n");
     for (int i = 0; i < m->nchecksums; i++) {
-        fprintf(f, "    \"%s\": \"%s\"%s\n",
-                m->checksums[i].path,
-                m->checksums[i].sha256,
-                (i + 1 < m->nchecksums) ? "," : "");
+        if (fputs("    ", f) == EOF || json_write_string(f, m->checksums[i].path) ||
+            fputs(": ", f) == EOF || json_write_string(f, m->checksums[i].sha256) ||
+            fprintf(f, "%s\n", (i + 1 < m->nchecksums) ? "," : "") < 0) goto fail;
     }
     fprintf(f, "  }\n}\n");
 
+    if (fclose(f) == 0) return 0;
+    return -1;
+fail:
     fclose(f);
-    return 0;
+    return -1;
 }
 
 int manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_out) {
@@ -231,10 +255,18 @@ bool lpm_valid_pkgname(const char *name) {
 
 /* Safe path check: no /../ components and starts with a safe prefix */
 bool lpm_safe_path(const char *path) {
+    static const char *const allowed[] = { "/bin/", "/sbin/", "/lib/", "/lib64/", "/usr/", "/etc/", "/opt/", "/var/", "/boot/" };
+    bool prefix_ok = false;
     if (!path || !*path) return false;
     /* Must start with / */
     if (path[0] != '/') return false;
-    /* Walk through path, reject any .. component */
+    for (size_t i = 0; i < sizeof(allowed) / sizeof(allowed[0]); ++i) {
+        if (strncmp(path, allowed[i], strlen(allowed[i])) == 0) { prefix_ok = true; break; }
+    }
+    if (!prefix_ok || strcmp(path, "/var/lib/lpm") == 0 || strncmp(path, "/var/lib/lpm/", 13) == 0 ||
+        strcmp(path, "/var/cache/lpm") == 0 || strncmp(path, "/var/cache/lpm/", 15) == 0 ||
+        strcmp(path, "/var/run/lpm") == 0 || strncmp(path, "/var/run/lpm/", 13) == 0) return false;
+    /* Walk through path, reject lexical ambiguity and traversal. */
     const char *p = path;
     while (*p) {
         /* Check for /../ */
@@ -243,6 +275,7 @@ bool lpm_safe_path(const char *path) {
         /* Also reject /.. at end */
         if (p[0] == '.' && p[1] == '.' && (p[2] == '/' || p[2] == '\0'))
             return false;
+        if (*p == '/' && (p[1] == '/' || (p[1] == '.' && (p[2] == '/' || p[2] == '\0')))) return false;
         p++;
     }
     return true;
@@ -339,7 +372,9 @@ int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename
 #include <sys/file.h>
 #endif
 
+#ifndef _WIN32
 static int lock_fd = -1;
+#endif
 
 int lpm_lock(void) {
 #ifndef _WIN32
@@ -401,4 +436,3 @@ int lpm_check_file_conflicts(const manifest *m) {
     closedir(dir);
     return 0;
 }
-

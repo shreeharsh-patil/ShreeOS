@@ -263,7 +263,7 @@ int cmd_verify(int argc, char **argv) {
     return 0;
 }
 
-static void get_repo_url(char *buf, size_t maxlen) {
+static int get_repo_url(char *buf, size_t maxlen) {
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {
         if (fgets(buf, maxlen, f)) {
@@ -271,12 +271,16 @@ static void get_repo_url(char *buf, size_t maxlen) {
             while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' || buf[len-1] == ' ')) {
                 buf[--len] = '\0';
             }
-            fclose(f);
-            if (len > 0) return;
+            if (len > 0) goto validate;
         }
         fclose(f);
     }
     snprintf(buf, maxlen, "http://localhost:8080");
+validate:
+    if (strncmp(buf, "https://", 8) == 0 || strncmp(buf, "http://localhost", 16) == 0 ||
+        strncmp(buf, "http://127.0.0.1", 16) == 0) return 0;
+    fprintf(stderr, "lpm: refusing insecure repository URL '%s' (HTTPS is required except localhost development repositories)\n", buf);
+    return -1;
 }
 
 int cmd_update(int argc, char **argv) {
@@ -284,7 +288,7 @@ int cmd_update(int argc, char **argv) {
     if (lpm_lock() != 0) return 1;
 
     char url[LPM_PATH_MAX];
-    get_repo_url(url, sizeof(url));
+    if (get_repo_url(url, sizeof(url)) != 0) { lpm_unlock(); return 1; }
 
     printf("lpm: updating repository index from %s...\n", url);
     char tmp_json[LPM_PATH_MAX];

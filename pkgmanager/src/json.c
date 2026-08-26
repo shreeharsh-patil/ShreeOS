@@ -16,15 +16,29 @@ static char *parse_string(const char **p) {
     char *s = malloc(cap);
     if (!s) return NULL;
     while (**p && **p != '"') {
+        if (len + 4 >= cap) { cap *= 2; char *t = realloc(s, cap); if (!t) { free(s); return NULL; } s = t; }
         if (**p == '\\') { (*p)++;
             if (**p == '"' || **p == '\\' || **p == '/') s[len++] = **p;
+            else if (**p == 'b') s[len++] = '\b';
+            else if (**p == 'f') s[len++] = '\f';
             else if (**p == 'n') s[len++] = '\n';
+            else if (**p == 'r') s[len++] = '\r';
             else if (**p == 't') s[len++] = '\t';
-            else s[len++] = **p;
+            else if (**p == 'u') {
+                unsigned value = 0;
+                for (int i = 0; i < 4; ++i) {
+                    unsigned char hex = (unsigned char)(*++(*p));
+                    if (!isxdigit(hex)) { free(s); return NULL; }
+                    value = (value << 4) | (unsigned)(isdigit(hex) ? hex - '0' : (tolower(hex) - 'a' + 10));
+                }
+                if (value < 0x80) s[len++] = (char)value;
+                else if (value < 0x800) { s[len++] = (char)(0xc0 | (value >> 6)); s[len++] = (char)(0x80 | (value & 0x3f)); }
+                else { s[len++] = (char)(0xe0 | (value >> 12)); s[len++] = (char)(0x80 | ((value >> 6) & 0x3f)); s[len++] = (char)(0x80 | (value & 0x3f)); }
+            } else { free(s); return NULL; }
         } else {
+            if ((unsigned char)**p < 0x20) { free(s); return NULL; }
             s[len++] = **p;
         }
-        if (len >= cap - 1) { cap *= 2; char *t = realloc(s, cap); if (!t) { free(s); return NULL; } s = t; }
         (*p)++;
     }
     if (**p == '"') (*p)++;

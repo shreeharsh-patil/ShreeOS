@@ -5,22 +5,51 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <grp.h>
 #include <time.h>
 #include <unistd.h>
 
-bool shreed_authorize_peer(int fd) {
+bool shreed_authorize_peer(int fd, uid_t *peer_uid) {
 #ifdef SO_PEERCRED
     struct ucred credentials;
     socklen_t length = sizeof(credentials);
+    struct group *hardware_group;
+    char proc_path[64], line[1024];
+    FILE *status;
 
     if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &credentials, &length) != 0) return false;
-    return credentials.pid > 0 && credentials.uid != (uid_t)-1 && credentials.gid != (gid_t)-1;
+    if (credentials.pid <= 0 || credentials.uid == (uid_t)-1 || credentials.gid == (gid_t)-1) return false;
+    if (credentials.uid == 0) { if (peer_uid) *peer_uid = credentials.uid; return true; }
+    hardware_group = getgrnam("shree-hardware");
+    if (!hardware_group) { errno = ENOENT; return false; }
+    if (credentials.gid == hardware_group->gr_gid) { if (peer_uid) *peer_uid = credentials.uid; return true; }
+    snprintf(proc_path, sizeof(proc_path), "/proc/%ld/status", (long)credentials.pid);
+    status = fopen(proc_path, "r");
+    if (!status) return false;
+    while (fgets(line, sizeof(line), status)) {
+        char *cursor;
+        if (strncmp(line, "Groups:", 7) != 0) continue;
+        cursor = line + 7;
+        while (*cursor) {
+            char *end; unsigned long gid;
+            while (*cursor == ' ' || *cursor == '\t') cursor++;
+            if (*cursor == '\0' || *cursor == '\n') break;
+            gid = strtoul(cursor, &end, 10);
+            if (end == cursor) break;
+            if ((gid_t)gid == hardware_group->gr_gid) { fclose(status); if (peer_uid) *peer_uid = credentials.uid; return true; }
+            cursor = end;
+        }
+    }
+    fclose(status);
+    return false;
 #else
-    (void)fd;
-    return true;
+    (void)fd; (void)peer_uid;
+    errno = ENOTSUP;
+    return false;
 #endif
 }
 
