@@ -33,7 +33,7 @@ if [ -z "$DISK_IMAGE" ]; then
     trap 'rm -f "$TEMP_DISK"' EXIT INT TERM
     
     # If rootfs and installer exist, run quick install test on image
-    if [ -f "${PROJECT_ROOT}/build/rootfs.cpio.gz" ] && command -v sfdisk >/dev/null 2>&1; then
+    if [ -f "${PROJECT_ROOT}/build/initramfs.cpio.gz" ] && command -v sfdisk >/dev/null 2>&1; then
       CREDS_FILE=$(mktemp /tmp/test-creds-XXXXXX)
       chmod 600 "$CREDS_FILE"
       printf "testrootpass\ntestuserpass\n" > "$CREDS_FILE"

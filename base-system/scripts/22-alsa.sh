@@ -11,4 +11,7 @@ build_alsa() {
   make -j"${LUMEN_MAKE_JOBS}"; make DESTDIR="${LUMEN_STAGE_ROOT}" install
 }
 build_alsa alsa-lib 1.2.14 be9c88a0b3604367dd74167a2b754a35e142f670292ae47a2fdef27a2ee97a32 lib
+mkdir -p "${LUMEN_SYSROOT}/usr"
+cp -a "${LUMEN_STAGE_ROOT}/usr/include" "${LUMEN_SYSROOT}/usr/"
+cp -a "${LUMEN_STAGE_ROOT}/usr/lib" "${LUMEN_SYSROOT}/usr/"
 build_alsa alsa-utils 1.2.14 0794c74d33fed943e7c50609c13089e409312b6c403d6ae8984fc429c0960741 utils

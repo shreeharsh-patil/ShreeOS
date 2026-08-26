@@ -16,7 +16,8 @@ CONFIG_CTRL_IFACE=y
 CONFIG_CTRL_IFACE_DBUS_NEW=n
 CONFIG_SAE=y
 CONFIG_IEEE80211W=y
-CONFIG_TLS=openssl
+# Keep the target build self-contained until a target OpenSSL package exists.
+CONFIG_TLS=internal
 EOF
 make CC="${LUMEN_TARGET_TRIPLET}-gcc" -j"${LUMEN_MAKE_JOBS}"
 install -Dm755 wpa_supplicant "${LUMEN_STAGE_ROOT}/usr/sbin/wpa_supplicant"

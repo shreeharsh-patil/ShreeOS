@@ -6,7 +6,7 @@
 #
 # Prerequisites:
 #   - Built kernel:   build/build-kernel/arch/x86/boot/bzImage
-#   - Built rootfs:   build/rootfs.cpio.gz  (from rootfs/scripts/make-rootfs.sh)
+#   - Built initramfs: build/initramfs.cpio.gz  (from rootfs/scripts/make-rootfs.sh)
 #   - qemu-system-x86_64 installed
 #
 # Usage:
@@ -25,7 +25,7 @@ source "$PROJECT_ROOT/scripts/common.sh"
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 KERNEL_IMAGE="${KERNEL_IMAGE:-${PROJECT_ROOT}/build/build-kernel/arch/x86/boot/bzImage}"
-INITRD="${INITRD:-${PROJECT_ROOT}/build/rootfs.cpio.gz}"
+INITRD="${INITRD:-${PROJECT_ROOT}/build/initramfs.cpio.gz}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: reached PID 1}"
 TIMEOUT="${TIMEOUT:-60}"
 MEMORY="${MEMORY:-256M}"

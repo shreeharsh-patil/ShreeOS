@@ -209,7 +209,7 @@ tests: test-smoke
 clean:
 	rm -rf $(BUILD_DIR)/.markers $(BUILD_DIR)/build-*
 	rm -rf $(BUILD_DIR)/tools $(BUILD_DIR)/sysroot
-	rm -rf $(BUILD_DIR)/rootfs $(BUILD_DIR)/rootfs.cpio.gz
+	rm -rf $(BUILD_DIR)/rootfs $(BUILD_DIR)/initramfs.cpio.gz
 	rm -rf out/*.iso
 	$(MAKE) -C pkgmanager/src clean
 	$(MAKE) -C init/src clean

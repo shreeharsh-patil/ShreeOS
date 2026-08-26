@@ -1,26 +1,7 @@
 # Root Filesystem
 
-Assembles the base system, kernel modules, and custom init into a root filesystem layout, ready for ISO packaging or disk installation.
+`rootfs/scripts/make-rootfs.sh` assembles the ShreeOS target root and writes
+the canonical boot archive at `build/initramfs.cpio.gz`.
 
-## Layout
-
-```
-rootfs/
-├── skeleton/etc/       # Config templates (os-release, fstab, resolv.conf)
-├── scripts/
-│   └── make-rootfs.sh  # Assembly script
-└── README.md
-```
-
-## Building
-
-```bash
-bash rootfs/scripts/make-rootfs.sh
-# or via Makefile:
-make rootfs
-```
-
-## Output
-
-- `build/rootfs/` — assembled root filesystem
-- `build/rootfs.cpio.gz` — cpio archive for QEMU boot testing
+The ISO builder and QEMU tests consume that same filename. The assembled tree
+remains at `build/rootfs/` for inspection and disk installation.

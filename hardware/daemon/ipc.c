@@ -90,7 +90,7 @@ int shreed_read_frame(shreed_client_t *client) {
         }
         if (received == 0) return -1;
         if (errno == EINTR) continue;
-        return (errno == EAGAIN || errno == EWOULDBBLOCK) ? 0 : -1;
+        return (errno == EAGAIN || errno == EWOULDBLOCK) ? 0 : -1;
     }
 
     if (client->payload_length == 0) {

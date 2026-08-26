@@ -22,18 +22,18 @@ mkdir -p "$BUILDDIR"
 cd "$BUILDDIR"
 
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_TOOLS}/${LUMEN_TARGET_TRIPLET}" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
   --with-headers="${LUMEN_SYSROOT}/usr/include" \
   --disable-nls \
-  libc_cv_slibdir="${LUMEN_TOOLS}/${LUMEN_TARGET_TRIPLET}/lib"
+  libc_cv_slibdir=/usr/lib
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make install_root="${LUMEN_SYSROOT}" install
 
-if [ ! -f "${LUMEN_TOOLS}/${LUMEN_TARGET_TRIPLET}/lib/libc.so" ]; then
+if [ ! -f "${LUMEN_SYSROOT}/usr/lib/libc.so" ]; then
   lumen_die "glibc installation failed — libc.so not found"
 fi
 

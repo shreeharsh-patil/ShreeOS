@@ -7,7 +7,15 @@ PROFILE_DIR=/etc/shreeos/wifi
 find_iface() { for p in /sys/class/net/*/wireless; do [ -d "$p" ] && basename "$(dirname "$p")" && return; done; return 1; }
 iface="$(find_iface 2>/dev/null || true)"
 json_escape() { awk 'BEGIN { ORS="" } { gsub(/\\/, "\\\\"); gsub(/\"/, "\\\""); gsub(/\r/, "\\r"); gsub(/\n/, "\\n"); print }'; }
-validate_ssid() { [ "${#1}" -gt 0 ] && [ "${#1}" -le 32 ] && [[ "$1" != *$'\n'* && "$1" != *$'\r'* && "$1" != *$'\0'* ]]; }
+validate_ssid() {
+  local ssid="$1" index byte
+  [ "${#ssid}" -gt 0 ] && [ "${#ssid}" -le 32 ] || return 1
+  [[ "$ssid" != *$'\n'* && "$ssid" != *$'\r'* ]] || return 1
+  for ((index = 0; index < ${#ssid}; index++)); do
+    printf -v byte '%d' "'${ssid:index:1}"
+    (( byte >= 32 && byte != 127 )) || return 1
+  done
+}
 need_iface() { [ -n "$iface" ] || { echo 'Wi-Fi: Not available' >&2; exit 3; }; }
 need_root() { [ "$(id -u)" -eq 0 ] || { echo 'Wi-Fi management requires root privileges' >&2; exit 1; }; }
 profile_name() { printf '%s' "$1" | sha256sum | awk '{print $1}'; }

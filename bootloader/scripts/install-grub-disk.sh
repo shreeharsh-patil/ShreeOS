@@ -144,9 +144,9 @@ menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet ${CMDLINE_EXTRA}
-    if [ -f /boot/rootfs.cpio.gz ]; then
+    if [ -f /boot/initramfs.cpio.gz ]; then
         echo "Loading initramfs..."
-        initrd /boot/rootfs.cpio.gz
+        initrd /boot/initramfs.cpio.gz
     fi
     echo "Booting ${DISTRO_NAME:-ShreeOS}..."
 }
@@ -155,8 +155,8 @@ menuentry "${DISTRO_NAME:-ShreeOS} (Recovery Mode)" {
     echo "Loading Linux kernel in single-user recovery mode..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=UUID=${ROOT_UUID} ro single ${CMDLINE_EXTRA}
-    if [ -f /boot/rootfs.cpio.gz ]; then
-        initrd /boot/rootfs.cpio.gz
+    if [ -f /boot/initramfs.cpio.gz ]; then
+        initrd /boot/initramfs.cpio.gz
     fi
 }
 EOF
