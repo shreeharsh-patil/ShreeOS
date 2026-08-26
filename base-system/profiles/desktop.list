@@ -21,3 +21,6 @@ dmenu
 # Fonts & Theme
 dejavu-fonts
 shreeos-wallpapers
+alsa-lib
+alsa-utils
+bluez

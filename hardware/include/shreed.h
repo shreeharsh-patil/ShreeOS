@@ -61,5 +61,6 @@ void shreed_events_subscribe(shreed_client_t *client);
 void shreed_events_emit(shreed_client_t clients[], const char *event, const char *interface);
 int shreed_events_open_network_monitor(void);
 void shreed_events_process_network(int fd, shreed_client_t clients[]);
+void shreed_events_poll_optional(shreed_client_t clients[]);
 
 #endif

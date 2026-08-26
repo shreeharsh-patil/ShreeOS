@@ -32,6 +32,13 @@ changes are received from the Linux rtnetlink API and emit
 `NETWORK_INTERFACE_ADDED`, `NETWORK_INTERFACE_REMOVED`, `NETWORK_CONNECTED`,
 `NETWORK_DISCONNECTED`, and `IP_ADDRESS_CHANGED` event objects.
 
+Optional device modules use the same event stream. BlueZ device changes emit
+`BLUETOOTH_DEVICE_ADDED`/`BLUETOOTH_DEVICE_REMOVED`; ALSA changes emit
+`AUDIO_DEVICE_ADDED`/`AUDIO_DEVICE_REMOVED` and `VOLUME_CHANGED`; sysfs power
+changes emit `BATTERY_CHANGED`, `BATTERY_LOW`, `POWER_CONNECTED`,
+`POWER_DISCONNECTED`, and `BRIGHTNESS_CHANGED`. Missing optional hardware is
+reported as unavailable and never causes the daemon or boot to fail.
+
 Network queries use kernel sysfs, `getifaddrs(3)`, `/proc/net/route`, and
 `/etc/resolv.conf`; no NetworkManager dependency is required. The boot service
 brings up Ethernet devices and tries `dhcpcd`, falling back to BusyBox

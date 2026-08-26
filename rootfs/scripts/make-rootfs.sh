@@ -133,6 +133,13 @@ if [ "$SKIP_INIT" = false ]; then
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/shree-wifi" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shree-wifi"
     chmod 700 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shree-wifi"
   fi
+  for helper in shree-bluetooth shree-audio shree-powerctl; do
+    if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/${helper}" ]; then
+      mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
+      cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/${helper}" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/${helper}"
+      chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/${helper}"
+    fi
+  done
 
   if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/shree-recovery.sh" ]; then
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/shree-recovery.sh" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-recovery"

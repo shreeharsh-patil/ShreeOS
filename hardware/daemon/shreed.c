@@ -227,6 +227,7 @@ int main(int argc, char **argv) {
             if (errno != EINTR) shreed_log(log_fd, "poll failed");
             continue;
         }
+        shreed_events_poll_optional(clients);
         if (poll_fds[0].revents & POLLIN) accept_clients(listener, clients, log_fd);
         if (network_monitor >= 0 && poll_fds[1].revents & POLLIN)
             shreed_events_process_network(network_monitor, clients);

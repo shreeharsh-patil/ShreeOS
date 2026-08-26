@@ -39,6 +39,8 @@ PACKAGES=(
   "19-util-linux"
   "20-libxcrypt"
   "21-wpa-supplicant"
+  "22-alsa"
+  "23-bluez"
 )
 
 while [[ $# -gt 0 ]]; do

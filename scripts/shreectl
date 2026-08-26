@@ -30,6 +30,10 @@ Usage:
   shreectl network [interfaces] [--json]     Show network state
   shreectl ethernet [status] [--json]        Show wired Ethernet state
   shreectl wifi <status|list|connect|disconnect|known|forget> [--json]
+  shreectl bluetooth <status|enable|disable|scan|devices> [--json]
+  shreectl audio <devices|status|volume|mute|unmute> [--json]
+  shreectl battery|power [--json]
+  shreectl brightness [0-100] [--json]
   shreectl update [check|apply]        Check and apply package updates
   shreectl doctor                      Run comprehensive system health diagnostics
   shreectl logs [service-name|kernel|system] View service and system supervisor logs
@@ -138,6 +142,9 @@ cmd_ethernet() {
 }
 
 cmd_wifi() { /usr/sbin/shree-wifi "$@"; }
+cmd_bluetooth() { /usr/sbin/shree-bluetooth "$@"; }
+cmd_audio() { /usr/sbin/shree-audio "$@"; }
+cmd_powerctl() { /usr/sbin/shree-powerctl "$@"; }
 
 cmd_update() {
   local sub="${1:-apply}"
@@ -219,6 +226,10 @@ case "$COMMAND" in
   network)     cmd_network "$@" ;;
   ethernet)    cmd_ethernet "$@" ;;
   wifi)        cmd_wifi "$@" ;;
+  bluetooth)   cmd_bluetooth "$@" ;;
+  audio)       cmd_audio "$@" ;;
+  battery|power) cmd_powerctl "$COMMAND" "$@" ;;
+  brightness)  cmd_powerctl brightness "$@" ;;
   update)      cmd_update "$@" ;;
   doctor)      cmd_doctor "$@" ;;
   logs)        cmd_logs "$@" ;;

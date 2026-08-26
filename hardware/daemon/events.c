@@ -11,6 +11,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+static int read_int_file(const char *path) {
+    FILE *file = fopen(path, "r");
+    int value = -1;
+    if (file) { (void)fscanf(file, "%d", &value); fclose(file); }
+    return value;
+}
+
 void shreed_events_subscribe(shreed_client_t *client) {
     if (client) client->subscribed = true;
 }
@@ -74,4 +81,19 @@ void shreed_events_process_network(int fd, shreed_client_t clients[]) {
             if (event) shreed_events_emit(clients, event, name);
         }
     }
+}
+
+void shreed_events_poll_optional(shreed_client_t clients[]) {
+    static int bluetooth = -1, audio = -1, battery = -2, ac = -1, brightness = -2;
+    int now_bluetooth = access("/sys/class/bluetooth", R_OK) == 0;
+    int now_audio = access("/proc/asound/cards", R_OK) == 0;
+    int now_battery = read_int_file("/sys/class/power_supply/BAT0/capacity");
+    int now_ac = read_int_file("/sys/class/power_supply/AC/online");
+    int now_brightness = read_int_file("/sys/class/backlight/intel_backlight/brightness");
+    if (bluetooth >= 0 && bluetooth != now_bluetooth) shreed_events_emit(clients, now_bluetooth ? "BLUETOOTH_DEVICE_ADDED" : "BLUETOOTH_DEVICE_REMOVED", "bluetooth");
+    if (audio >= 0 && audio != now_audio) shreed_events_emit(clients, now_audio ? "AUDIO_DEVICE_ADDED" : "AUDIO_DEVICE_REMOVED", "audio");
+    if (battery >= 0 && now_battery >= 0 && battery != now_battery) { shreed_events_emit(clients, "BATTERY_CHANGED", "battery"); if (now_battery <= 15) shreed_events_emit(clients, "BATTERY_LOW", "battery"); }
+    if (ac >= 0 && now_ac >= 0 && ac != now_ac) shreed_events_emit(clients, now_ac ? "POWER_CONNECTED" : "POWER_DISCONNECTED", "power");
+    if (brightness >= 0 && now_brightness >= 0 && brightness != now_brightness) shreed_events_emit(clients, "BRIGHTNESS_CHANGED", "backlight");
+    bluetooth = now_bluetooth; audio = now_audio; battery = now_battery; ac = now_ac; brightness = now_brightness;
 }
