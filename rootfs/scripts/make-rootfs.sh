@@ -43,6 +43,16 @@ if [ "$SKIP_INIT" = false ]; then
   fi
 fi
 
+# Linux executes /init from an initramfs.  Keep ShreeOS's custom /sbin/init
+# as PID 1; this relative symlink is intentionally part of the live rootfs.
+if [ ! -x "${LUMEN_STAGE_ROOT}/sbin/init" ]; then
+  lumen_die "Custom ShreeOS init is missing or not executable."
+fi
+ln -sfn sbin/init "${LUMEN_STAGE_ROOT}/init"
+if [ ! -L "${LUMEN_STAGE_ROOT}/init" ]; then
+  lumen_die "Could not create initramfs /init entry."
+fi
+
 # 2. Create skeleton from templates
 lumen_step "Setting up rootfs skeleton"
 mkdir -p "${LUMEN_STAGE_ROOT}"
@@ -179,6 +189,10 @@ if [ "$SKIP_ARCHIVE" = false ]; then
     cd "${LUMEN_STAGE_ROOT}"
     find . | cpio -o -H newc --quiet | gzip -n > "${ROOTFS_ARCHIVE}"
   )
+  if ! gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet | grep -qx './init' || \
+     ! gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet | grep -qx './sbin/init'; then
+    lumen_die "Initramfs boot assertion failed: expected /init and /sbin/init."
+  fi
   lumen_ok "Rootfs archive: ${ROOTFS_ARCHIVE}"
 fi
 

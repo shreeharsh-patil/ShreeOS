@@ -15,17 +15,17 @@ if loadfont $prefix/fonts/unicode.pf2; then
 fi
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION}" --id="${DISTRO_NAME}" {
-  linux /boot/bzImage root=/dev/sr0 console=ttyS0 quiet
+  linux /boot/bzImage console=ttyS0 quiet
   initrd /boot/initramfs.cpio.gz
 }
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (recovery mode)" --id="recovery" {
-  linux /boot/bzImage root=/dev/sr0 console=ttyS0 single quiet
+  linux /boot/bzImage console=ttyS0 single quiet
   initrd /boot/initramfs.cpio.gz
 }
 
 menuentry "${DISTRO_NAME} Previous Working State" --id="previous-working-state" {
-  linux /boot/bzImage root=/dev/sr0 shreeos.rollback=1 console=ttyS0 quiet
+  linux /boot/bzImage shreeos.rollback=1 console=ttyS0 quiet
   initrd /boot/initramfs.cpio.gz
 }
 

@@ -6,7 +6,6 @@
 #include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <dirent.h>
-#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -20,28 +19,64 @@ static int read_int_file(const char *path) {
     return value;
 }
 
-/* A compact state fingerprint avoids fixed device names while keeping the
- * optional fallback monitor cheap. Netlink remains the primary monitor. */
-static unsigned long class_fingerprint(const char *directory, const char *wanted_type,
-                                       const char *value_name) {
-    DIR *dir = opendir(directory); struct dirent *entry; unsigned long hash = 5381;
+typedef struct {
+    unsigned bluetooth_count;
+    unsigned audio_count;
+    unsigned battery_count;
+    int battery_percent;
+    int mains_online;
+    unsigned backlight_count;
+    unsigned long backlight_value;
+} optional_state_t;
+
+static unsigned count_entries(const char *path) {
+    DIR *dir = opendir(path); struct dirent *entry; unsigned count = 0;
     if (!dir) return 0;
-    while ((entry = readdir(dir))) {
-        char type_path[512], value_path[512], type[64] = ""; int value;
-        if (entry->d_name[0] == '.') continue;
-        if (wanted_type) {
-            snprintf(type_path, sizeof(type_path), "%s/%s/type", directory, entry->d_name);
-            FILE *file = fopen(type_path, "r");
+    while ((entry = readdir(dir))) if (entry->d_name[0] != '.') count++;
+    closedir(dir); return count;
+}
+
+static optional_state_t collect_optional_state(void) {
+    optional_state_t state = {0}; DIR *dir; struct dirent *entry;
+    state.bluetooth_count = count_entries("/sys/class/bluetooth");
+    state.audio_count = count_entries("/sys/class/sound");
+    state.mains_online = 0;
+    dir = opendir("/sys/class/power_supply");
+    if (dir) {
+        int capacity_total = 0;
+        while ((entry = readdir(dir))) {
+            char type_path[512], value_path[512], type[64] = ""; FILE *file;
+            if (entry->d_name[0] == '.') continue;
+            snprintf(type_path, sizeof(type_path), "/sys/class/power_supply/%s/type", entry->d_name);
+            file = fopen(type_path, "r");
             if (!file || !fgets(type, sizeof(type), file)) { if (file) fclose(file); continue; }
             fclose(file); type[strcspn(type, "\r\n")] = 0;
-            if (strcmp(type, wanted_type) != 0) continue;
+            if (strcmp(type, "Battery") == 0) {
+                snprintf(value_path, sizeof(value_path), "/sys/class/power_supply/%s/capacity", entry->d_name);
+                int capacity = read_int_file(value_path);
+                state.battery_count++;
+                if (capacity >= 0 && capacity <= 100) capacity_total += capacity;
+            } else if (strcmp(type, "Mains") == 0) {
+                snprintf(value_path, sizeof(value_path), "/sys/class/power_supply/%s/online", entry->d_name);
+                if (read_int_file(value_path) > 0) state.mains_online = 1;
+            }
         }
-        snprintf(value_path, sizeof(value_path), "%s/%s/%s", directory, entry->d_name, value_name);
-        value = read_int_file(value_path);
-        for (const unsigned char *p = (const unsigned char *)entry->d_name; *p; ++p) hash = ((hash << 5) + hash) ^ *p;
-        hash = ((hash << 5) + hash) ^ (unsigned long)(value + 1);
+        closedir(dir);
+        if (state.battery_count) state.battery_percent = capacity_total / (int)state.battery_count;
+        else state.battery_percent = -1;
+    } else state.battery_percent = -1;
+    dir = opendir("/sys/class/backlight");
+    if (dir) {
+        while ((entry = readdir(dir))) {
+            char value_path[512]; int value;
+            if (entry->d_name[0] == '.') continue;
+            snprintf(value_path, sizeof(value_path), "/sys/class/backlight/%s/brightness", entry->d_name);
+            value = read_int_file(value_path);
+            if (value >= 0) { state.backlight_count++; state.backlight_value += (unsigned long)value; }
+        }
+        closedir(dir);
     }
-    closedir(dir); return hash;
+    return state;
 }
 
 bool shreed_events_subscribe(shreed_client_t clients[], shreed_client_t *client) {
@@ -99,12 +134,8 @@ void shreed_events_process_network(int fd, shreed_client_t clients[]) {
                 event = "NETWORK_INTERFACE_REMOVED";
             } else if (message->nlmsg_type == RTM_NEWLINK) {
                 struct ifinfomsg *link = NLMSG_DATA(message);
-                char wireless_path[128];
                 (void)if_indextoname(link->ifi_index, name);
-                snprintf(wireless_path, sizeof(wireless_path), "/sys/class/net/%s/wireless", name);
-                if (name[0] && access(wireless_path, F_OK) == 0) {
-                    event = (link->ifi_flags & IFF_LOWER_UP) ? "WIFI_CONNECTED" : "WIFI_DISCONNECTED";
-                } else if (link->ifi_index < 65536 && !known_interfaces[link->ifi_index]) {
+                if (link->ifi_index < 65536 && !known_interfaces[link->ifi_index]) {
                     known_interfaces[link->ifi_index] = true;
                     event = "NETWORK_INTERFACE_ADDED";
                 } else {
@@ -117,16 +148,20 @@ void shreed_events_process_network(int fd, shreed_client_t clients[]) {
 }
 
 void shreed_events_poll_optional(shreed_client_t clients[]) {
-    static unsigned long bluetooth = ULONG_MAX, audio = ULONG_MAX, battery = ULONG_MAX, ac = ULONG_MAX, brightness = ULONG_MAX;
-    unsigned long now_bluetooth = class_fingerprint("/sys/class/bluetooth", NULL, "uevent");
-    unsigned long now_audio = class_fingerprint("/sys/class/sound", NULL, "uevent");
-    unsigned long now_battery = class_fingerprint("/sys/class/power_supply", "Battery", "capacity");
-    unsigned long now_ac = class_fingerprint("/sys/class/power_supply", "Mains", "online");
-    unsigned long now_brightness = class_fingerprint("/sys/class/backlight", NULL, "brightness");
-    if (bluetooth != ULONG_MAX && bluetooth != now_bluetooth) shreed_events_emit(clients, now_bluetooth ? "BLUETOOTH_DEVICE_ADDED" : "BLUETOOTH_DEVICE_REMOVED", "bluetooth");
-    if (audio != ULONG_MAX && audio != now_audio) shreed_events_emit(clients, now_audio ? "AUDIO_DEVICE_ADDED" : "AUDIO_DEVICE_REMOVED", "audio");
-    if (battery != ULONG_MAX && battery != now_battery) shreed_events_emit(clients, "BATTERY_CHANGED", "battery");
-    if (ac != ULONG_MAX && ac != now_ac) shreed_events_emit(clients, now_ac ? "POWER_CONNECTED" : "POWER_DISCONNECTED", "power");
-    if (brightness != ULONG_MAX && brightness != now_brightness) shreed_events_emit(clients, "BRIGHTNESS_CHANGED", "backlight");
-    bluetooth = now_bluetooth; audio = now_audio; battery = now_battery; ac = now_ac; brightness = now_brightness;
+    static bool initialized = false; static optional_state_t previous;
+    optional_state_t current = collect_optional_state();
+    if (!initialized) { previous = current; initialized = true; return; }
+    if (current.bluetooth_count != previous.bluetooth_count)
+        shreed_events_emit(clients, current.bluetooth_count > previous.bluetooth_count ? "BLUETOOTH_DEVICE_ADDED" : "BLUETOOTH_DEVICE_REMOVED", "bluetooth");
+    if (current.audio_count != previous.audio_count)
+        shreed_events_emit(clients, current.audio_count > previous.audio_count ? "AUDIO_DEVICE_ADDED" : "AUDIO_DEVICE_REMOVED", "audio");
+    if (current.battery_count != previous.battery_count || current.battery_percent != previous.battery_percent)
+        shreed_events_emit(clients, "BATTERY_CHANGED", "battery");
+    if (previous.battery_percent > 15 && current.battery_percent >= 0 && current.battery_percent <= 15)
+        shreed_events_emit(clients, "BATTERY_LOW", "battery");
+    if (current.mains_online != previous.mains_online)
+        shreed_events_emit(clients, current.mains_online ? "POWER_CONNECTED" : "POWER_DISCONNECTED", "power");
+    if (current.backlight_count != previous.backlight_count || current.backlight_value != previous.backlight_value)
+        shreed_events_emit(clients, "BRIGHTNESS_CHANGED", "backlight");
+    previous = current;
 }

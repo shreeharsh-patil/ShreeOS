@@ -44,6 +44,9 @@ done
 if [ ! -d "$TARGET" ]; then
   shreeos_die "Target mount directory '${TARGET}' does not exist."
 fi
+if [ ! -s "${TARGET}/boot/bzImage" ] || [ ! -s "${TARGET}/boot/initramfs.cpio.gz" ]; then
+  shreeos_die "Target is missing /boot/bzImage or /boot/initramfs.cpio.gz; refusing to generate an unbootable GRUB configuration."
+fi
 
 shreeos_require_cmd grub-install blkid
 
@@ -144,10 +147,8 @@ menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet ${CMDLINE_EXTRA}
-    if [ -f /boot/initramfs.cpio.gz ]; then
-        echo "Loading initramfs..."
-        initrd /boot/initramfs.cpio.gz
-    fi
+    echo "Loading initramfs..."
+    initrd /boot/initramfs.cpio.gz
     echo "Booting ${DISTRO_NAME:-ShreeOS}..."
 }
 
@@ -155,9 +156,13 @@ menuentry "${DISTRO_NAME:-ShreeOS} (Recovery Mode)" {
     echo "Loading Linux kernel in single-user recovery mode..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=UUID=${ROOT_UUID} ro single ${CMDLINE_EXTRA}
-    if [ -f /boot/initramfs.cpio.gz ]; then
-        initrd /boot/initramfs.cpio.gz
-    fi
+    initrd /boot/initramfs.cpio.gz
+}
+
+menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State" {
+    search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
+    linux /boot/bzImage root=UUID=${ROOT_UUID} ro shreeos.rollback=1 ${CMDLINE_EXTRA}
+    initrd /boot/initramfs.cpio.gz
 }
 EOF
 

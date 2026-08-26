@@ -80,8 +80,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid
-
 # Validate hostname strictly: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$
 if ! [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
   shreeos_die "Invalid hostname '${HOSTNAME}'. Must match RFC 1123 format."
@@ -101,12 +99,19 @@ if [ -n "$CREDS_FILE" ]; then
   if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
     shreeos_die "Credentials file must be a regular, non-symlink file."
   fi
-  if [ "$(stat -c '%u' "$CREDS_FILE")" != "$(id -u)" ] || [ $((8#$(stat -c '%a' "$CREDS_FILE") & 077)) -ne 0 ]; then
-    shreeos_die "Credentials file must be owned by the invoking user and have mode 0600."
+  if [ "$(stat -c '%u' "$CREDS_FILE")" != "$(id -u)" ] || [ "$(stat -c '%a' "$CREDS_FILE")" != "600" ]; then
+    shreeos_die "Credentials file must be owned by the invoking user and have mode exactly 0600."
   fi
-  if [ "$(sed -n '$=' "$CREDS_FILE")" -gt 2 ]; then
-    shreeos_die "Credentials file must contain only root and optional user password lines."
+  CREDS_LINE_COUNT=$(awk 'END { print NR }' "$CREDS_FILE")
+  if [ "$CREDS_LINE_COUNT" -lt 1 ] || [ "$CREDS_LINE_COUNT" -gt 2 ]; then
+    shreeos_die "Credentials file must contain one root password line and one optional user password line."
   fi
+  CREDS_ROOT_CHECK=$(sed -n '1p' "$CREDS_FILE")
+  if [ -z "$CREDS_ROOT_CHECK" ]; then
+    CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
+    shreeos_die "Credentials file has an empty root password."
+  fi
+  CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
 fi
 
 # If UEFI requested, require FAT formatting utility
@@ -118,6 +123,27 @@ fi
 
 if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
+fi
+
+# Complete every non-destructive preflight before creating a loop device,
+# partitioning, formatting, or mounting the requested disk.
+STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
+ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/initramfs.cpio.gz"
+BZIMAGE="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/build-kernel/arch/x86/boot/bzImage"
+if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
+  if [ ! -f "${STAGE_ROOT}/usr/share/zoneinfo/${TIMEZONE}" ]; then
+    shreeos_die "Timezone '${TIMEZONE}' is not present in the staged root filesystem."
+  fi
+elif [ ! -s "${ROOTFS_CPIO}" ]; then
+  shreeos_die "No usable rootfs found at ${STAGE_ROOT} or ${ROOTFS_CPIO}."
+fi
+if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"; fi
+if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
+shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid cpio gzip
+if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
+  if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
+    shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
+  fi
 fi
 
 WORKING_DISK="$DISK"
@@ -188,9 +214,6 @@ fi
 
 # 4. Copy rootfs payload
 shreeos_log "Copying root filesystem contents..."
-STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
-ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/initramfs.cpio.gz"
-
 if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if command -v rsync >/dev/null 2>&1; then
     rsync -aHAX "${STAGE_ROOT}/" "$TARGET/"
@@ -201,6 +224,15 @@ elif [ -f "${ROOTFS_CPIO}" ]; then
   gunzip -c "${ROOTFS_CPIO}" | (cd "$TARGET" && cpio -idm)
 else
   shreeos_die "No rootfs found at ${STAGE_ROOT} or ${ROOTFS_CPIO}"
+fi
+
+# The installed boot configuration is independent of the copied rootfs tree.
+# Install the exact validated build artifacts before GRUB is invoked.
+mkdir -p "${TARGET}/boot"
+cp "${BZIMAGE}" "${TARGET}/boot/bzImage"
+cp "${ROOTFS_CPIO}" "${TARGET}/boot/initramfs.cpio.gz"
+if [ ! -s "${TARGET}/boot/bzImage" ] || [ ! -s "${TARGET}/boot/initramfs.cpio.gz" ]; then
+  shreeos_die "Failed to install required kernel or initramfs boot artifact."
 fi
 
 # 5. Configure system identity, timezone and credentials
