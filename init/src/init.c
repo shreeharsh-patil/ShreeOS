@@ -4,7 +4,7 @@
  * Core Features:
  *   - Essential virtual filesystem mounting (/proc, /sys, /dev, /run, /dev/pts, /dev/shm)
  *   - Kernel cmdline parsing for emergency / recovery mode (single, recovery, shreeos.mode=recovery)
- *   - Robust service descriptor parsing (/etc/services.d/*.conf) with comma-separated dependencies
+ *   - Robust service descriptor parsing from /etc/services.d configuration files
  *   - Non-blocking SIGCHLD zombie process reaping (waitpid(-1, WNOHANG))
  *   - Race-free service restart with SIGTERM -> wait -> SIGKILL -> verify dead (ESRCH) sequence
  *   - Safe service configuration reload with live PID & state reconciliation and dead service cleanup
@@ -31,6 +31,8 @@
 #include <time.h>
 #include <dirent.h>
 #include <stdbool.h>
+#include <ctype.h>
+#include <poll.h>
 
 #define MAX_SERVICES 64
 #define SERVICE_DIR "/etc/services.d"
@@ -69,6 +71,29 @@ typedef struct service {
 static service_t services[MAX_SERVICES];
 static int num_services = 0;
 static int ipc_sock_fd = -1;
+
+static bool valid_service_name(const char *name) {
+    if (!name || !*name || strlen(name) >= sizeof(((service_t *)0)->name)) return false;
+    for (const unsigned char *p = (const unsigned char *)name; *p; ++p) {
+        if (!(isalnum(*p) || *p == '-' || *p == '_' || *p == '.')) return false;
+    }
+    return true;
+}
+
+static int write_all_nonblocking(int fd, const char *buffer, size_t length) {
+    size_t written = 0;
+    while (written < length) {
+        ssize_t result = write(fd, buffer + written, length - written);
+        if (result > 0) { written += (size_t)result; continue; }
+        if (result < 0 && errno == EINTR) continue;
+        if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            struct pollfd poll_fd = { .fd = fd, .events = POLLOUT, .revents = 0 };
+            if (poll(&poll_fd, 1, 1000) > 0) continue;
+        }
+        return -1;
+    }
+    return 0;
+}
 
 static volatile sig_atomic_t sigchld_received = 0;
 static volatile sig_atomic_t shutdown_requested = 0;
@@ -479,7 +504,7 @@ static void supervise_services(void) {
 
 static void init_ipc_socket(void) {
     unlink(INIT_SOCK_PATH);
-    ipc_sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    ipc_sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (ipc_sock_fd < 0) return;
 
     struct sockaddr_un addr;
@@ -488,8 +513,10 @@ static void init_ipc_socket(void) {
     strncpy(addr.sun_path, INIT_SOCK_PATH, sizeof(addr.sun_path) - 1);
 
     if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-        chmod(INIT_SOCK_PATH, 0666);
-        listen(ipc_sock_fd, 8);
+        if (chmod(INIT_SOCK_PATH, 0600) != 0 || listen(ipc_sock_fd, 8) != 0) {
+            close(ipc_sock_fd);
+            ipc_sock_fd = -1;
+        }
     } else {
         close(ipc_sock_fd);
         ipc_sock_fd = -1;
@@ -499,7 +526,7 @@ static void init_ipc_socket(void) {
 static void handle_ipc_connections(void) {
     if (ipc_sock_fd < 0) return;
 
-    int client_fd = accept(ipc_sock_fd, NULL, NULL);
+    int client_fd = accept4(ipc_sock_fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
     if (client_fd < 0) return;
 
     /* Authenticate peer credentials via SO_PEERCRED */
@@ -522,7 +549,7 @@ static void handle_ipc_connections(void) {
     char *nl = strchr(cmd, '\n'); if (nl) *nl = '\0';
     char *cr = strchr(cmd, '\r'); if (cr) *cr = '\0';
 
-    if (strncmp(cmd, "LIST", 4) == 0) {
+    if (strcmp(cmd, "LIST") == 0) {
         char *p = res;
         size_t rem = sizeof(res);
         p += snprintf(p, rem, "%-16s %-10s %-8s %s\n", "SERVICE", "STATE", "PID", "COMMAND");
@@ -533,7 +560,7 @@ static void handle_ipc_connections(void) {
                           services[i].name, state_to_str(services[i].state),
                           services[i].pid, services[i].command);
         }
-    } else if (strncmp(cmd, "STATUS ", 7) == 0) {
+    } else if (strncmp(cmd, "STATUS ", 7) == 0 && valid_service_name(cmd + 7)) {
         char *target = cmd + 7;
         service_t *s = find_service(target);
         if (s) {
@@ -545,7 +572,7 @@ static void handle_ipc_connections(void) {
     } else if (!is_root) {
         /* Restrict all mutating operations to root */
         snprintf(res, sizeof(res), "ERROR: Permission denied (root privileges required for %s)\n", cmd);
-    } else if (strncmp(cmd, "START ", 6) == 0) {
+    } else if (strncmp(cmd, "START ", 6) == 0 && valid_service_name(cmd + 6)) {
         char *target = cmd + 6;
         service_t *s = find_service(target);
         if (s) {
@@ -557,7 +584,7 @@ static void handle_ipc_connections(void) {
         } else {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
-    } else if (strncmp(cmd, "STOP ", 5) == 0) {
+    } else if (strncmp(cmd, "STOP ", 5) == 0 && valid_service_name(cmd + 5)) {
         char *target = cmd + 5;
         service_t *s = find_service(target);
         if (s) {
@@ -566,7 +593,7 @@ static void handle_ipc_connections(void) {
         } else {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
-    } else if (strncmp(cmd, "RESTART ", 8) == 0) {
+    } else if (strncmp(cmd, "RESTART ", 8) == 0 && valid_service_name(cmd + 8)) {
         char *target = cmd + 8;
         service_t *s = find_service(target);
         if (s) {
@@ -575,14 +602,14 @@ static void handle_ipc_connections(void) {
         } else {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
-    } else if (strncmp(cmd, "RELOAD", 6) == 0) {
+    } else if (strcmp(cmd, "RELOAD") == 0) {
         load_and_reconcile_services();
         snprintf(res, sizeof(res), "OK: Service configuration reloaded\n");
     } else {
         snprintf(res, sizeof(res), "ERROR: Unknown command\n");
     }
 
-    write(client_fd, res, strlen(res));
+    (void)write_all_nonblocking(client_fd, res, strlen(res));
     close(client_fd);
 }
 

@@ -68,5 +68,7 @@ libxcrypt	4.4.36	https://github.com/besser82/libxcrypt/releases/download/v4.4.36
 # wpa_supplicant 2.11
 wpa_supplicant	2.11	https://w1.fi/releases/wpa_supplicant-2.11.tar.gz	912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
 
-# IANA tzdata 2025b
+# IANA timezone database 2025b. tzcode supplies the host zic compiler;
+# tzdata supplies the source rules installed as target TZif data.
+tzcode	2025b	https://data.iana.org/time-zones/releases/tzcode2025b.tar.gz	05f8fedb3525ee70d49c87d3fae78a8a0dbae4fe87aa565c65cda9948ae135ec
 tzdata	2025b	https://data.iana.org/time-zones/releases/tzdata2025b.tar.gz	11810413345fc7805017e27ea9fa4885fd74cd61b2911711ad038f5d28d71474

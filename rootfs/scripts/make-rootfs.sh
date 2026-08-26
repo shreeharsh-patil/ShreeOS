@@ -43,16 +43,6 @@ if [ "$SKIP_INIT" = false ]; then
   fi
 fi
 
-# Linux executes /init from an initramfs.  Keep ShreeOS's custom /sbin/init
-# as PID 1; this relative symlink is intentionally part of the live rootfs.
-if [ ! -x "${LUMEN_STAGE_ROOT}/sbin/init" ]; then
-  lumen_die "Custom ShreeOS init is missing or not executable."
-fi
-ln -sfn sbin/init "${LUMEN_STAGE_ROOT}/init"
-if [ ! -L "${LUMEN_STAGE_ROOT}/init" ]; then
-  lumen_die "Could not create initramfs /init entry."
-fi
-
 # 2. Create skeleton from templates
 lumen_step "Setting up rootfs skeleton"
 mkdir -p "${LUMEN_STAGE_ROOT}"
@@ -159,6 +149,16 @@ else
   if [ ! -f "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init" ]; then
     shreeos_die "No init binary at ${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init (use --skip-init only if it already exists)"
   fi
+fi
+
+# Linux executes /init from an initramfs.  This must follow the custom-init
+# build/install step so a completely empty build directory is supported.
+if [ ! -x "${LUMEN_STAGE_ROOT}/sbin/init" ]; then
+  lumen_die "Custom ShreeOS init is missing or not executable."
+fi
+ln -sfn sbin/init "${LUMEN_STAGE_ROOT}/init"
+if [ ! -L "${LUMEN_STAGE_ROOT}/init" ] || [ "$(readlink "${LUMEN_STAGE_ROOT}/init")" != "sbin/init" ]; then
+  lumen_die "Could not create the required relative initramfs /init -> sbin/init link."
 fi
 
 # 4. Verify base system essentials

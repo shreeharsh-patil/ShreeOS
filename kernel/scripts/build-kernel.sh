@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-kernel.sh — Cross-compile the ShreeOS kernel with embedded initramfs
+# build-kernel.sh — Cross-compile the ShreeOS kernel
 #
 # Prerequisites:
 #   - Phase 1 cross-compiler in $LUMEN_TOOLS/bin/
@@ -47,8 +47,14 @@ if [ ! -d "$SRCDIR" ]; then
   tar -xJf "${KERNEL_SOURCES}/${ARCHIVE}" -C "${KERNEL_SOURCES}"
 fi
 
-# 2. Build the initramfs (unless skipped)
-if [ "$SKIP_INIT" = false ]; then
+# 2. The halt-only kernel/initramfs test program is intentionally restricted
+# to the dedicated qemu-kernel-test profile. Production profiles boot with an
+# external ShreeOS initramfs and must never embed this test payload.
+EMBED_TEST_INITRAMFS=false
+if [ "${PROFILE:-desktop}" = "qemu-kernel-test" ]; then
+  EMBED_TEST_INITRAMFS=true
+fi
+if [ "$EMBED_TEST_INITRAMFS" = true ] && [ "$SKIP_INIT" = false ]; then
   lumen_step "Building initramfs for boot testing"
   make -C "$KERNEL_INITRAMFS_SRC" clean all
   if [ ! -f "${KERNEL_INITRAMFS_SRC}/initramfs.cpio.gz" ]; then
@@ -82,10 +88,14 @@ lumen_log "Applying kernel config profile: $(basename "$KERNEL_CFG")"
   -m "$KERNEL_BUILDDIR/.config" \
   "$KERNEL_CFG"
 
-# Set the initramfs source path (relative to kernel build dir)
-"${SRCDIR}/scripts/config" \
-  --file "$KERNEL_BUILDDIR/.config" \
-  --set-str INITRAMFS_SOURCE "${KERNEL_INITRAMFS_SRC}/initramfs.cpio.gz"
+# Set an embedded initramfs only for the dedicated kernel-test profile.
+if [ "$EMBED_TEST_INITRAMFS" = true ]; then
+  "${SRCDIR}/scripts/config" --file "$KERNEL_BUILDDIR/.config" \
+    --set-str INITRAMFS_SOURCE "${KERNEL_INITRAMFS_SRC}/initramfs.cpio.gz"
+else
+  "${SRCDIR}/scripts/config" --file "$KERNEL_BUILDDIR/.config" \
+    --set-str INITRAMFS_SOURCE ""
+fi
 
 # Resolve any new dependencies
 make -C "$SRCDIR" O="$KERNEL_BUILDDIR" ARCH="${LUMEN_ARCH}" olddefconfig
@@ -131,7 +141,7 @@ echo "  Arch:     ${LUMEN_ARCH}"
 echo "  Config:   ${KERNEL_BUILDDIR}/.config"
 echo "  bzImage:  ${BZIMAGE}"
 echo "  Modules:  ${LUMEN_STAGE_ROOT}/lib/modules"
-echo "  Initramfs: ${KERNEL_INITRAMFS_SRC}/initramfs.cpio.gz"
+echo "  Embedded test initramfs: ${EMBED_TEST_INITRAMFS}"
 echo "============================================"
 echo ""
 echo "To boot in QEMU:"
