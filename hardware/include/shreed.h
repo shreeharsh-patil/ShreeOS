@@ -9,13 +9,23 @@
 #define SHREED_LOG_PATH "/var/log/shreeos/shreed.log"
 #define SHREED_MAX_CLIENTS 32
 #define SHREED_MAX_MESSAGE 1024
-#define SHREED_RESPONSE_MAX 512
+#define SHREED_RESPONSE_MAX 16384
 
 typedef enum {
     SHREED_REQUEST_INVALID = 0,
     SHREED_REQUEST_PING,
     SHREED_REQUEST_STATUS,
-    SHREED_REQUEST_SUBSCRIBE
+    SHREED_REQUEST_SUBSCRIBE,
+    SHREED_REQUEST_HARDWARE,
+    SHREED_REQUEST_CPU,
+    SHREED_REQUEST_GPU,
+    SHREED_REQUEST_MEMORY,
+    SHREED_REQUEST_DISKS,
+    SHREED_REQUEST_PCI,
+    SHREED_REQUEST_USB,
+    SHREED_REQUEST_NETWORK,
+    SHREED_REQUEST_INTERFACES,
+    SHREED_REQUEST_ETHERNET
 } shreed_request_type_t;
 
 typedef struct {
@@ -48,5 +58,8 @@ int shreed_open_log(const char *path);
 void shreed_log(int fd, const char *message);
 
 void shreed_events_subscribe(shreed_client_t *client);
+void shreed_events_emit(shreed_client_t clients[], const char *event, const char *interface);
+int shreed_events_open_network_monitor(void);
+void shreed_events_process_network(int fd, shreed_client_t clients[]);
 
 #endif

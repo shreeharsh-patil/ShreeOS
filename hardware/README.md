@@ -1,8 +1,7 @@
 # ShreeOS Hardware Service
 
-`shreed` is the native ShreeOS hardware-service foundation.  Phase 1 exposes
-only a local, read-only health interface; it deliberately performs no hardware
-probing or device control.
+`shreed` is the native ShreeOS hardware service. It exposes local, read-only
+health and hardware inventory interfaces; it performs no device control.
 
 ## IPC
 
@@ -16,10 +15,31 @@ Supported requests:
 {"action":"ping"}
 {"action":"status"}
 {"action":"subscribe"}
+{"action":"hardware"}
+{"action":"cpu"}
+{"action":"gpu"}
+{"action":"memory"}
+{"action":"disks"}
+{"action":"pci"}
+{"action":"usb"}
+{"action":"network"}
+{"action":"interfaces"}
+{"action":"ethernet"}
 ```
 
-`subscribe` keeps the connection registered for future hardware events.  No
-hardware events are emitted in Phase 1.
+`subscribe` keeps the connection registered for asynchronous events. Network
+changes are received from the Linux rtnetlink API and emit
+`NETWORK_INTERFACE_ADDED`, `NETWORK_INTERFACE_REMOVED`, `NETWORK_CONNECTED`,
+`NETWORK_DISCONNECTED`, and `IP_ADDRESS_CHANGED` event objects.
+
+Network queries use kernel sysfs, `getifaddrs(3)`, `/proc/net/route`, and
+`/etc/resolv.conf`; no NetworkManager dependency is required. The boot service
+brings up Ethernet devices and tries `dhcpcd`, falling back to BusyBox
+`udhcpc`. Failure is explicitly non-fatal so it cannot block boot.
+
+The hardware requests read kernel-provided `/proc` and `/sys` data only. They
+return `null`, empty lists, or zero counts when an interface or device is not
+available; no values are inferred from external command output.
 
 The socket mode is `0666` because every implemented operation is read-only and
 contains no sensitive data.  The daemon limits active clients, validates peer

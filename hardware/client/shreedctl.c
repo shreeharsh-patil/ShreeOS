@@ -40,7 +40,87 @@ static int read_all(int fd, void *buffer, size_t length) {
 }
 
 static void usage(void) {
-    fprintf(stderr, "Usage: shreedctl <ping|status> [--json] [--socket <path>]\n");
+    fprintf(stderr, "Usage: shreedctl <ping|status|hardware|cpu|gpu|memory|disks|pci|usb|network|interfaces|ethernet> [--json] [--socket <path>]\n");
+}
+
+static bool supported_action(const char *action) {
+    return strcmp(action, "ping") == 0 || strcmp(action, "status") == 0 ||
+           strcmp(action, "hardware") == 0 || strcmp(action, "cpu") == 0 ||
+           strcmp(action, "gpu") == 0 || strcmp(action, "memory") == 0 ||
+           strcmp(action, "disks") == 0 || strcmp(action, "pci") == 0 ||
+           strcmp(action, "usb") == 0 || strcmp(action, "network") == 0 ||
+           strcmp(action, "interfaces") == 0 || strcmp(action, "ethernet") == 0;
+}
+
+static bool json_string(const char *json, const char *key, char *output, size_t size) {
+    char pattern[64];
+    const char *cursor;
+    size_t length = 0;
+
+    snprintf(pattern, sizeof(pattern), "\"%s\":", key);
+    cursor = strstr(json, pattern);
+    if (!cursor || strncmp(cursor + strlen(pattern), "null", 4) == 0) return false;
+    cursor += strlen(pattern);
+    if (*cursor != '"') return false;
+    cursor++;
+    while (*cursor && *cursor != '"' && length + 1 < size) {
+        if (*cursor == '\\' && cursor[1]) cursor++;
+        output[length++] = *cursor++;
+    }
+    output[length] = '\0';
+    return *cursor == '"';
+}
+
+static bool json_uint64(const char *json, const char *key, unsigned int occurrence, uint64_t *value) {
+    char pattern[64];
+    const char *cursor = json;
+    char *end;
+
+    snprintf(pattern, sizeof(pattern), "\"%s\":", key);
+    for (unsigned int index = 0; index <= occurrence; index++) {
+        cursor = strstr(cursor, pattern);
+        if (!cursor) return false;
+        cursor += strlen(pattern);
+    }
+    errno = 0;
+    *value = strtoull(cursor, &end, 10);
+    return errno == 0 && end != cursor;
+}
+
+static void print_size(uint64_t bytes) {
+    printf("%llu GB", (unsigned long long)(bytes / (1024ULL * 1024ULL * 1024ULL)));
+}
+
+static void print_pretty(const char *action, const char *response) {
+    char value[512];
+    uint64_t amount;
+
+    if (strcmp(action, "ping") == 0) {
+        printf("shreed: pong\n");
+    } else if (strcmp(action, "status") == 0) {
+        printf("shreed: healthy\n");
+    } else if (strcmp(action, "hardware") == 0) {
+        if (json_string(response, "model", value, sizeof(value))) printf("CPU: %s\n", value);
+        else printf("CPU: unavailable\n");
+        if (json_string(response, "name", value, sizeof(value))) printf("GPU: %s\n", value);
+        else printf("GPU: unavailable\n");
+        if (json_uint64(response, "total_bytes", 0, &amount)) {
+            printf("Memory: "); print_size(amount); printf("\n");
+        } else printf("Memory: unavailable\n");
+        if (json_uint64(response, "total_bytes", 1, &amount)) {
+            printf("Storage: "); print_size(amount); printf("\n");
+        } else printf("Storage: unavailable\n");
+        if (json_string(response, "architecture", value, sizeof(value))) printf("Architecture: %s\n", value);
+        if (json_string(response, "kernel", value, sizeof(value))) printf("Kernel: %s\n", value);
+    } else if (strcmp(action, "cpu") == 0 && json_string(response, "model", value, sizeof(value))) {
+        printf("CPU: %s\n", value);
+    } else if (strcmp(action, "gpu") == 0 && json_string(response, "name", value, sizeof(value))) {
+        printf("GPU: %s\n", value);
+    } else if (strcmp(action, "memory") == 0 && json_uint64(response, "total_bytes", 0, &amount)) {
+        printf("Memory: "); print_size(amount); printf("\n");
+    } else {
+        printf("%s\n", response);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -59,7 +139,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     action = argv[1];
-    if (strcmp(action, "ping") != 0 && strcmp(action, "status") != 0) {
+    if (!supported_action(action)) {
         usage();
         return 2;
     }
@@ -71,7 +151,11 @@ int main(int argc, char **argv) {
             return 2;
         }
     }
-    request = strcmp(action, "ping") == 0 ? "{\"action\":\"ping\"}" : "{\"action\":\"status\"}";
+    {
+        static char request_buffer[64];
+        snprintf(request_buffer, sizeof(request_buffer), "{\"action\":\"%s\"}", action);
+        request = request_buffer;
+    }
 
     fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) {
@@ -116,10 +200,6 @@ int main(int argc, char **argv) {
     }
     if (json_output) {
         printf("%s\n", response);
-    } else if (strcmp(action, "ping") == 0) {
-        printf("shreed: pong\n");
-    } else {
-        printf("shreed: healthy\n");
-    }
+    } else print_pretty(action, response);
     return 0;
 }

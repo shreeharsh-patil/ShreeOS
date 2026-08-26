@@ -25,7 +25,10 @@ Usage:
   shreectl info                        Display system summary and hardware specs
   shreectl services [list|start|stop|restart|status] Check and control supervised services
   shreectl daemon <status|ping> [--json]  Query the ShreeOS hardware daemon
-  shreectl network [status|ip|restart] Manage network interfaces and connectivity
+  shreectl hardware [--json]              Show detected hardware summary
+  shreectl cpu|gpu|memory|disks|pci|usb [--json]  Query detected hardware
+  shreectl network [interfaces] [--json]     Show network state
+  shreectl ethernet [status] [--json]        Show wired Ethernet state
   shreectl update [check|apply]        Check and apply package updates
   shreectl doctor                      Run comprehensive system health diagnostics
   shreectl logs [service-name|kernel|system] View service and system supervisor logs
@@ -98,15 +101,38 @@ cmd_daemon() {
   esac
 }
 
+cmd_hardware() {
+  local action="$1"
+  shift
+  if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--json" ]; }; then
+    echo "Usage: shreectl ${action} [--json]" >&2
+    return 1
+  fi
+  shreedctl "$action" "$@"
+}
+
 cmd_network() {
-  local sub="${1:-status}"
-  shift 2>/dev/null || true
+  local sub="network"
+  if [ "${1:-}" = "interfaces" ] || [ "${1:-}" = "status" ]; then
+    sub="$1"
+    shift
+  fi
   case "$sub" in
-    status) shree-net status ;;
-    ip)     shree-net ip ;;
-    scan)   shree-net scan ;;
-    restart) shree-net restart ;;
-    *)      echo "Usage: shreectl network [status|ip|scan|restart]"; exit 1 ;;
+    network|status) shreedctl network "$@" ;;
+    interfaces) shreedctl interfaces "$@" ;;
+    *) echo "Usage: shreectl network [interfaces] [--json]" >&2; return 1 ;;
+  esac
+}
+
+cmd_ethernet() {
+  local sub="ethernet"
+  if [ "${1:-}" = "status" ]; then
+    sub="$1"
+    shift
+  fi
+  case "$sub" in
+    ethernet|status) shreedctl ethernet "$@" ;;
+    *) echo "Usage: shreectl ethernet [status] [--json]" >&2; return 1 ;;
   esac
 }
 
@@ -186,7 +212,9 @@ case "$COMMAND" in
   info)        cmd_info "$@" ;;
   services)    cmd_services "$@" ;;
   daemon)      cmd_daemon "$@" ;;
+  hardware|cpu|gpu|memory|disks|pci|usb) cmd_hardware "$COMMAND" "$@" ;;
   network)     cmd_network "$@" ;;
+  ethernet)    cmd_ethernet "$@" ;;
   update)      cmd_update "$@" ;;
   doctor)      cmd_doctor "$@" ;;
   logs)        cmd_logs "$@" ;;

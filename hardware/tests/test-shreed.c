@@ -141,6 +141,10 @@ int main(int argc, char **argv) {
          strstr(response, "\"pong\":true") != NULL);
     TEST("status response", exchange(socket_path, "{\"action\":\"status\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"status\":\"healthy") != NULL);
+    TEST("network IPC query", exchange(socket_path, "{\"action\":\"network\"}", response, sizeof(response)) == 0 &&
+         strstr(response, "\"interfaces\"") != NULL && strstr(response, "\"dns_servers\"") != NULL);
+    TEST("Ethernet IPC query", exchange(socket_path, "{\"action\":\"ethernet\"}", response, sizeof(response)) == 0 &&
+         strstr(response, "\"interfaces\"") != NULL);
     TEST("event subscription acknowledgement", exchange(socket_path, "{\"action\":\"subscribe\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"subscription\":\"hardware") != NULL);
     TEST("invalid JSON produces structured error", exchange(socket_path, "{\"secret\":\"do-not-log\"}", response, sizeof(response)) == 0 &&

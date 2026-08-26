@@ -5,7 +5,8 @@ CC := $(CROSS_COMPILE)gcc
 CFLAGS := -std=gnu11 -Wall -Wextra -Werror -Os -Iinclude
 LDFLAGS := -static
 
-DAEMON_SRCS := daemon/shreed.c daemon/ipc.c daemon/events.c daemon/security.c
+DEVICE_SRCS := devices/common.c devices/cpu.c devices/gpu.c devices/memory.c devices/storage.c devices/pci.c devices/usb.c devices/network.c devices/hardware.c
+DAEMON_SRCS := daemon/shreed.c daemon/ipc.c daemon/events.c daemon/security.c $(DEVICE_SRCS)
 CLIENT_SRCS := client/shreedctl.c
 BINS := shreed shreedctl
 

@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "shreed.h"
+#include "devices.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -60,7 +61,29 @@ static void queue_error(shreed_client_t *client, const char *code, const char *m
     (void)shreed_queue_response(client, response);
 }
 
-static void process_request(shreed_client_t *client) {
+static void queue_collector_response(shreed_client_t *client, const char *root,
+                                     shreed_request_type_t type) {
+    char response[SHREED_RESPONSE_MAX + 1];
+    int result;
+
+    switch (type) {
+        case SHREED_REQUEST_HARDWARE: result = shreed_collect_hardware(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_CPU: result = shreed_collect_cpu(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_GPU: result = shreed_collect_gpu(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_MEMORY: result = shreed_collect_memory(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_DISKS: result = shreed_collect_storage(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_PCI: result = shreed_collect_pci(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_USB: result = shreed_collect_usb(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_NETWORK:
+        case SHREED_REQUEST_INTERFACES: result = shreed_collect_network(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_ETHERNET: result = shreed_collect_ethernet(root, response, sizeof(response)); break;
+        default: result = -1; break;
+    }
+    if (result == 0 && shreed_queue_response(client, response) == 0) return;
+    queue_error(client, "COLLECTOR_FAILURE", "Hardware information could not be encoded");
+}
+
+static void process_request(shreed_client_t *client, const char *root) {
     shreed_request_t request;
 
     if (shreed_parse_request(client->payload, client->payload_length, &request) != 0) {
@@ -80,6 +103,18 @@ static void process_request(shreed_client_t *client) {
             shreed_events_subscribe(client);
             (void)shreed_queue_response(client,
                 "{\"ok\":true,\"result\":{\"subscription\":\"hardware\",\"state\":\"active\"}}");
+            break;
+        case SHREED_REQUEST_HARDWARE:
+        case SHREED_REQUEST_CPU:
+        case SHREED_REQUEST_GPU:
+        case SHREED_REQUEST_MEMORY:
+        case SHREED_REQUEST_DISKS:
+        case SHREED_REQUEST_PCI:
+        case SHREED_REQUEST_USB:
+        case SHREED_REQUEST_NETWORK:
+        case SHREED_REQUEST_INTERFACES:
+        case SHREED_REQUEST_ETHERNET:
+            queue_collector_response(client, root, request.type);
             break;
         default:
             queue_error(client, "INVALID_REQUEST", "Unsupported action");
@@ -114,15 +149,17 @@ static void accept_clients(int listener, shreed_client_t clients[], int log_fd) 
 }
 
 static void usage(void) {
-    fprintf(stderr, "Usage: shreed [--foreground] [--socket <path>] [--log <path>]\n");
+    fprintf(stderr, "Usage: shreed [--foreground] [--socket <path>] [--log <path>] [--root <path>]\n");
 }
 
 int main(int argc, char **argv) {
     const char *socket_path = SHREED_SOCKET_PATH;
     const char *log_path = SHREED_LOG_PATH;
+    const char *root = "";
     shreed_client_t clients[SHREED_MAX_CLIENTS];
     struct sigaction action;
     int listener = -1;
+    int network_monitor = -1;
     int log_fd = -1;
     int exit_code = 1;
 
@@ -132,6 +169,8 @@ int main(int argc, char **argv) {
             socket_path = argv[++argument];
         } else if (strcmp(argv[argument], "--log") == 0 && argument + 1 < argc) {
             log_path = argv[++argument];
+        } else if (strcmp(argv[argument], "--root") == 0 && argument + 1 < argc && argv[argument + 1][0] == '/') {
+            root = argv[++argument];
         } else {
             usage();
             return 2;
@@ -157,17 +196,25 @@ int main(int argc, char **argv) {
         fprintf(stderr, "shreed: cannot create IPC socket: %s\n", strerror(errno));
         goto cleanup;
     }
+    network_monitor = shreed_events_open_network_monitor();
+    if (network_monitor < 0) shreed_log(log_fd, "network event monitor unavailable");
     shreed_log(log_fd, "started");
 
     while (!shutdown_requested) {
-        struct pollfd poll_fds[SHREED_MAX_CLIENTS + 1];
-        int client_indices[SHREED_MAX_CLIENTS + 1];
+        struct pollfd poll_fds[SHREED_MAX_CLIENTS + 2];
+        int client_indices[SHREED_MAX_CLIENTS + 2];
         nfds_t count = 1;
 
         poll_fds[0].fd = listener;
         poll_fds[0].events = POLLIN;
         poll_fds[0].revents = 0;
         client_indices[0] = -1;
+        if (network_monitor >= 0) {
+            poll_fds[count].fd = network_monitor;
+            poll_fds[count].events = POLLIN;
+            poll_fds[count].revents = 0;
+            client_indices[count++] = -2;
+        }
         for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {
             if (clients[index].fd < 0) continue;
             poll_fds[count].fd = clients[index].fd;
@@ -181,10 +228,15 @@ int main(int argc, char **argv) {
             continue;
         }
         if (poll_fds[0].revents & POLLIN) accept_clients(listener, clients, log_fd);
+        if (network_monitor >= 0 && poll_fds[1].revents & POLLIN)
+            shreed_events_process_network(network_monitor, clients);
 
         for (nfds_t item = 1; item < count; item++) {
-            shreed_client_t *client = &clients[client_indices[item]];
+            shreed_client_t *client;
             int result;
+
+            if (client_indices[item] == -2) continue;
+            client = &clients[client_indices[item]];
 
             if (poll_fds[item].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 close_client(client);
@@ -192,7 +244,7 @@ int main(int argc, char **argv) {
             }
             if (poll_fds[item].revents & POLLIN) {
                 result = shreed_read_frame(client);
-                if (result == 1) process_request(client);
+                if (result == 1) process_request(client, root);
                 else if (result == -2) queue_error(client, "MALFORMED_FRAME", "Frame length is invalid");
                 else if (result < 0) close_client(client);
             }
@@ -215,6 +267,7 @@ int main(int argc, char **argv) {
 cleanup:
     for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) close_client(&clients[index]);
     if (listener >= 0) close(listener);
+    if (network_monitor >= 0) close(network_monitor);
     if (socket_path) unlink(socket_path);
     if (log_fd >= 0) close(log_fd);
     return exit_code;

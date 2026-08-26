@@ -38,7 +38,7 @@ int shreed_parse_request(const char *payload, size_t length,
     const char *cursor = payload;
     const char *end = payload + length;
     char key[16];
-    char action[16];
+    char action[32];
 
     if (!payload || !request || length == 0 || length > SHREED_MAX_MESSAGE) return -1;
     request->type = SHREED_REQUEST_INVALID;
@@ -59,6 +59,16 @@ int shreed_parse_request(const char *payload, size_t length,
     if (strcmp(action, "ping") == 0) request->type = SHREED_REQUEST_PING;
     else if (strcmp(action, "status") == 0) request->type = SHREED_REQUEST_STATUS;
     else if (strcmp(action, "subscribe") == 0) request->type = SHREED_REQUEST_SUBSCRIBE;
+    else if (strcmp(action, "hardware") == 0) request->type = SHREED_REQUEST_HARDWARE;
+    else if (strcmp(action, "cpu") == 0) request->type = SHREED_REQUEST_CPU;
+    else if (strcmp(action, "gpu") == 0) request->type = SHREED_REQUEST_GPU;
+    else if (strcmp(action, "memory") == 0) request->type = SHREED_REQUEST_MEMORY;
+    else if (strcmp(action, "disks") == 0) request->type = SHREED_REQUEST_DISKS;
+    else if (strcmp(action, "pci") == 0) request->type = SHREED_REQUEST_PCI;
+    else if (strcmp(action, "usb") == 0) request->type = SHREED_REQUEST_USB;
+    else if (strcmp(action, "network") == 0) request->type = SHREED_REQUEST_NETWORK;
+    else if (strcmp(action, "interfaces") == 0) request->type = SHREED_REQUEST_INTERFACES;
+    else if (strcmp(action, "ethernet") == 0) request->type = SHREED_REQUEST_ETHERNET;
     else return -1;
 
     return 0;
