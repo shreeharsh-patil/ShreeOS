@@ -26,6 +26,11 @@ menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (recovery mode)" --id="recovery" {
   initrd /boot/initramfs.cpio.gz
 }
 
+menuentry "${DISTRO_NAME} Previous Working State" --id="previous-working-state" {
+  linux /boot/bzImage shreeos.rollback=1 console=ttyS0 quiet
+  initrd /boot/initramfs.cpio.gz
+}
+
 menuentry "Reboot" --id="reboot" {
   reboot
 }

@@ -49,10 +49,10 @@ while true; do
       read -r -p "Press Enter to return..." _
       ;;
     4)
-      shreectl snapshots list
+      lpm history || true
       read -r -p "Enter snapshot ID to restore: " SNAP_ID
       if [ -n "$SNAP_ID" ]; then
-        shreectl snapshots rollback "$SNAP_ID"
+        lpm rollback "$SNAP_ID" || true
       fi
       read -r -p "Press Enter to return..." _
       ;;
