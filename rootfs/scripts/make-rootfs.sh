@@ -58,7 +58,7 @@ if [ -d "${ROOTFS_DIR}/skeleton/etc" ]; then
   done
 fi
 
-# 3. Compile and install init + services
+# 3. Compile and install init, hardware service, and services
 if [ "$SKIP_INIT" = false ]; then
   shreeos_step "Building custom init and initctl"
   export CROSS_COMPILE="${SHREEOS_TARGET_TRIPLET:-${LUMEN_TARGET_TRIPLET}}-"
@@ -90,6 +90,19 @@ if [ "$SKIP_INIT" = false ]; then
   if [ -d "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services" ]; then
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services/"*.conf "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/etc/services.d/" 2>/dev/null || true
     shreeos_ok "Installed service definitions to /etc/services.d"
+  fi
+
+  shreeos_step "Building ShreeOS hardware service"
+  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware" clean all
+  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreed" ]; then
+    mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreed" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
+    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreedctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
+    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
+    shreeos_ok "Installed shreed and shreedctl"
+  else
+    shreeos_die "shreed build failed"
   fi
 
   # 3b. Compile and install LPM package manager

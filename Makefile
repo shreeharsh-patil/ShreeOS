@@ -20,6 +20,7 @@
 #   test-installer  — Disk installer validation tests
 #   test-pkgmanager — LPM transaction & hash verification tests
 #   test-desktop    — Desktop suite syntax & token tests
+#   test-hardware   — shreed daemon IPC lifecycle tests
 #   test-smoke      — Smoke test aggregator
 #   test-qemu       — Automated QEMU boot & install tests
 #   test-all        — All automated test suites
@@ -55,6 +56,7 @@ help:
 	@echo "  make test-auth            Run authentication & credential tests"
 	@echo "  make test-installer       Run disk installer validation tests"
 	@echo "  make test-pkgmanager      Run LPM transaction tests"
+	@echo "  make test-hardware        Run shreed daemon IPC lifecycle tests"
 	@echo "  make test-smoke           Run desktop & system smoke suite"
 	@echo "  make test-qemu            Run automated QEMU ISO & installed disk tests"
 	@echo "  make test-all             Run all automated test suites"
@@ -105,13 +107,14 @@ $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain
 	bash kernel/scripts/build-kernel.sh
 	@touch $@
 
-# -- Phase 4: Package Manager & Init ----------------------------------
+# -- Phase 4: Package Manager, Init & Hardware Service ----------------
 .PHONY: packages
 packages: $(MARKER_DIR)/.packages
 
 $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system
 	$(MAKE) -C pkgmanager/src
 	$(MAKE) -C init/src
+	$(MAKE) -C hardware
 	@touch $@
 
 # -- Phase 5: Desktop Suite (Profile-aware) ---------------------------
@@ -183,6 +186,10 @@ test-pkgmanager:
 test-desktop:
 	bash tests/smoke/test-desktop-suite.sh
 
+.PHONY: test-hardware
+test-hardware:
+	$(MAKE) -C hardware test
+
 .PHONY: test-smoke
 test-smoke:
 	bash tests/smoke/run-all.sh
@@ -192,7 +199,7 @@ test-qemu:
 	bash tests/qemu/run-all-qemu-tests.sh
 
 .PHONY: test-all
-test-all: test-unit test-security test-auth test-installer test-pkgmanager test-desktop test-qemu
+test-all: test-unit test-security test-auth test-installer test-pkgmanager test-desktop test-hardware test-qemu
 
 .PHONY: tests
 tests: test-smoke
@@ -206,6 +213,7 @@ clean:
 	rm -rf out/*.iso
 	$(MAKE) -C pkgmanager/src clean
 	$(MAKE) -C init/src clean
+	$(MAKE) -C hardware clean
 
 .PHONY: distclean
 distclean: clean

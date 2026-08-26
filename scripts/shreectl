@@ -24,6 +24,7 @@ shreectl — ShreeOS Central System Administration Interface
 Usage:
   shreectl info                        Display system summary and hardware specs
   shreectl services [list|start|stop|restart|status] Check and control supervised services
+  shreectl daemon <status|ping> [--json]  Query the ShreeOS hardware daemon
   shreectl network [status|ip|restart] Manage network interfaces and connectivity
   shreectl update [check|apply]        Check and apply package updates
   shreectl doctor                      Run comprehensive system health diagnostics
@@ -74,6 +75,25 @@ cmd_services() {
       ;;
     *)
       initctl "$sub" "$@"
+      ;;
+  esac
+}
+
+cmd_daemon() {
+  local sub="${1:-status}"
+  shift 2>/dev/null || true
+
+  case "$sub" in
+    status|ping)
+      if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--json" ]; }; then
+        echo "Usage: shreectl daemon <status|ping> [--json]" >&2
+        return 1
+      fi
+      shreedctl "$sub" "$@"
+      ;;
+    *)
+      echo "Usage: shreectl daemon <status|ping> [--json]" >&2
+      return 1
       ;;
   esac
 }
@@ -165,6 +185,7 @@ shift
 case "$COMMAND" in
   info)        cmd_info "$@" ;;
   services)    cmd_services "$@" ;;
+  daemon)      cmd_daemon "$@" ;;
   network)     cmd_network "$@" ;;
   update)      cmd_update "$@" ;;
   doctor)      cmd_doctor "$@" ;;
