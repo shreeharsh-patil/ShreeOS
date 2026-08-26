@@ -1,167 +1,26 @@
 #include "json.h"
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
-static void skip_ws(const char **p) {
-    while (**p && (isspace((unsigned char)**p))) (*p)++;
-}
+#define JSON_MAX_INPUT (1024U * 1024U)
+#define JSON_MAX_DEPTH 64U
+typedef struct { const char *p, *end; unsigned depth; } parser_t;
 
-static json_value *parse_value(const char **p);
-
-static char *parse_string(const char **p) {
-    if (**p != '"') return NULL;
-    (*p)++;
-    size_t cap = 64, len = 0;
-    char *s = malloc(cap);
-    if (!s) return NULL;
-    while (**p && **p != '"') {
-        if (len + 4 >= cap) { cap *= 2; char *t = realloc(s, cap); if (!t) { free(s); return NULL; } s = t; }
-        if (**p == '\\') { (*p)++;
-            if (**p == '"' || **p == '\\' || **p == '/') s[len++] = **p;
-            else if (**p == 'b') s[len++] = '\b';
-            else if (**p == 'f') s[len++] = '\f';
-            else if (**p == 'n') s[len++] = '\n';
-            else if (**p == 'r') s[len++] = '\r';
-            else if (**p == 't') s[len++] = '\t';
-            else if (**p == 'u') {
-                unsigned value = 0;
-                for (int i = 0; i < 4; ++i) {
-                    unsigned char hex = (unsigned char)(*++(*p));
-                    if (!isxdigit(hex)) { free(s); return NULL; }
-                    value = (value << 4) | (unsigned)(isdigit(hex) ? hex - '0' : (tolower(hex) - 'a' + 10));
-                }
-                if (value < 0x80) s[len++] = (char)value;
-                else if (value < 0x800) { s[len++] = (char)(0xc0 | (value >> 6)); s[len++] = (char)(0x80 | (value & 0x3f)); }
-                else { s[len++] = (char)(0xe0 | (value >> 12)); s[len++] = (char)(0x80 | ((value >> 6) & 0x3f)); s[len++] = (char)(0x80 | (value & 0x3f)); }
-            } else { free(s); return NULL; }
-        } else {
-            if ((unsigned char)**p < 0x20) { free(s); return NULL; }
-            s[len++] = **p;
-        }
-        (*p)++;
-    }
-    if (**p == '"') (*p)++;
-    s[len] = '\0';
-    return s;
-}
-
-static json_pair *parse_object(const char **p) {
-    json_pair *head = NULL, **tail = &head;
-    if (**p == '{') (*p)++;
-    skip_ws(p);
-    if (**p == '}') { (*p)++; return NULL; }
-    while (**p) {
-        json_pair *pair = calloc(1, sizeof(json_pair));
-        if (!pair) break;
-        pair->key = parse_string(p);
-        if (!pair->key) { free(pair); break; }
-        skip_ws(p);
-        if (**p == ':') (*p)++;
-        skip_ws(p);
-        pair->value = parse_value(p);
-        *tail = pair; tail = &pair->next;
-        skip_ws(p);
-        if (**p == ',') { (*p)++; skip_ws(p); }
-        else if (**p == '}') { (*p)++; break; }
-        else break;
-    }
-    return head;
-}
-
-static json_pair *parse_array(const char **p) {
-    json_pair *head = NULL, **tail = &head;
-    if (**p == '[') (*p)++;
-    skip_ws(p);
-    if (**p == ']') { (*p)++; return NULL; }
-    while (**p) {
-        json_pair *pair = calloc(1, sizeof(json_pair));
-        if (!pair) break;
-        pair->value = parse_value(p);
-        *tail = pair; tail = &pair->next;
-        skip_ws(p);
-        if (**p == ',') { (*p)++; skip_ws(p); }
-        else if (**p == ']') { (*p)++; break; }
-        else break;
-    }
-    return head;
-}
-
-static json_value *parse_value(const char **p) {
-    json_value *v = calloc(1, sizeof(json_value));
-    if (!v) return NULL;
-    skip_ws(p);
-    if (**p == '"') {
-        v->type = JSON_STRING;
-        v->string = parse_string(p);
-    } else if (**p == '{') {
-        v->type = JSON_OBJECT;
-        v->head = parse_object(p);
-    } else if (**p == '[') {
-        v->type = JSON_ARRAY;
-        v->head = parse_array(p);
-    } else if (**p == 'n') { /* null */
-        v->type = JSON_NULL;
-        if (strncmp(*p, "null", 4) == 0) *p += 4;
-    } else if (**p == 't' || **p == 'f') { /* true/false */
-        v->type = JSON_NULL;
-        while (**p && isalpha((unsigned char)**p)) (*p)++;
-    } else {
-        v->type = JSON_NUMBER;
-        const char *start = *p;
-        while (**p && (isdigit((unsigned char)**p) || **p == '.' || **p == '-' || **p == '+')) (*p)++;
-        size_t n = *p - start;
-        v->string = malloc(n + 1);
-        if (!v->string) { free(v); return NULL; }
-        memcpy(v->string, start, n);
-        v->string[n] = '\0';
-    }
-    return v;
-}
-
-json_value *json_parse(const char *input) {
-    if (!input) return NULL;
-    return parse_value(&input);
-}
-
-void json_free(json_value *v) {
-    if (!v) return;
-    free(v->string);
-    for (json_pair *p = v->head; p;) {
-        json_pair *next = p->next;
-        free(p->key);
-        json_free(p->value);
-        free(p);
-        p = next;
-    }
-    free(v);
-}
-
-json_value *json_get(const json_value *obj, const char *key) {
-    if (!obj || obj->type != JSON_OBJECT) return NULL;
-    for (json_pair *p = obj->head; p; p = p->next)
-        if (p->key && strcmp(p->key, key) == 0)
-            return p->value;
-    return NULL;
-}
-
-const char *json_string(const json_value *v) {
-    if (!v || v->type != JSON_STRING) return NULL;
-    return v->string;
-}
-
-int json_array_len(const json_value *v) {
-    if (!v || v->type != JSON_ARRAY) return 0;
-    int n = 0;
-    for (json_pair *p = v->head; p; p = p->next) n++;
-    return n;
-}
-
-const char *json_array_str(const json_value *v, int idx) {
-    if (!v || v->type != JSON_ARRAY) return NULL;
-    int i = 0;
-    for (json_pair *p = v->head; p; p = p->next, i++)
-        if (i == idx && p->value->type == JSON_STRING)
-            return p->value->string;
-    return NULL;
-}
+static void ws(parser_t *p) { while (p->p < p->end && strchr(" \t\r\n", *p->p)) p->p++; }
+static int grow(char **s, size_t *cap, size_t need) { char *n; while (need >= *cap) *cap *= 2; n=realloc(*s,*cap); if(!n)return -1;*s=n;return 0; }
+static int hex(unsigned char c) { if (c>='0'&&c<='9') return c-'0'; if(c>='a'&&c<='f')return c-'a'+10; if(c>='A'&&c<='F')return c-'A'+10; return -1; }
+static int utf8(char **s,size_t *n,size_t *cap,unsigned cp) { if(cp<=0x7f){if(grow(s,cap,*n+2))return-1;(*s)[(*n)++]=(char)cp;}else if(cp<=0x7ff){if(grow(s,cap,*n+3))return-1;(*s)[(*n)++]=(char)(0xc0|(cp>>6));(*s)[(*n)++]=(char)(0x80|(cp&63));}else if(cp<=0xffff){if(grow(s,cap,*n+4))return-1;(*s)[(*n)++]=(char)(0xe0|(cp>>12));(*s)[(*n)++]=(char)(0x80|((cp>>6)&63));(*s)[(*n)++]=(char)(0x80|(cp&63));}else{if(grow(s,cap,*n+5))return-1;(*s)[(*n)++]=(char)(0xf0|(cp>>18));(*s)[(*n)++]=(char)(0x80|((cp>>12)&63));(*s)[(*n)++]=(char)(0x80|((cp>>6)&63));(*s)[(*n)++]=(char)(0x80|(cp&63));}return 0; }
+static int uescape(parser_t *p,unsigned *out) { unsigned v=0,low=0; int h; if((size_t)(p->end-p->p)<4)return-1;for(int i=0;i<4;i++){h=hex((unsigned char)p->p[i]);if(h<0)return-1;v=(v<<4)|(unsigned)h;}p->p+=4;if(v>=0xd800&&v<=0xdbff){if((size_t)(p->end-p->p)<6||p->p[0]!='\\'||p->p[1]!='u')return-1;p->p+=2;for(int i=0;i<4;i++){h=hex((unsigned char)p->p[i]);if(h<0)return-1;low=(low<<4)|(unsigned)h;}p->p+=4;if(low<0xdc00||low>0xdfff)return-1;v=0x10000+((v-0xd800)<<10)+(low-0xdc00);}else if(v>=0xdc00&&v<=0xdfff)return-1;*out=v;return 0; }
+static char *string(parser_t *p) { size_t cap=64,n=0;char *s;if(p->p>=p->end||*p->p++!='"')return NULL;s=malloc(cap);if(!s)return NULL;while(p->p<p->end){unsigned char c=(unsigned char)*p->p++;if(c=='"'){s[n]=0;return s;}if(c<0x20)break;if(c!='\\'){if(grow(&s,&cap,n+2))break;s[n++]=(char)c;continue;}if(p->p>=p->end)break;c=(unsigned char)*p->p++;if(c=='u'){unsigned cp;if(uescape(p,&cp)||utf8(&s,&n,&cap,cp))break;continue;}switch(c){case '"':case '\\':case '/':break;case 'b':c='\b';break;case 'f':c='\f';break;case 'n':c='\n';break;case 'r':c='\r';break;case 't':c='\t';break;default:c=0;}if(!c||grow(&s,&cap,n+2))break;s[n++]=(char)c;}free(s);return NULL; }
+static json_value *value(parser_t *p);
+static json_pair *members(parser_t *p,char close,int object) { json_pair *head=NULL,**tail=&head;ws(p);if(p->p<p->end&&*p->p==close){p->p++;return NULL;}for(;;){json_pair *q=calloc(1,sizeof(*q));if(!q)goto bad;if(object){q->key=string(p);if(!q->key){free(q);goto bad;}ws(p);if(p->p>=p->end||*p->p++!=':'){free(q->key);free(q);goto bad;}}q->value=value(p);if(!q->value){free(q->key);free(q);goto bad;}*tail=q;tail=&q->next;ws(p);if(p->p>=p->end)goto bad;if(*p->p==close){p->p++;return head;}if(*p->p++!=',')goto bad;ws(p);if(p->p>=p->end||*p->p==close)goto bad;}bad:while(head){json_pair *next=head->next;free(head->key);json_free(head->value);free(head);head=next;}return NULL; }
+static json_value *number(parser_t *p) { const char *start=p->p;json_value *v;if(*p->p=='-')p->p++;if(p->p>=p->end)return NULL;if(*p->p=='0')p->p++;else{if(*p->p<'1'||*p->p>'9')return NULL;while(p->p<p->end&&isdigit((unsigned char)*p->p))p->p++;}if(p->p<p->end&&*p->p=='.'){p->p++;if(p->p>=p->end||!isdigit((unsigned char)*p->p))return NULL;while(p->p<p->end&&isdigit((unsigned char)*p->p))p->p++;}if(p->p<p->end&&(*p->p=='e'||*p->p=='E')){p->p++;if(p->p<p->end&&(*p->p=='+'||*p->p=='-'))p->p++;if(p->p>=p->end||!isdigit((unsigned char)*p->p))return NULL;while(p->p<p->end&&isdigit((unsigned char)*p->p))p->p++;}v=calloc(1,sizeof(*v));if(!v)return NULL;v->type=JSON_NUMBER;v->string=strndup(start,(size_t)(p->p-start));if(!v->string){free(v);return NULL;}return v; }
+static json_value *literal(parser_t *p,const char *text) { size_t n=strlen(text);json_value *v;if((size_t)(p->end-p->p)<n||memcmp(p->p,text,n))return NULL;p->p+=n;v=calloc(1,sizeof(*v));if(v)v->type=JSON_NULL;return v; }
+static json_value *value(parser_t *p) { json_value *v;ws(p);if(p->p>=p->end)return NULL;if(*p->p=='"'){char *s=string(p);if(!s)return NULL;v=calloc(1,sizeof(*v));if(!v){free(s);return NULL;}v->type=JSON_STRING;v->string=s;return v;}if(*p->p=='{'||*p->p=='['){char open=*p->p++,close=open=='{'?'}':']';if(++p->depth>JSON_MAX_DEPTH)return NULL;v=calloc(1,sizeof(*v));if(!v)return NULL;v->type=open=='{'?JSON_OBJECT:JSON_ARRAY;v->head=members(p,close,open=='{');p->depth--;if(p->p[-1]!=close){json_free(v);return NULL;}return v;}if(*p->p=='n')return literal(p,"null");if(*p->p=='t')return literal(p,"true");if(*p->p=='f')return literal(p,"false");if(*p->p=='-'||isdigit((unsigned char)*p->p))return number(p);return NULL; }
+json_value *json_parse(const char *input) { parser_t p;json_value *v;size_t n;if(!input)return NULL;n=strlen(input);if(n>JSON_MAX_INPUT)return NULL;p.p=input;p.end=input+n;p.depth=0;v=value(&p);if(!v)return NULL;ws(&p);if(p.p!=p.end){json_free(v);return NULL;}return v; }
+void json_free(json_value *v) { if(!v)return;free(v->string);for(json_pair *p=v->head;p;){json_pair *next=p->next;free(p->key);json_free(p->value);free(p);p=next;}free(v); }
+json_value *json_get(const json_value *o,const char *k) { if(!o||o->type!=JSON_OBJECT||!k)return NULL;for(json_pair *p=o->head;p;p=p->next)if(p->key&&!strcmp(p->key,k))return p->value;return NULL; }
+const char *json_string(const json_value *v) { return v&&v->type==JSON_STRING?v->string:NULL; }
+int json_array_len(const json_value *v) { int n=0;if(!v||v->type!=JSON_ARRAY)return 0;for(json_pair *p=v->head;p;p=p->next)n++;return n; }
+const char *json_array_str(const json_value *v,int index) { int i=0;if(!v||v->type!=JSON_ARRAY||index<0)return NULL;for(json_pair *p=v->head;p;p=p->next,i++)if(i==index&&p->value&&p->value->type==JSON_STRING)return p->value->string;return NULL; }

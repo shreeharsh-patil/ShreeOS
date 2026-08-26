@@ -5,11 +5,13 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+#include <fcntl.h>
 
 #ifdef _WIN32
 #include <direct.h>
 #else
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 static int mkdir_p(const char *path) {
@@ -132,12 +134,16 @@ const char *manifest_get_checksum(const manifest *m, const char *file_path) {
 }
 
 int manifest_save(const manifest *m, const char *dir) {
-    char path[LPM_PATH_MAX];
+    char path[LPM_PATH_MAX], temporary[LPM_PATH_MAX];
     snprintf(path, sizeof(path), "%s/manifest.json", dir);
-    mkdir_p(dir);
+    if (mkdir_p(dir) != 0 && errno != EEXIST) return -1;
+    if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) return -1;
 
-    FILE *f = fopen(path, "wb");
+    FILE *f = fopen(temporary, "wb");
     if (!f) return -1;
+#ifndef _WIN32
+    if (fchmod(fileno(f), 0644) != 0) goto fail;
+#endif
 
     if (fputs("{\n  \"name\": ", f) == EOF || json_write_string(f, m->name) || fputs(",\n  \"version\": ", f) == EOF || json_write_string(f, m->version)) goto fail;
     if (m->description && *m->description) {
@@ -167,10 +173,24 @@ int manifest_save(const manifest *m, const char *dir) {
     }
     fprintf(f, "  }\n}\n");
 
-    if (fclose(f) == 0) return 0;
-    return -1;
+    if (fflush(f) != 0) goto fail;
+#ifndef _WIN32
+    if (fsync(fileno(f)) != 0) goto fail;
+#endif
+    if (fclose(f) != 0) { unlink(temporary); return -1; }
+    if (rename(temporary, path) != 0) { unlink(temporary); return -1; }
+#ifndef _WIN32
+    {
+        int directory_fd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (directory_fd < 0) return -1;
+        if (fsync(directory_fd) != 0) { close(directory_fd); return -1; }
+        close(directory_fd);
+    }
+#endif
+    return 0;
 fail:
     fclose(f);
+    unlink(temporary);
     return -1;
 }
 

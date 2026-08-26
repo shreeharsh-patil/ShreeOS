@@ -1,4 +1,5 @@
 #include "manifest.h"
+#include "json.h"
 #include "sha256.h"
 #include <stdio.h>
 #include <string.h>
@@ -93,13 +94,25 @@ static void test_manifest_json_escaping(void) {
         m = manifest_load(tmpdir);
         TEST("escaped manifest reloads", m != NULL);
         if (m) {
-            TEST("escaped description preserved", strcmp(m->description, "quote: \"; tab: \t; unicode: é") == 0);
+            TEST("escaped description preserved", strcmp(m->description, "quote: \"; tab: \t; unicode: \xC3\xA9") == 0);
             TEST("escaped dependency preserved", m->ndeps == 1 && strcmp(m->deps[0], "lib \"x\"") == 0);
             manifest_free(m);
         }
     }
     char mp[256]; snprintf(mp, sizeof(mp), "%s/manifest.json", tmpdir);
     unlink(mp); rmdir(tmpdir);
+}
+
+static void test_strict_json_rejection(void) {
+    static const char *const invalid[] = {
+        "\"unterminated", "{\"a\" 1}", "{\"a\":1,}", "[1,]", "{\"a\":truee}",
+        "{\"a\":nul}", "{\"a\":01}", "{\"a\":1} trailing", "\"\\q\"", "\"\\uD800\""
+    };
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i)
+        TEST("strict parser rejects malformed JSON", json_parse(invalid[i]) == NULL);
+    json_value *unicode = json_parse("\"\\uD83D\\uDE00\"");
+    TEST("strict parser accepts surrogate pair", unicode != NULL && json_string(unicode) != NULL);
+    json_free(unicode);
 }
 
 static void test_manifest_sha256(void) {
@@ -157,6 +170,7 @@ int main(void) {
     test_manifest_with_deps();
     test_manifest_save_load();
     test_manifest_json_escaping();
+    test_strict_json_rejection();
     test_manifest_sha256();
     test_sha256_hashing();
     test_version_comparison();
