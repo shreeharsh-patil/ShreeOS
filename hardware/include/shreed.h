@@ -4,10 +4,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #define SHREED_SOCKET_PATH "/run/shreed.sock"
 #define SHREED_LOG_PATH "/var/log/shreeos/shreed.log"
 #define SHREED_MAX_CLIENTS 32
+#define SHREED_CLIENT_IDLE_SECONDS 15
 #define SHREED_MAX_MESSAGE 1024
 #define SHREED_RESPONSE_MAX 16384
 
@@ -47,6 +49,7 @@ typedef struct {
     size_t output_length;
     size_t output_sent;
     bool subscribed;
+    time_t accepted_at;
 } shreed_client_t;
 
 int shreed_parse_request(const char *payload, size_t length,

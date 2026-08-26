@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 json=false; [ "$#" -gt 0 ] && [ "${!#}" = --json ] && json=true
-bat() { find /sys/class/power_supply -maxdepth 1 -type d -name 'BAT*' 2>/dev/null | head -n1; }
-backlight() { find /sys/class/backlight -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n1; }
+bat() { for d in /sys/class/power_supply/*; do [ "$(readf "$d/type")" = Battery ] && printf '%s\n' "$d"; done; }
+backlight() { find /sys/class/backlight -mindepth 1 -maxdepth 1 -type d 2>/dev/null; }
 readf() { cat "$1" 2>/dev/null || true; }
 cmd="${1:-power}"; shift || true
 case "$cmd" in
- battery) b="$(bat)"; if [ -z "$b" ]; then $json && echo '{"ok":true,"result":{"available":false}}' || echo 'Battery: Not available'; else cap="$(readf "$b/capacity")"; state="$(readf "$b/status")"; $json && printf '{"ok":true,"result":{"available":true,"capacity":%s,"status":"%s"}}\n' "${cap:-0}" "$state" || echo "Battery: ${cap}% (${state})"; fi ;;
- power) online=0; for a in /sys/class/power_supply/AC* /sys/class/power_supply/ADP*; do [ -f "$a/online" ] && [ "$(readf "$a/online")" = 1 ] && online=1; done; $json && printf '{"ok":true,"result":{"external_power":%s}}\n' "$([ "$online" = 1 ] && echo true || echo false)" || [ "$online" = 1 ] && echo 'Power: Connected' || echo 'Power: Disconnected' ;;
- brightness) d="$(backlight)"; [ -n "$d" ] || { $json && echo '{"ok":true,"result":{"available":false}}' || echo 'Brightness: Not available'; exit 0; }; max="$(readf "$d/max_brightness")"; cur="$(readf "$d/brightness")"; if [ "$#" -eq 0 ] || [ "$1" = --json ]; then pct=$((cur * 100 / max)); $json && printf '{"ok":true,"result":{"available":true,"brightness":%s}}\n' "$pct" || echo "Brightness: ${pct}%"; else [[ "$1" =~ ^([0-9]|[1-9][0-9]|100)$ ]] || exit 2; [ "$(id -u)" -eq 0 ] || { echo 'Brightness control requires root privileges' >&2; exit 1; }; printf '%s\n' "$(( $1 * max / 100 ))" > "$d/brightness"; fi ;;
+ battery) b="$(bat | head -n1)"; if [ -z "$b" ]; then $json && echo '{"ok":true,"result":{"available":false,"batteries":[]}}' || echo 'Battery: Not available'; else cap="$(readf "$b/capacity")"; state="$(readf "$b/status")"; $json && printf '{"ok":true,"result":{"available":true,"capacity":%s,"status":"%s"}}\n' "${cap:-0}" "$state" || echo "Battery: ${cap}% (${state})"; fi ;;
+ power) online=0; for a in /sys/class/power_supply/*; do [ "$(readf "$a/type")" = Mains ] && [ "$(readf "$a/online")" = 1 ] && online=1; done; $json && printf '{"ok":true,"result":{"external_power":%s}}\n' "$([ "$online" = 1 ] && echo true || echo false)" || [ "$online" = 1 ] && echo 'Power: Connected' || echo 'Power: Disconnected' ;;
+ brightness) d="$(backlight | head -n1)"; [ -n "$d" ] || { $json && echo '{"ok":true,"result":{"available":false}}' || echo 'Brightness: Not available'; exit 0; }; max="$(readf "$d/max_brightness")"; cur="$(readf "$d/brightness")"; if [ "$#" -eq 0 ] || [ "$1" = --json ]; then pct=$((cur * 100 / max)); $json && printf '{"ok":true,"result":{"available":true,"brightness":%s}}\n' "$pct" || echo "Brightness: ${pct}%"; else [[ "$1" =~ ^([0-9]|[1-9][0-9]|100)$ ]] || exit 2; [ "$(id -u)" -eq 0 ] || { echo 'Brightness control requires root privileges' >&2; exit 1; }; printf '%s\n' "$(( $1 * max / 100 ))" > "$d/brightness"; fi ;;
  *) exit 2 ;;
 esac

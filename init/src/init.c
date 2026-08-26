@@ -635,7 +635,7 @@ static bool check_recovery_mode(void) {
     if (fgets(line, sizeof(line), f)) {
         fclose(f);
         if (strstr(line, "single") || strstr(line, "recovery") ||
-            strstr(line, "shreeos.mode=recovery") || strstr(line, "init=/bin/sh")) {
+            strstr(line, "shreeos.mode=recovery") || strstr(line, "shreeos.rollback=1")) {
             return true;
         }
     } else {
@@ -684,14 +684,19 @@ int main(void) {
         pid_t rpid = fork();
         if (rpid == 0) {
             setsid();
-            execl("/bin/sh", "sh", "--login", (char *)NULL);
+            execl("/usr/bin/shree-recovery", "shree-recovery", (char *)NULL);
+            execl("/bin/sh", "sh", (char *)NULL);
             _exit(1);
         }
         int status;
         waitpid(rpid, &status, 0);
-        printf("\n[init] Recovery session terminated. Rebooting system...\n");
-        perform_shutdown();
-        return 0;
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            printf("\n[init] Recovery requested normal boot. Starting services...\n");
+        } else {
+            printf("\n[init] Recovery ended without normal-boot confirmation. Rebooting...\n");
+            perform_shutdown();
+            return 0;
+        }
     }
 
     load_and_reconcile_services();

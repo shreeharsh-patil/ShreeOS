@@ -17,7 +17,7 @@ bool shreed_authorize_peer(int fd) {
     socklen_t length = sizeof(credentials);
 
     if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &credentials, &length) != 0) return false;
-    return credentials.pid > 0;
+    return credentials.pid > 0 && credentials.uid != (uid_t)-1 && credentials.gid != (gid_t)-1;
 #else
     (void)fd;
     return true;

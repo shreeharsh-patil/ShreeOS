@@ -27,7 +27,8 @@ menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (recovery mode)" --id="recovery" {
 }
 
 menuentry "${DISTRO_NAME} Previous Working State" --id="previous-working-state" {
-  linux /boot/bzImage shreeos.rollback=1 console=ttyS0 quiet
+  loopback loop /boot/rootfs.squashfs
+  linux /boot/bzImage root=/dev/sr0 shreeos.rollback=1 console=ttyS0 quiet
   initrd /boot/initramfs.cpio.gz
 }
 

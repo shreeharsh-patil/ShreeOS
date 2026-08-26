@@ -152,6 +152,11 @@ else
 fi
 
 # 4. Verify base system essentials
+if ! grep -q '^shree-hardware:' "${LUMEN_STAGE_ROOT}/etc/group" 2>/dev/null; then
+  echo 'shree-hardware:x:986:' >> "${LUMEN_STAGE_ROOT}/etc/group"
+fi
+
+# 4. Verify base system essentials
 lumen_step "Verifying base system"
 for bin in bash ls mount; do
   if [ ! -f "${LUMEN_STAGE_ROOT}/bin/${bin}" ]; then

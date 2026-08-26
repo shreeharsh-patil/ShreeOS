@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <grp.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t shutdown_requested;
@@ -44,10 +45,18 @@ static int create_listener(const char *socket_path) {
     }
     strcpy(address.sun_path, socket_path);
     if (bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0 ||
-        chmod(socket_path, 0666) != 0 || listen(fd, SHREED_MAX_CLIENTS) != 0) {
+        chmod(socket_path, 0660) != 0 || listen(fd, SHREED_MAX_CLIENTS) != 0) {
         close(fd);
         unlink(socket_path);
         return -1;
+    }
+    {
+        struct group *group = getgrnam("shree-hardware");
+        if (group && chown(socket_path, 0, group->gr_gid) != 0) {
+            close(fd);
+            unlink(socket_path);
+            return -1;
+        }
     }
     return fd;
 }
@@ -148,6 +157,7 @@ static void accept_clients(int listener, shreed_client_t clients[], int log_fd) 
             if (clients[index].fd < 0) {
                 memset(&clients[index], 0, sizeof(clients[index]));
                 clients[index].fd = fd;
+                clients[index].accepted_at = time(NULL);
                 fd = -1;
                 break;
             }
@@ -225,6 +235,10 @@ int main(int argc, char **argv) {
         }
         for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {
             if (clients[index].fd < 0) continue;
+            if (!clients[index].subscribed && time(NULL) - clients[index].accepted_at > SHREED_CLIENT_IDLE_SECONDS) {
+                close_client(&clients[index]);
+                continue;
+            }
             poll_fds[count].fd = clients[index].fd;
             poll_fds[count].events = clients[index].output_length > clients[index].output_sent ? POLLOUT : POLLIN;
             poll_fds[count].revents = 0;

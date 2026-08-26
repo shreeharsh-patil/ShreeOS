@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <time.h>
 
 static int mkdir_p(const char *path) {
     char tmp[LPM_PATH_MAX];
@@ -228,6 +229,9 @@ int cmd_install(int argc, char **argv) {
     manifest *m = NULL;
     manifest *old_m = NULL;
     int files_backed_up = 0;
+    char transaction_dir[LPM_PATH_MAX] = {0};
+    char transaction_status[LPM_PATH_MAX] = {0};
+    char rollback_ledger[LPM_PATH_MAX] = {0};
 
     /* 3. Extract manifest.json */
     char manifest_extract_dir[LPM_PATH_MAX];
@@ -323,13 +327,30 @@ int cmd_install(int argc, char **argv) {
 
     /* 9. Prepare Rollback Backups for existing files */
     char backup_dir[LPM_PATH_MAX];
-    snprintf(backup_dir, sizeof(backup_dir), "%s/backup", tmpdir);
-    mkdir_p(backup_dir);
+    snprintf(transaction_dir, sizeof(transaction_dir), "%s/%ld-%ld", LPM_TRANSACTIONS,
+             (long)time(NULL), (long)getpid());
+    snprintf(transaction_status, sizeof(transaction_status), "%s/status", transaction_dir);
+    snprintf(rollback_ledger, sizeof(rollback_ledger), "%s/rollback/ledger", transaction_dir);
+    snprintf(backup_dir, sizeof(backup_dir), "%s/rollback/files", transaction_dir);
+    if (mkdir_p(backup_dir) != 0 && errno != EEXIST) { ret = 1; goto cleanup; }
+    {
+        FILE *status = fopen(transaction_status, "w");
+        FILE *packages = NULL;
+        if (!status) { ret = 1; goto cleanup; }
+        fprintf(status, "prepared\n"); fclose(status);
+        packages = fopen(rollback_ledger, "w");
+        if (!packages) { ret = 1; goto cleanup; }
+        fprintf(packages, "# transaction=%s package=%s old=%s new=%s\n", transaction_dir,
+                m->name, old_m && old_m->version ? old_m->version : "none", m->version);
+        fclose(packages);
+    }
 
     int *file_existed = calloc(m->nfiles, sizeof(int));
     if (!file_existed) { ret = 1; goto cleanup; }
 
     for (int i = 0; i < m->nfiles; i++) {
+        FILE *ledger = fopen(rollback_ledger, "a");
+        if (!ledger) { ret = 1; goto cleanup; }
         if (access(m->files[i], F_OK) == 0) {
             file_existed[i] = 1;
             char backup_file[LPM_PATH_MAX];
@@ -340,9 +361,13 @@ int cmd_install(int argc, char **argv) {
                 mkdir_p(backup_file);
                 *last_slash = '/';
             }
-            copy_file(m->files[i], backup_file);
+            if (copy_file(m->files[i], backup_file) != 0) { fclose(ledger); ret = 1; goto cleanup; }
+            fprintf(ledger, "E %s\n", m->files[i]);
             files_backed_up++;
+        } else {
+            fprintf(ledger, "N %s\n", m->files[i]);
         }
+        fclose(ledger);
     }
 
     /* 10. Atomic Commit: Copy staged files to root */
@@ -405,6 +430,10 @@ int cmd_install(int argc, char **argv) {
     }
 
     printf("lpm: successfully installed %s-%s (%d files)\n", m->name, m->version, m->nfiles);
+    {
+        FILE *status = fopen(transaction_status, "w");
+        if (status) { fprintf(status, "committed\n"); fclose(status); }
+    }
 
 cleanup:
     if (old_m) manifest_free(old_m);
