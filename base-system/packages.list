@@ -65,3 +65,5 @@ util-linux	2.40.4	https://www.kernel.org/pub/linux/utils/util-linux/v2.40/util-l
 # libxcrypt 4.4.36
 libxcrypt	4.4.36	https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz	e5e1f4caee0a01de2aee26e313880a94d492870a473027f74e648438c4ff5194
 
+# wpa_supplicant 2.11
+wpa_supplicant	2.11	https://w1.fi/releases/wpa_supplicant-2.11.tar.gz	912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a

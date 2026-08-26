@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 void shreed_events_subscribe(shreed_client_t *client) {
@@ -58,8 +59,12 @@ void shreed_events_process_network(int fd, shreed_client_t clients[]) {
                 event = "NETWORK_INTERFACE_REMOVED";
             } else if (message->nlmsg_type == RTM_NEWLINK) {
                 struct ifinfomsg *link = NLMSG_DATA(message);
+                char wireless_path[128];
                 (void)if_indextoname(link->ifi_index, name);
-                if (link->ifi_index < 65536 && !known_interfaces[link->ifi_index]) {
+                snprintf(wireless_path, sizeof(wireless_path), "/sys/class/net/%s/wireless", name);
+                if (name[0] && access(wireless_path, F_OK) == 0) {
+                    event = (link->ifi_flags & IFF_LOWER_UP) ? "WIFI_CONNECTED" : "WIFI_DISCONNECTED";
+                } else if (link->ifi_index < 65536 && !known_interfaces[link->ifi_index]) {
                     known_interfaces[link->ifi_index] = true;
                     event = "NETWORK_INTERFACE_ADDED";
                 } else {

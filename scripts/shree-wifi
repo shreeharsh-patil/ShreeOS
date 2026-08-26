@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Root-only wpa_supplicant front end. It never writes credentials to stdout/stderr.
+set -euo pipefail
+umask 077
+
+PROFILE_DIR=/etc/shreeos/wifi
+find_iface() { for p in /sys/class/net/*/wireless; do [ -d "$p" ] && basename "$(dirname "$p")" && return; done; return 1; }
+iface="$(find_iface 2>/dev/null || true)"
+json_escape() { awk 'BEGIN { ORS="" } { gsub(/\\/, "\\\\"); gsub(/\"/, "\\\""); gsub(/\r/, "\\r"); gsub(/\n/, "\\n"); print }'; }
+validate_ssid() { [ "${#1}" -gt 0 ] && [ "${#1}" -le 32 ] && [[ "$1" != *$'\n'* && "$1" != *$'\r'* && "$1" != *$'\0'* ]]; }
+need_iface() { [ -n "$iface" ] || { echo 'Wi-Fi: Not available' >&2; exit 3; }; }
+need_root() { [ "$(id -u)" -eq 0 ] || { echo 'Wi-Fi management requires root privileges' >&2; exit 1; }; }
+profile_name() { printf '%s' "$1" | sha256sum | awk '{print $1}'; }
+status_value() { wpa_cli -i "$iface" status 2>/dev/null | sed -n "s/^$1=//p" | head -n1; }
+json_status() {
+  if [ -z "$iface" ]; then printf '{"ok":true,"result":{"available":false,"status":"not_available"}}\n'; return; fi
+  local state ssid signal; state="$(status_value wpa_state)"; ssid="$(status_value ssid)"; signal="$(status_value signal_level)"
+  printf '{"ok":true,"result":{"available":true,"interface":"%s","state":"%s","connected":%s,"ssid":"%s","signal_strength":%s}}\n' "$iface" "${state:-unknown}" "$([ "$state" = COMPLETED ] && echo true || echo false)" "$(printf '%s' "$ssid" | json_escape)" "${signal:--999}"
+}
+plain_status() { [ -n "$iface" ] || { echo 'Wi-Fi: Not available'; return; }; printf 'Wi-Fi: %s\n' "$(status_value wpa_state || echo disconnected)"; [ -n "$(status_value ssid)" ] && printf 'SSID: %s\n' "$(status_value ssid)"; }
+list() {
+  need_iface; wpa_cli -i "$iface" scan >/dev/null 2>&1 || true; sleep 2
+  wpa_cli -i "$iface" scan_results 2>/dev/null | awk -F '\t' 'NR>1 { security=($4 ~ /SAE/) ? "WPA3" : (($4 ~ /WPA/) ? "WPA2" : (($4 ~ /WEP/) ? "WEP" : "open")); band=($2 >= 5925) ? "6GHz" : (($2 >= 4900) ? "5GHz" : "2.4GHz"); printf "%s\t%s\t%s\t%s\n", $5, $3, security, band }'
+}
+connect() {
+  need_root; need_iface; local ssid="$1" password="${2:-}" file hex
+  validate_ssid "$ssid" || { echo 'Invalid SSID' >&2; exit 2; }
+  mkdir -p "$PROFILE_DIR"; chmod 700 "$PROFILE_DIR"; file="$PROFILE_DIR/$(profile_name "$ssid").conf"
+  if [ -n "$password" ]; then
+    # Remove wpa_passphrase's commented cleartext PSK before it reaches disk.
+    printf '%s\n' "$password" | wpa_passphrase "$ssid" | sed '/^[[:space:]]*#psk=/d; /^[[:space:]]*ssid=/a\  scan_ssid=1' >"$file"
+  else
+    hex="$(printf '%s' "$ssid" | od -An -tx1 | tr -d ' \n')"
+    printf 'ctrl_interface=/run/wpa_supplicant\nnetwork={\n  ssid=%s\n  key_mgmt=NONE\n  scan_ssid=1\n}\n' "$hex" >"$file"
+  fi
+  chmod 600 "$file"
+  wpa_cli -i "$iface" terminate >/dev/null 2>&1 || true
+  wpa_supplicant -B -i "$iface" -c "$file" -D nl80211,wext >/dev/null 2>&1 || { rm -f "$file"; echo 'Unable to start Wi-Fi backend' >&2; exit 1; }
+  for _ in $(seq 1 15); do [ "$(status_value wpa_state)" = COMPLETED ] && return; sleep 1; done
+  echo 'Authentication failed or network unavailable' >&2; exit 4
+}
+known() { [ -d "$PROFILE_DIR" ] || return 0; grep -h '^\s*ssid=' "$PROFILE_DIR"/*.conf 2>/dev/null | sed 's/^\s*ssid=//; s/^"//; s/"$//' ; }
+forget() { need_root; local ssid="$1"; validate_ssid "$ssid" || { echo 'Invalid SSID' >&2; exit 2; }; rm -f -- "$PROFILE_DIR/$(profile_name "$ssid").conf"; }
+
+cmd="${1:-status}"; shift || true; json=false
+if [ "$#" -gt 0 ] && [ "${!#}" = --json ]; then json=true; set -- "${@:1:$(($#-1))}"; fi
+case "$cmd" in
+  status) $json && json_status || plain_status ;;
+  list) if $json; then printf '{"ok":true,"result":{"networks":['; first=true; while IFS=$'\t' read -r s sig sec band; do $first || printf ','; first=false; printf '{"ssid":"%s","signal_strength":%s,"security":"%s","band":"%s","connected":%s}' "$(printf '%s' "$s" | json_escape)" "$sig" "$sec" "$band" "$([ "$(status_value ssid)" = "$s" ] && echo true || echo false)"; done < <(list); printf ']}}\n'; else list; fi ;;
+  connect) [ "$#" -eq 1 ] || { echo 'Usage: shreectl wifi connect <SSID> [--json]' >&2; exit 2; }; read -r -s -p 'Wi-Fi password (empty for open network): ' password; echo >&2; connect "$1" "$password"; $json && printf '{"ok":true,"result":{"state":"connected"}}\n' || echo Connected ;;
+  disconnect) need_root; need_iface; wpa_cli -i "$iface" disconnect >/dev/null; $json && printf '{"ok":true,"result":{"state":"disconnected"}}\n' || echo 'Disconnected' ;;
+  known) if $json; then printf '{"ok":true,"result":{"networks":['; first=true; while IFS= read -r s; do $first || printf ','; first=false; printf '"%s"' "$(printf '%s' "$s" | json_escape)"; done < <(known); printf ']}}\n'; else known; fi ;;
+  forget) [ "$#" -eq 1 ] || exit 2; forget "$1"; $json && printf '{"ok":true,"result":{"forgotten":true}}\n' || echo 'Forgot network' ;;
+  *) echo 'Usage: shreectl wifi <status|list|connect|disconnect|known|forget> [--json]' >&2; exit 2 ;;
+esac

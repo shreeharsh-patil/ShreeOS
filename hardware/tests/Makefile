@@ -27,6 +27,7 @@ test: $(TEST) $(COLLECTOR_TEST)
 	./$(TEST) ./$(TEST_DAEMON)
 	./$(COLLECTOR_TEST) fixtures
 	bash ./test-network-boot.sh
+	bash ./test-wifi-security.sh
 
 clean:
 	rm -f $(TEST) $(COLLECTOR_TEST) $(TEST_DAEMON)

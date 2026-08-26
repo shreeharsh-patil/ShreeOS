@@ -7,6 +7,7 @@
 # Networking & Transport
 iproute2
 dhcpcd
+wpa_supplicant
 curl
 wget
 ca-certificates

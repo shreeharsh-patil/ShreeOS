@@ -29,6 +29,7 @@ Usage:
   shreectl cpu|gpu|memory|disks|pci|usb [--json]  Query detected hardware
   shreectl network [interfaces] [--json]     Show network state
   shreectl ethernet [status] [--json]        Show wired Ethernet state
+  shreectl wifi <status|list|connect|disconnect|known|forget> [--json]
   shreectl update [check|apply]        Check and apply package updates
   shreectl doctor                      Run comprehensive system health diagnostics
   shreectl logs [service-name|kernel|system] View service and system supervisor logs
@@ -136,6 +137,8 @@ cmd_ethernet() {
   esac
 }
 
+cmd_wifi() { /usr/sbin/shree-wifi "$@"; }
+
 cmd_update() {
   local sub="${1:-apply}"
   case "$sub" in
@@ -215,6 +218,7 @@ case "$COMMAND" in
   hardware|cpu|gpu|memory|disks|pci|usb) cmd_hardware "$COMMAND" "$@" ;;
   network)     cmd_network "$@" ;;
   ethernet)    cmd_ethernet "$@" ;;
+  wifi)        cmd_wifi "$@" ;;
   update)      cmd_update "$@" ;;
   doctor)      cmd_doctor "$@" ;;
   logs)        cmd_logs "$@" ;;
