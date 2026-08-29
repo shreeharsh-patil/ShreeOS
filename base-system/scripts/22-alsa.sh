@@ -3,7 +3,8 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; source "$SCRIPT_DIR/common.sh"
 build_alsa() {
-  local name="$1" version="$2" sha="$3" url="https://www.alsa-project.org/files/pub/${4}/${name}-${version}.tar.bz2"
+  local name="$1" version="$2" sha="$3" type="$4"
+  local url="https://www.alsa-project.org/files/pub/${type}/${name}-${version}.tar.bz2"
   local archive="${LUMEN_BUILD_DIR}/sources/${name}-${version}.tar.bz2" source="${LUMEN_BUILD_DIR}/sources/${name}-${version}"
   lumen_fetch "$url" "$archive" "$sha"; [ -d "$source" ] || tar -xjf "$archive" -C "${LUMEN_BUILD_DIR}/sources"
   mkdir -p "${LUMEN_BUILD_DIR}/build-${name}"; cd "${LUMEN_BUILD_DIR}/build-${name}"
