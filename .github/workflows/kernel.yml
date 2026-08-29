@@ -5,7 +5,16 @@ on:
     branches: [master]
     paths:
       - 'kernel/**'
+      - 'toolchain/**'
       - 'build.conf'
+      - '.github/workflows/kernel.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'kernel/**'
+      - 'toolchain/**'
+      - 'build.conf'
+      - '.github/workflows/kernel.yml'
   workflow_dispatch:
 
 jobs:
