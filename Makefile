@@ -50,6 +50,10 @@ help:
 	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
 	@echo "  make all                  Build everything end-to-end"
 	@echo ""
+	@echo "Diagnostic & Verification Targets:"
+	@echo "  make doctor               Check environment, host tools, and build readiness"
+	@echo "  make verify-sources       Verify upstream URLs, checksum format, and downloaded tarballs"
+	@echo ""
 	@echo "Testing & Execution Targets:"
 	@echo "  make test-unit            Run LPM package manager C unit tests"
 	@echo "  make test-security        Run system security audits"
@@ -71,13 +75,28 @@ help:
 	@echo "  PROFILE=desktop|minimal|server  (default: desktop)"
 	@echo "  FORCE=1                         (rebuild all stages)"
 
+# Diagnostic & source verification
+.PHONY: doctor
+doctor:
+	bash scripts/doctor.sh
+
+.PHONY: verify-sources
+verify-sources:
+	bash scripts/verify-sources.sh
+
 # Marker directory creation
 $(MARKER_DIR):
 	mkdir -p $(MARKER_DIR)
 
 ifdef FORCE
-$(shell rm -f $(MARKER_DIR)/.* 2>/dev/null)
+$(shell rm -rf $(MARKER_DIR) 2>/dev/null)
 endif
+
+# Source file dependencies for accurate cache invalidation
+PKG_DEPS := $(shell find pkgmanager/src init/src hardware -type f 2>/dev/null)
+DESKTOP_DEPS := $(shell find desktop -type f 2>/dev/null)
+ROOTFS_DEPS := $(shell find rootfs -type f 2>/dev/null)
+ISO_DEPS := $(shell find iso-builder bootloader -type f 2>/dev/null)
 
 # -- Phase 1: Toolchain -----------------------------------------------
 .PHONY: toolchain
@@ -111,7 +130,7 @@ $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain
 .PHONY: packages
 packages: $(MARKER_DIR)/.packages
 
-$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system
+$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(PKG_DEPS)
 	$(MAKE) -C pkgmanager/src
 	$(MAKE) -C init/src
 	$(MAKE) -C hardware
@@ -121,7 +140,7 @@ $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system
 .PHONY: desktop
 desktop: $(MARKER_DIR)/.desktop-$(PROFILE)
 
-$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages
+$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(DESKTOP_DEPS)
 ifeq ($(PROFILE),desktop)
 	bash desktop/wm/build-all.sh
 endif
@@ -131,7 +150,7 @@ endif
 .PHONY: rootfs
 rootfs: $(MARKER_DIR)/.rootfs-$(PROFILE)
 
-$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE)
+$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS)
 	bash rootfs/scripts/make-rootfs.sh
 	@touch $@
 
@@ -139,7 +158,7 @@ $(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kern
 .PHONY: iso
 iso: $(MARKER_DIR)/.iso-$(PROFILE)
 
-$(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE)
+$(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS)
 	bash iso-builder/scripts/build-iso.sh
 	@touch $@
 
@@ -165,6 +184,10 @@ qemu-bios:
 .PHONY: test-unit
 test-unit:
 	$(MAKE) -C pkgmanager/tests test
+
+.PHONY: test-init
+test-init:
+	$(MAKE) -C init/tests test
 
 .PHONY: test-security
 test-security:
@@ -199,7 +222,7 @@ test-qemu:
 	bash tests/qemu/run-all-qemu-tests.sh
 
 .PHONY: test-all
-test-all: test-unit test-security test-auth test-installer test-pkgmanager test-desktop test-hardware test-qemu
+test-all: test-unit test-init test-security test-auth test-installer test-pkgmanager test-desktop test-hardware test-qemu
 
 .PHONY: tests
 tests: test-smoke

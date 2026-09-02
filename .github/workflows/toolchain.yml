@@ -21,14 +21,16 @@ jobs:
           sudo apt-get install -y build-essential bison flex gawk \
             texinfo curl patch bzip2 xz-utils gperf libgmp-dev libmpfr-dev libmpc-dev pkg-config
 
-      - name: Cache toolchain
+      - name: Cache toolchain & sysroot
         id: cache-toolchain
         uses: actions/cache@v4
         with:
           path: |
             build/tools
             build/sysroot
-          key: toolchain-${{ hashFiles('build.conf', 'toolchain/scripts/**') }}
+          key: toolchain-sysroot-${{ hashFiles('build.conf', 'scripts/common.sh', 'toolchain/scripts/**', 'toolchain/patches/**') }}
+          restore-keys: |
+            toolchain-sysroot-
 
       - name: Build toolchain
         if: steps.cache-toolchain.outputs.cache-hit != 'true'

@@ -28,7 +28,9 @@ jobs:
           path: |
             build/tools
             build/sysroot
-          key: toolchain-sysroot-${{ hashFiles('build.conf', 'toolchain/scripts/**', 'toolchain/patches/**') }}
+          key: toolchain-sysroot-${{ hashFiles('build.conf', 'scripts/common.sh', 'toolchain/scripts/**', 'toolchain/patches/**') }}
+          restore-keys: |
+            toolchain-sysroot-
 
       - name: Build Toolchain (if not cached)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'

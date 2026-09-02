@@ -29,7 +29,9 @@ jobs:
           path: |
             build/tools
             build/sysroot
-          key: toolchain-sysroot-${{ hashFiles('build.conf', 'toolchain/scripts/**', 'toolchain/patches/**') }}
+          key: toolchain-sysroot-${{ hashFiles('build.conf', 'scripts/common.sh', 'toolchain/scripts/**', 'toolchain/patches/**') }}
+          restore-keys: |
+            toolchain-sysroot-
 
       - name: Build toolchain (if not cached)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -42,9 +44,10 @@ jobs:
           mkdir -p build/.markers
           touch build/.markers/.toolchain
 
-      - name: Run unit & security tests
+      - name: Run verification & unit tests
         run: |
-          make -C hardware clean all CROSS_COMPILE=x86_64-shreeos-linux-gnu-
+          make doctor
+          make verify-sources
           make test-unit
           bash tests/smoke/run-all.sh
 

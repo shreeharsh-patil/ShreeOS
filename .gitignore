@@ -27,6 +27,23 @@ IMPLEMENTATION_PLAN.md
 # Binaries and object files
 *.o
 *.exe
+*.a
+*.so
 lpm
 lpm-build
 test-manifest
+/hardware/shreed
+/hardware/shreedctl
+/hardware/tests/shreed-test-daemon
+/hardware/tests/test-collectors
+/hardware/tests/test-shreed
+/init/src/init
+/init/src/initctl
+/init/src/shree-auth
+/init/tests/test-*
+
+# Cryptographic private keys (strictly kept outside git)
+*.key
+*.pem
+*.sec
+private/
