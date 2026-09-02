@@ -20,12 +20,12 @@ menuentry "${DISTRO_NAME} ${DISTRO_VERSION}" --id="${DISTRO_NAME}" {
 }
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (recovery mode)" --id="recovery" {
-  linux /boot/bzImage console=ttyS0 single quiet
+  linux /boot/bzImage shreeos.mode=recovery console=ttyS0 single quiet
   initrd /boot/initramfs.cpio.gz
 }
 
-menuentry "${DISTRO_NAME} Previous Working State" --id="previous-working-state" {
-  linux /boot/bzImage shreeos.rollback=1 console=ttyS0 quiet
+menuentry "${DISTRO_NAME} Previous Working State (SafeUpdate Rollback)" --id="previous-working-state" {
+  linux /boot/bzImage shreeos.rollback=1 console=ttyS0 single quiet
   initrd /boot/initramfs.cpio.gz
 }
 

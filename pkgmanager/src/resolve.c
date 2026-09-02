@@ -7,6 +7,7 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 
@@ -15,7 +16,7 @@ static int safe_exec(const char *file, char *const argv[]) {
     if (pid < 0) return -1;
     if (pid == 0) {
         /* Redirect stdout/stderr to /dev/null */
-        int devnull = open("/dev/null", 0666);
+        int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
             dup2(devnull, STDOUT_FILENO);
             dup2(devnull, STDERR_FILENO);
@@ -292,53 +293,121 @@ int cmd_update(int argc, char **argv) {
 
     printf("lpm: updating repository index from %s...\n", url);
     char tmp_json[LPM_PATH_MAX];
+    char tmp_sig[LPM_PATH_MAX];
     snprintf(tmp_json, sizeof(tmp_json), "%s.tmp.%d", LPM_REPO_JSON, (int)getpid());
+    snprintf(tmp_sig, sizeof(tmp_sig), "%s.sig.tmp.%d", LPM_REPO_JSON, (int)getpid());
 
     char repo_file_url[LPM_PATH_MAX * 2];
+    char repo_sig_url[LPM_PATH_MAX * 2];
     snprintf(repo_file_url, sizeof(repo_file_url), "%s/repo.json", url);
+    snprintf(repo_sig_url, sizeof(repo_sig_url), "%s/repo.json.sig", url);
 
-    /* Fetch using fork/execvp instead of shell system() */
-    char *curl_args[] = { "curl", "-sSL", repo_file_url, "-o", tmp_json, NULL };
-    char *wget_args[] = { "wget", "-q", repo_file_url, "-O", tmp_json, NULL };
+    /* Fetch repo.json using curl or wget */
+    char *curl_json_args[] = { "curl", "-sSL", repo_file_url, "-o", tmp_json, NULL };
+    char *wget_json_args[] = { "wget", "-q", repo_file_url, "-O", tmp_json, NULL };
 
-    int res = safe_exec("curl", curl_args);
+    int res = safe_exec("curl", curl_json_args);
     if (res != 0) {
-        res = safe_exec("wget", wget_args);
+        res = safe_exec("wget", wget_json_args);
     }
 
-    if (res == 0 && access(tmp_json, F_OK) == 0) {
-        FILE *tf = fopen(tmp_json, "rb");
-        if (tf) {
-            fseek(tf, 0, SEEK_END);
-            long sz = ftell(tf);
-            rewind(tf);
-            if (sz > 2) {
-                char *buf = malloc(sz + 1);
-                if (buf && fread(buf, 1, sz, tf) == (size_t)sz) {
-                    buf[sz] = '\0';
-                    json_value *root = json_parse(buf);
-                    if (root) {
-                        json_value *packages = json_get(root, "packages");
-                        if (packages && packages->type == JSON_OBJECT) {
-                            fclose(tf);
-                            free(buf);
-                            json_free(root);
-                            rename(tmp_json, LPM_REPO_JSON);
-                            printf("lpm: repository index updated successfully\n");
-                            lpm_unlock();
-                            return 0;
-                        }
-                        json_free(root);
-                    }
-                }
-                free(buf);
-            }
-            fclose(tf);
+    if (res != 0 || access(tmp_json, F_OK) != 0) {
+        unlink(tmp_json);
+        fprintf(stderr, "lpm: failed to download repository index from %s\n", url);
+        if (access(LPM_REPO_JSON, F_OK) == 0) {
+            fprintf(stderr, "lpm: retaining last valid repository index at %s\n", LPM_REPO_JSON);
+        }
+        lpm_unlock();
+        return 1;
+    }
+
+    /* Fetch repo.json.sig */
+    char *curl_sig_args[] = { "curl", "-sSL", repo_sig_url, "-o", tmp_sig, NULL };
+    char *wget_sig_args[] = { "wget", "-q", repo_sig_url, "-O", tmp_sig, NULL };
+    int sig_res = safe_exec("curl", curl_sig_args);
+    if (sig_res != 0) {
+        sig_res = safe_exec("wget", wget_sig_args);
+    }
+
+    /* Check for repository public key */
+    const char *pubkey_path = getenv("LPM_REPO_PUBKEY");
+    if (!pubkey_path || !*pubkey_path) {
+        if (access("/etc/lpm/keys/shreeos-repo.pub", F_OK) == 0) {
+            pubkey_path = "/etc/lpm/keys/shreeos-repo.pub";
+        } else if (access("/etc/lpm/repo.pub", F_OK) == 0) {
+            pubkey_path = "/etc/lpm/repo.pub";
         }
     }
 
+    /* Verify signature if public key is configured */
+    if (pubkey_path && access(pubkey_path, F_OK) == 0) {
+        if (sig_res != 0 || access(tmp_sig, F_OK) != 0) {
+            fprintf(stderr, "lpm: security error: repository signature missing at %s\n", repo_sig_url);
+            fprintf(stderr, "lpm: retaining last valid repository index.\n");
+            unlink(tmp_json);
+            unlink(tmp_sig);
+            lpm_unlock();
+            return 1;
+        }
+
+        char *verify_args[] = {
+            "openssl", "dgst", "-sha256", "-verify", (char *)pubkey_path,
+            "-signature", tmp_sig, tmp_json, NULL
+        };
+        if (safe_exec("openssl", verify_args) != 0) {
+            fprintf(stderr, "lpm: security error: repository signature verification FAILED!\n");
+            fprintf(stderr, "lpm: untrusted, corrupted, or altered repository metadata.\n");
+            fprintf(stderr, "lpm: retaining last valid repository index.\n");
+            unlink(tmp_json);
+            unlink(tmp_sig);
+            lpm_unlock();
+            return 1;
+        }
+        printf("lpm: repository signature verified with %s\n", pubkey_path);
+    }
+
+    /* Validate JSON structure before replacing current index */
+    FILE *tf = fopen(tmp_json, "rb");
+    if (tf) {
+        fseek(tf, 0, SEEK_END);
+        long sz = ftell(tf);
+        rewind(tf);
+        if (sz > 2) {
+            char *buf = malloc(sz + 1);
+            if (buf && fread(buf, 1, sz, tf) == (size_t)sz) {
+                buf[sz] = '\0';
+                json_value *root = json_parse(buf);
+                if (root) {
+                    json_value *packages = json_get(root, "packages");
+                    if (packages && packages->type == JSON_OBJECT) {
+                        fclose(tf);
+                        free(buf);
+                        json_free(root);
+
+                        rename(tmp_json, LPM_REPO_JSON);
+                        if (access(tmp_sig, F_OK) == 0) {
+                            char final_sig[LPM_PATH_MAX];
+                            snprintf(final_sig, sizeof(final_sig), "%s.sig", LPM_REPO_JSON);
+                            rename(tmp_sig, final_sig);
+                        }
+                        printf("lpm: repository index updated successfully\n");
+                        lpm_unlock();
+                        return 0;
+                    }
+                    json_free(root);
+                }
+            }
+            free(buf);
+        }
+        fclose(tf);
+    }
+
     unlink(tmp_json);
-    fprintf(stderr, "lpm: failed to update repository index from %s (invalid metadata or network error)\n", url);
+    unlink(tmp_sig);
+    fprintf(stderr, "lpm: failed to parse updated repository index from %s (invalid format)\n", url);
+    if (access(LPM_REPO_JSON, F_OK) == 0) {
+        fprintf(stderr, "lpm: retaining last valid repository index at %s\n", LPM_REPO_JSON);
+    }
     lpm_unlock();
     return 1;
 }

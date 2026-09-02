@@ -72,7 +72,11 @@ int cmd_history(int argc, char **argv) {
         char path[LPM_PATH_MAX], ledger[LPM_PATH_MAX], state[64] = "corrupt"; FILE *file;
         if (entry->d_name[0] == '.') continue;
         snprintf(path, sizeof(path), "%s/%s/status", LPM_TRANSACTIONS, entry->d_name);
-        file = fopen(path, "r"); if (file) { (void)fgets(state, sizeof(state), file); fclose(file); }
+        file = fopen(path, "r");
+        if (file) {
+            if (!fgets(state, sizeof(state), file)) state[0] = '\0';
+            fclose(file);
+        }
         state[strcspn(state, "\r\n")] = 0;
         printf("%s  %s  rollback=%s\n", entry->d_name, state,
                valid_payload(entry->d_name, ledger, sizeof(ledger)) ? "available" : "unavailable");
@@ -102,7 +106,7 @@ int cmd_rollback(int argc, char **argv) {
     }
     file = fopen(ledger, "r"); if (!file) { lpm_unlock(); return 1; }
     while (fgets(line, sizeof(line), file)) {
-        char *path = line + 2; char source[LPM_PATH_MAX];
+        char *path = line + 2; char source[LPM_PATH_MAX * 4];
         if (line[0] == '#') continue;
         path[strcspn(path, "\r\n")] = 0;
         if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ' || !lpm_safe_path(path)) { failed = 1; break; }

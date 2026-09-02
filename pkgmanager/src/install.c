@@ -189,24 +189,40 @@ static int remove_tree(const char *path) {
 }
 
 int cmd_install(int argc, char **argv) {
-    if (argc < 1) { fprintf(stderr, "Usage: lpm install <package-name | file.lpkg>\n"); return 1; }
+    if (argc < 1) { fprintf(stderr, "Usage: lpm install [--dry-run] <package-name | file.lpkg>\n"); return 1; }
+
+    bool dry_run = false;
+    const char *pkg_arg = NULL;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--dry-run") == 0) {
+            dry_run = true;
+        } else if (!pkg_arg) {
+            pkg_arg = argv[i];
+        }
+    }
+
+    if (!pkg_arg) {
+        fprintf(stderr, "Usage: lpm install [--dry-run] <package-name | file.lpkg>\n");
+        return 1;
+    }
+
     if (lpm_lock() != 0) return 1;
 
     char lpkg_path[LPM_PATH_MAX];
     char expected_sha[65] = {0};
 
-    if (!lpm_is_lpkg_file(argv[0])) {
-        if (!lpm_valid_pkgname(argv[0])) {
-            fprintf(stderr, "lpm: invalid package name '%s'\n", argv[0]);
+    if (!lpm_is_lpkg_file(pkg_arg)) {
+        if (!lpm_valid_pkgname(pkg_arg)) {
+            fprintf(stderr, "lpm: invalid package name '%s'\n", pkg_arg);
             lpm_unlock();
             return 1;
         }
-        if (download_package(argv[0], lpkg_path, sizeof(lpkg_path), expected_sha, sizeof(expected_sha)) != 0) {
+        if (download_package(pkg_arg, lpkg_path, sizeof(lpkg_path), expected_sha, sizeof(expected_sha)) != 0) {
             lpm_unlock();
             return 1;
         }
     } else {
-        strncpy(lpkg_path, argv[0], sizeof(lpkg_path) - 1);
+        strncpy(lpkg_path, pkg_arg, sizeof(lpkg_path) - 1);
         lpkg_path[sizeof(lpkg_path) - 1] = '\0';
     }
 
@@ -237,8 +253,8 @@ int cmd_install(int argc, char **argv) {
     manifest *old_m = NULL;
     int files_backed_up = 0;
     char transaction_dir[LPM_PATH_MAX] = {0};
-    char transaction_status[LPM_PATH_MAX] = {0};
-    char rollback_ledger[LPM_PATH_MAX] = {0};
+    char transaction_status[LPM_PATH_MAX + 64] = {0};
+    char rollback_ledger[LPM_PATH_MAX + 64] = {0};
 
     /* 3. Extract manifest.json */
     char manifest_extract_dir[LPM_PATH_MAX];
@@ -286,7 +302,14 @@ int cmd_install(int argc, char **argv) {
         }
     }
 
-    /* 6. Detect file ownership conflicts */
+    /* 6. Detect package-level and file ownership conflicts */
+    char conflict_reason[256] = {0};
+    if (lpm_check_conflicts(m, conflict_reason, sizeof(conflict_reason)) != 0) {
+        fprintf(stderr, "lpm: error: %s\n", conflict_reason);
+        ret = 1;
+        goto cleanup;
+    }
+
     if (lpm_check_file_conflicts(m) != 0) {
         fprintf(stderr, "lpm: transaction aborted: file conflict with installed package\n");
         ret = 1;
@@ -296,6 +319,34 @@ int cmd_install(int argc, char **argv) {
     char dbdir[LPM_PATH_MAX];
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", m->name);
     old_m = manifest_load(dbdir);
+
+    if (dry_run) {
+        printf("Transaction Plan (dry-run):\n");
+        if (old_m) {
+            printf("  Upgrade: %s (%s -> %s)\n", m->name, old_m->version, m->version);
+        } else {
+            printf("  Install: %s-%s\n", m->name, m->version);
+        }
+        if (m->ndeps > 0) {
+            printf("  Dependencies satisfied (%d):\n", m->ndeps);
+            for (int i = 0; i < m->ndeps; i++) printf("    - %s\n", m->deps[i]);
+        }
+        if (m->nprovides > 0) {
+            printf("  Provides capabilities (%d):\n", m->nprovides);
+            for (int i = 0; i < m->nprovides; i++) printf("    - %s\n", m->provides[i]);
+        }
+        if (m->nconflicts > 0) {
+            printf("  Conflicts checked (%d, no conflicts)\n", m->nconflicts);
+        }
+        if (m->nreplaces > 0) {
+            printf("  Replaces (%d):\n", m->nreplaces);
+            for (int i = 0; i < m->nreplaces; i++) printf("    - %s\n", m->replaces[i]);
+        }
+        printf("  Files: %d file(s) to install\n", m->nfiles);
+        printf("Transaction plan verified successfully (no filesystem changes made).\n");
+        ret = 0;
+        goto cleanup;
+    }
 
     printf("lpm: preparing transaction for %s-%s\n", m->name, m->version);
 
@@ -333,7 +384,7 @@ int cmd_install(int argc, char **argv) {
     }
 
     /* 9. Prepare Rollback Backups for existing files */
-    char backup_dir[LPM_PATH_MAX];
+    char backup_dir[LPM_PATH_MAX + 64];
     snprintf(transaction_dir, sizeof(transaction_dir), "%s/%ld-%ld", LPM_TRANSACTIONS,
              (long)time(NULL), (long)getpid());
     snprintf(transaction_status, sizeof(transaction_status), "%s/status", transaction_dir);
@@ -360,7 +411,7 @@ int cmd_install(int argc, char **argv) {
         if (!ledger) { ret = 1; goto cleanup; }
         if (access(m->files[i], F_OK) == 0) {
             file_existed[i] = 1;
-            char backup_file[LPM_PATH_MAX];
+            char backup_file[LPM_PATH_MAX * 2];
             snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
             char *last_slash = strrchr(backup_file, '/');
             if (last_slash) {
@@ -388,7 +439,7 @@ int cmd_install(int argc, char **argv) {
         /* Rollback: restore backed up files and remove newly added files */
         for (int i = 0; i < m->nfiles; i++) {
             if (file_existed[i]) {
-                char backup_file[LPM_PATH_MAX];
+                char backup_file[LPM_PATH_MAX * 2];
                 snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
                 copy_file(backup_file, m->files[i]);
             } else {
@@ -407,7 +458,7 @@ int cmd_install(int argc, char **argv) {
         fprintf(stderr, "lpm: failed to write installed database entry. Rolling back...\n");
         for (int i = 0; i < m->nfiles; i++) {
             if (file_existed[i]) {
-                char backup_file[LPM_PATH_MAX];
+                char backup_file[LPM_PATH_MAX * 2];
                 snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
                 copy_file(backup_file, m->files[i]);
             } else {
@@ -431,7 +482,7 @@ int cmd_install(int argc, char **argv) {
                 }
             }
             if (!still_present) {
-                char obsolete_backup[LPM_PATH_MAX];
+                char obsolete_backup[LPM_PATH_MAX * 2];
                 FILE *ledger = NULL;
                 if (!lpm_safe_path(old_m->files[i])) {
                     fprintf(stderr, "lpm: refusing unsafe obsolete path '%s'\n", old_m->files[i]);
@@ -478,11 +529,20 @@ cleanup:
 }
 
 int cmd_remove(int argc, char **argv) {
-    if (argc < 1) { fprintf(stderr, "Usage: lpm remove <package>\n"); return 1; }
-    const char *name = argv[0];
+    if (argc < 1) { fprintf(stderr, "Usage: lpm remove [--cascade] <package>\n"); return 1; }
 
-    if (!lpm_valid_pkgname(name)) {
-        fprintf(stderr, "lpm: invalid package name '%s'\n", name);
+    bool cascade = false;
+    const char *name = NULL;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--cascade") == 0 || strcmp(argv[i], "-R") == 0) {
+            cascade = true;
+        } else if (!name) {
+            name = argv[i];
+        }
+    }
+
+    if (!name || !lpm_valid_pkgname(name)) {
+        fprintf(stderr, "lpm: invalid package name '%s'\n", name ? name : "");
         return 1;
     }
     if (lpm_lock() != 0) return 1;
@@ -491,6 +551,45 @@ int cmd_remove(int argc, char **argv) {
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
     manifest *m = manifest_load(dbdir);
     if (!m) { fprintf(stderr, "lpm: '%s' not installed\n", name); lpm_unlock(); return 1; }
+
+    /* Check for dependent packages */
+    char **dependents = NULL;
+    int ndependents = 0;
+    if (lpm_find_dependents(name, &dependents, &ndependents) > 0) {
+        if (!cascade) {
+            fprintf(stderr, "lpm: error: cannot remove '%s': required by %d installed package(s):\n", name, ndependents);
+            for (int i = 0; i < ndependents; i++) {
+                fprintf(stderr, "  - %s\n", dependents[i]);
+                free(dependents[i]);
+            }
+            free(dependents);
+            fprintf(stderr, "Use 'lpm remove --cascade %s' to remove dependent packages automatically.\n", name);
+            manifest_free(m);
+            lpm_unlock();
+            return 1;
+        } else {
+            printf("lpm: cascading removal of dependent packages (%d):\n", ndependents);
+            for (int i = 0; i < ndependents; i++) {
+                printf("  -> Removing dependent package: %s\n", dependents[i]);
+                char dep_dbdir[LPM_PATH_MAX];
+                snprintf(dep_dbdir, sizeof(dep_dbdir), LPM_INSTALLED "/%s", dependents[i]);
+                manifest *dep_m = manifest_load(dep_dbdir);
+                if (dep_m) {
+                    for (int f = dep_m->nfiles - 1; f >= 0; f--) {
+                        if (lpm_safe_path(dep_m->files[f])) unlink(dep_m->files[f]);
+                    }
+                    char dmp[LPM_PATH_MAX + 32];
+                    snprintf(dmp, sizeof(dmp), "%s/manifest.json", dep_dbdir);
+                    unlink(dmp);
+                    rmdir(dep_dbdir);
+                    printf("lpm: removed %s-%s\n", dep_m->name, dep_m->version);
+                    manifest_free(dep_m);
+                }
+                free(dependents[i]);
+            }
+            free(dependents);
+        }
+    }
 
     /* Remove package files */
     for (int i = m->nfiles - 1; i >= 0; i--) {
