@@ -106,11 +106,23 @@ cat >> "$REPO_JSON" <<EOF
 EOF
 
 lumen_ok "Repository index: ${REPO_JSON}"
+
+# Sign repository index if signing key is provided
+REPO_KEY="${SHREEOS_REPO_KEY:-}"
+if [ -n "$REPO_KEY" ] && [ -f "$REPO_KEY" ]; then
+  lumen_step "Signing repository index with ${REPO_KEY}"
+  openssl dgst -sha256 -sign "$REPO_KEY" -out "${REPO_JSON}.sig" "$REPO_JSON"
+  lumen_ok "Repository index signed: ${REPO_JSON}.sig"
+else
+  lumen_warn "No signing key provided (set SHREEOS_REPO_KEY to sign repository)"
+fi
+
 lumen_ok "Repository ready at ${OUTDIR}"
 echo ""
 echo "Serve with:"
 echo "  python3 -m http.server 8080 -d ${OUTDIR}"
 echo ""
-echo "Then install on target:"
-echo "  lpm install <package.lpkg>"
+echo "Then update and install on target:"
+echo "  lpm update"
+echo "  lpm install <package>"
 echo ""
