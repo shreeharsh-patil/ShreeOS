@@ -4,7 +4,7 @@
 set -euo pipefail
 
 DISTRO_NAME="ShreeOS"
-DISTRO_VERSION="0.1.0-dev"
+DISTRO_VERSION="0.2.0-dev"
 KERNEL=$(uname -r 2>/dev/null || echo "6.18")
 ARCH=$(uname -m 2>/dev/null || echo "x86_64")
 HOSTNAME=$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo "shreeos")

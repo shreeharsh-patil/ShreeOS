@@ -30,7 +30,7 @@ else
   echo "  [FAIL] Design tokens missing"; exit 1
 fi
 
-# 3. Verify vector icon suite
+# 3. Verify vector icon suite and original wallpapers
 REQUIRED_ICONS=(files terminal settings pkgmanager browser editor sysmon network about installer)
 for icon in "${REQUIRED_ICONS[@]}"; do
   if [ -f "${PROJECT_ROOT}/branding/icons/${icon}.svg" ]; then
@@ -40,6 +40,16 @@ for icon in "${REQUIRED_ICONS[@]}"; do
   fi
 done
 echo "  [OK] All 10 vector icon suite assets verified"
+
+# Verify original wallpapers
+for wp in "shreeos-calm-dark.svg" "shreeos-calm-light.svg" "shreeos-wallpaper.svg"; do
+  if [ -f "${PROJECT_ROOT}/branding/wallpapers/${wp}" ]; then
+    grep -q "<svg" "${PROJECT_ROOT}/branding/wallpapers/${wp}" || { echo "Invalid SVG for $wp"; exit 1; }
+  else
+    echo "  [FAIL] Missing wallpaper: ${wp}"; exit 1
+  fi
+done
+echo "  [OK] Original ShreeOS abstract wallpapers verified"
 
 # 4. Verify system CLI tools execution
 if [ -f "${PROJECT_ROOT}/scripts/shreectl" ]; then

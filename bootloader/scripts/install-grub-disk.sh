@@ -143,7 +143,7 @@ insmod part_msdos
 insmod ext2
 insmod fat
 
-menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
+menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.2.0-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet ${CMDLINE_EXTRA}
@@ -155,13 +155,13 @@ menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
 menuentry "${DISTRO_NAME:-ShreeOS} (Recovery Mode)" {
     echo "Loading Linux kernel in single-user recovery mode..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.mode=recovery ${CMDLINE_EXTRA}
     initrd /boot/initramfs.cpio.gz
 }
 
-menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State" {
+menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State (SafeUpdate Rollback)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro shreeos.rollback=1 ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.rollback=1 ${CMDLINE_EXTRA}
     initrd /boot/initramfs.cpio.gz
 }
 EOF

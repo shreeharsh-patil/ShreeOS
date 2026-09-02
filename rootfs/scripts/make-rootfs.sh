@@ -128,6 +128,10 @@ if [ "$SKIP_INIT" = false ]; then
       chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/${tool}"
     fi
   done
+  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/scripts/shree-network" ]; then
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/scripts/shree-network" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-network"
+    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-network"
+  fi
   if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/shree-wifi" ]; then
     mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/shree-wifi" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shree-wifi"

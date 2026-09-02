@@ -102,12 +102,12 @@ grub-install \
 # Copy GRUB config
 if [ -f "${SHREEOS_ROOT_DIR}/bootloader/grub/grub.cfg.template" ]; then
   if command -v envsubst >/dev/null 2>&1; then
-    DISTRO_NAME="${DISTRO_NAME:-ShreeOS}" DISTRO_VERSION="${DISTRO_VERSION:-0.1.0-dev}" CMDLINE_EXTRA="${CMDLINE_EXTRA}" \
+    DISTRO_NAME="${DISTRO_NAME:-ShreeOS}" DISTRO_VERSION="${DISTRO_VERSION:-0.2.0-dev}" CMDLINE_EXTRA="${CMDLINE_EXTRA}" \
       envsubst < "${SHREEOS_ROOT_DIR}/bootloader/grub/grub.cfg.template" \
       > "${STAGING}/boot/grub/grub.cfg"
   else
     sed -e "s/\${DISTRO_NAME}/${DISTRO_NAME:-ShreeOS}/g" \
-        -e "s/\${DISTRO_VERSION}/${DISTRO_VERSION:-0.1.0-dev}/g" \
+        -e "s/\${DISTRO_VERSION}/${DISTRO_VERSION:-0.2.0-dev}/g" \
         -e "s/\${CMDLINE_EXTRA}/${CMDLINE_EXTRA}/g" \
         "${SHREEOS_ROOT_DIR}/bootloader/grub/grub.cfg.template" \
         > "${STAGING}/boot/grub/grub.cfg"
