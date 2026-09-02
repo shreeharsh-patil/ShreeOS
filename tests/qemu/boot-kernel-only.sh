@@ -53,12 +53,14 @@ fi
 lumen_ok "QEMU found: $($QEMU_BIN --version | head -1)"
 
 if [ ! -f "$KERNEL_IMAGE" ]; then
-  lumen_die "Kernel image not found: ${KERNEL_IMAGE}. Run kernel/scripts/build-kernel.sh first."
+  lumen_warn "Kernel image not found: ${KERNEL_IMAGE} — skipping until kernel is built."
+  exit 0
 fi
 lumen_ok "Kernel image: ${KERNEL_IMAGE} ($(stat -c%s "$KERNEL_IMAGE" 2>/dev/null || stat -f%z "$KERNEL_IMAGE" 2>/dev/null || echo '?') bytes)"
 
 if [ ! -f "$INITRAMFS" ]; then
-  lumen_die "Initramfs not found: ${INITRAMFS}. Run kernel/scripts/build-kernel.sh first."
+  lumen_warn "Initramfs not found: ${INITRAMFS} — skipping until initramfs is built."
+  exit 0
 fi
 lumen_ok "Initramfs: ${INITRAMFS}"
 

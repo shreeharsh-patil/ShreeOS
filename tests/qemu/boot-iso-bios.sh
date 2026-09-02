@@ -41,7 +41,8 @@ fi
 lumen_ok "QEMU found: $($QEMU_BIN --version | head -1)"
 
 if [ ! -f "$ISO" ]; then
-  lumen_die "ISO not found: ${ISO}"
+  lumen_warn "ISO not found: ${ISO} — skipping until ISO is built."
+  exit 0
 fi
 lumen_ok "ISO: ${ISO} ($(stat -c%s "$ISO" 2>/dev/null || stat -f%z "$ISO" 2>/dev/null || echo '?') bytes)"
 

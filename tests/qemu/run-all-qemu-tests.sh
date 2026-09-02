@@ -40,6 +40,7 @@ TESTS=(
   "boot-iso-bios.sh"
   "boot-iso-uefi.sh"
   "boot-installed-disk.sh"
+  "test-e2e-install-and-boot.sh"
 )
 
 PASSED=0

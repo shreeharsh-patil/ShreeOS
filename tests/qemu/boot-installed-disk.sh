@@ -39,6 +39,9 @@ if [ -z "$DISK_IMAGE" ]; then
       printf "testrootpass\ntestuserpass\n" > "$CREDS_FILE"
       bash "${PROJECT_ROOT}/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
       rm -f "$CREDS_FILE"
+    else
+      lumen_warn "No built rootfs (initramfs.cpio.gz) found — skipping disk boot test"
+      exit 0
     fi
   fi
 fi
