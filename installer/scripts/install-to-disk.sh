@@ -170,20 +170,24 @@ bash "${SCRIPT_DIR}/partition-disk.sh" "$WORKING_DISK" "${PARTITION_ARGS[@]}"
 # Settle partition table
 sleep 1
 
-# Detect partition devices
-if [ -b "${WORKING_DISK}p3" ] || [ -f "${WORKING_DISK}p3" ]; then
-  PART_BIOS="${WORKING_DISK}p1"
-  PART_ESP="${WORKING_DISK}p2"
-  PART_ROOT="${WORKING_DISK}p3"
-elif [ -b "${WORKING_DISK}3" ] || [ -f "${WORKING_DISK}3" ]; then
-  PART_BIOS="${WORKING_DISK}1"
-  PART_ESP="${WORKING_DISK}2"
-  PART_ROOT="${WORKING_DISK}3"
-else
-  PART_BIOS="${WORKING_DISK}1"
-  PART_ESP="${WORKING_DISK}2"
-  PART_ROOT="${WORKING_DISK}3"
-fi
+# Detect partition devices (NVMe, MMC, VirtIO, SATA, Loop)
+get_partition_dev() {
+  local disk="$1"
+  local num="$2"
+  if [ -b "${disk}p${num}" ] || [ -f "${disk}p${num}" ]; then
+    echo "${disk}p${num}"
+  elif [ -b "${disk}${num}" ] || [ -f "${disk}${num}" ]; then
+    echo "${disk}${num}"
+  elif [[ "$disk" =~ [0-9]$ ]]; then
+    echo "${disk}p${num}"
+  else
+    echo "${disk}${num}"
+  fi
+}
+
+PART_BIOS=$(get_partition_dev "$WORKING_DISK" 1)
+PART_ESP=$(get_partition_dev "$WORKING_DISK" 2)
+PART_ROOT=$(get_partition_dev "$WORKING_DISK" 3)
 
 shreeos_log "Detected partition devices (BIOS: ${PART_BIOS}, ESP: ${PART_ESP}, Root: ${PART_ROOT})"
 
@@ -310,6 +314,48 @@ devtmpfs /dev devtmpfs defaults 0 0
 devpts /dev/pts devpts gid=5,mode=620 0 0
 tmpfs /tmp tmpfs defaults,nosuid,nodev 0 0
 FSTAB
+
+# 8. Post-installation Verification
+shreeos_step "Verifying completed installation on ${TARGET}..."
+VERIFY_FAILED=false
+
+if [ ! -s "${TARGET}/boot/bzImage" ]; then
+  shreeos_warn "Verification failure: /boot/bzImage is missing or empty"
+  VERIFY_FAILED=true
+fi
+
+if [ ! -s "${TARGET}/boot/initramfs.cpio.gz" ]; then
+  shreeos_warn "Verification failure: /boot/initramfs.cpio.gz is missing or empty"
+  VERIFY_FAILED=true
+fi
+
+if [ ! -s "${TARGET}/boot/grub/grub.cfg" ]; then
+  shreeos_warn "Verification failure: /boot/grub/grub.cfg is missing or empty"
+  VERIFY_FAILED=true
+elif ! grep -q "${ROOT_UUID}" "${TARGET}/boot/grub/grub.cfg"; then
+  shreeos_warn "Verification failure: Root UUID ${ROOT_UUID} not present in /boot/grub/grub.cfg"
+  VERIFY_FAILED=true
+fi
+
+if [ ! -s "${TARGET}/etc/fstab" ]; then
+  shreeos_warn "Verification failure: /etc/fstab is missing or empty"
+  VERIFY_FAILED=true
+elif ! grep -q "${ROOT_UUID}" "${TARGET}/etc/fstab"; then
+  shreeos_warn "Verification failure: Root UUID ${ROOT_UUID} not present in /etc/fstab"
+  VERIFY_FAILED=true
+fi
+
+if [ -f "${TARGET}/etc/shadow" ]; then
+  if [ "$(stat -c '%a' "${TARGET}/etc/shadow" 2>/dev/null || echo '0')" != "600" ]; then
+    chmod 0600 "${TARGET}/etc/shadow" 2>/dev/null || true
+  fi
+fi
+
+if [ "$VERIFY_FAILED" = true ]; then
+  shreeos_die "CRITICAL: Completed installation verification failed! System may not boot cleanly."
+fi
+
+shreeos_ok "Completed installation successfully verified (kernel, initramfs, GRUB, fstab, and security credentials OK)"
 
 sync
 shreeos_ok "${DISTRO_NAME:-ShreeOS} successfully installed to ${DISK}"

@@ -57,13 +57,13 @@ fi
 # Resolve canonical realpath
 CANONICAL_DISK=$(realpath "$DISK" 2>/dev/null || echo "$DISK")
 
-# Protect against writing directly to host root or boot mounts
+# Protect against writing directly to host root, boot, or live media
 if command -v findmnt >/dev/null 2>&1; then
   HOST_ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null || echo "")
   if [ -n "$HOST_ROOT_DEV" ]; then
     HOST_ROOT_CANON=$(realpath "$HOST_ROOT_DEV" 2>/dev/null || echo "$HOST_ROOT_DEV")
     if [[ "$HOST_ROOT_CANON" == "$CANONICAL_DISK"* ]] || [[ "$CANONICAL_DISK" == "$HOST_ROOT_CANON"* ]]; then
-      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' appears to contain the currently running host root filesystem (/)."
+      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains the currently running host root filesystem (/)."
     fi
   fi
 
@@ -74,6 +74,30 @@ if command -v findmnt >/dev/null 2>&1; then
       shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains the host /boot filesystem."
     fi
   fi
+fi
+
+# Protect against overwriting live media
+for live_mnt in /run/initramfs/live /cdrom /mnt/cdrom /run/media; do
+  if [ -d "$live_mnt" ]; then
+    LIVE_DEV=$(findmnt -n -o SOURCE "$live_mnt" 2>/dev/null || echo "")
+    if [ -n "$LIVE_DEV" ]; then
+      CANON_LIVE=$(realpath "$LIVE_DEV" 2>/dev/null || echo "$LIVE_DEV")
+      if [[ "$CANON_LIVE" == "$CANONICAL_DISK"* ]]; then
+        shreeos_die "CRITICAL REFUSAL: Target '${DISK}' is the active live installer media (${live_mnt})."
+      fi
+    fi
+  fi
+done
+
+# Reject any target device or partition that is currently mounted
+if [ -b "$CANONICAL_DISK" ]; then
+  while read -r mnt_src mnt_tgt; do
+    [ -z "$mnt_src" ] && continue
+    CANON_SRC=$(realpath "$mnt_src" 2>/dev/null || echo "$mnt_src")
+    if [[ "$CANON_SRC" == "$CANONICAL_DISK"* ]]; then
+      shreeos_die "CRITICAL REFUSAL: Device '${mnt_src}' is actively mounted at '${mnt_tgt}'. Unmount before partitioning."
+    fi
+  done < <(findmnt -r -n -o SOURCE,TARGET 2>/dev/null || grep '^/dev/' /proc/mounts | awk '{print $1, $2}')
 fi
 
 # 2. Interactive Confirmation (Unless --yes specified)

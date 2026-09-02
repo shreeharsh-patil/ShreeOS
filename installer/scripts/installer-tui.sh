@@ -27,7 +27,7 @@ clear
 echo "┌──────────────────────────────────────────────────────────────────────────┐"
 echo "│                                                                          │"
 echo "│                                ShreeOS                                   │"
-echo "│                         Version 0.1.0-dev (x86_64)                       │"
+echo "│                         Version 0.2.0-dev (x86_64)                       │"
 echo "│                                                                          │"
 echo "│            Designed for Performance, Safety, and Restraint               │"
 echo "│                                                                          │"
@@ -45,20 +45,81 @@ read -r -p "Press [Enter] to begin installation setup... " _
 clear
 # Stage 2: Disk Selection
 echo "==> Step 2 of 5: Target Disk Selection"
-echo "Available storage block devices:"
+echo "Detecting available storage devices (NVMe, SATA, VirtIO, MMC)..."
 echo "--------------------------------------------------------------------------"
+printf "  %-16s %-10s %-12s %-24s\n" "DEVICE" "SIZE" "TYPE" "MODEL"
+echo "--------------------------------------------------------------------------"
+
+LIVE_DEV=""
+for live_dir in /run/initramfs/live /cdrom /mnt/cdrom /run/media; do
+  if [ -d "$live_dir" ]; then
+    LIVE_DEV=$(findmnt -n -o SOURCE "$live_dir" 2>/dev/null || echo "")
+    [ -n "$LIVE_DEV" ] && break
+  fi
+done
+HOST_ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null || echo "")
+
+AVAILABLE_DISKS=()
 if command -v lsblk >/dev/null 2>&1; then
-  lsblk -d -o NAME,SIZE,MODEL,ROTA,TYPE | grep -E "disk|loop" || true
-else
-  fdisk -l 2>/dev/null | grep "Disk /dev/" || echo "No disks found"
+  while read -r name size model _rota type tran; do
+    [ -z "$name" ] && continue
+    [ "$type" != "disk" ] && [ "$type" != "loop" ] && continue
+    # Skip CD/DVD drives
+    [[ "$name" == sr* ]] && continue
+
+    DEV_PATH="/dev/${name}"
+    CANON_DEV=$(realpath "$DEV_PATH" 2>/dev/null || echo "$DEV_PATH")
+
+    # Skip active live media or active host root
+    if [ -n "$LIVE_DEV" ] && [[ "$(realpath "$LIVE_DEV" 2>/dev/null || echo "$LIVE_DEV")" == "$CANON_DEV"* ]]; then
+      continue
+    fi
+    if [ -n "$HOST_ROOT_DEV" ] && [[ "$(realpath "$HOST_ROOT_DEV" 2>/dev/null || echo "$HOST_ROOT_DEV")" == "$CANON_DEV"* ]]; then
+      continue
+    fi
+
+    TRANSPORT="${tran:-${type}}"
+    case "$name" in
+      nvme*) TRANSPORT="NVMe" ;;
+      vd*)   TRANSPORT="VirtIO" ;;
+      sd*)   [ "$TRANSPORT" = "disk" ] && TRANSPORT="SATA/SCSI" ;;
+      mmc*)  TRANSPORT="MMC/SD" ;;
+    esac
+
+    printf "  %-16s %-10s %-12s %-24s\n" "$DEV_PATH" "$size" "$TRANSPORT" "${model:-Generic Storage}"
+    AVAILABLE_DISKS+=("$DEV_PATH")
+  done < <(lsblk -d -n -o NAME,SIZE,MODEL,ROTA,TYPE,TRAN 2>/dev/null || true)
+fi
+
+if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
+  echo "  No unmounted candidate disks automatically detected."
+  echo "  You may manually specify a target block device or raw disk image below."
 fi
 echo "--------------------------------------------------------------------------"
 echo ""
-read -r -p "Enter target disk path (e.g. /dev/sda or /dev/nvme0n1): " TARGET_DISK
 
-if [[ -z "$TARGET_DISK" || ( ! -b "$TARGET_DISK" && ! -f "$TARGET_DISK" ) ]]; then
-  shreeos_die "Invalid target disk '${TARGET_DISK}'. Aborting."
-fi
+while true; do
+  read -r -p "Enter target disk path (e.g. /dev/nvme0n1, /dev/vda, /dev/sda): " TARGET_DISK
+  if [[ -z "$TARGET_DISK" ]]; then
+    echo "Error: Disk path cannot be empty."
+    continue
+  fi
+  if [ ! -b "$TARGET_DISK" ] && [ ! -f "$TARGET_DISK" ]; then
+    echo "Error: '${TARGET_DISK}' is not a valid block device or file."
+    continue
+  fi
+
+  CANON_TGT=$(realpath "$TARGET_DISK" 2>/dev/null || echo "$TARGET_DISK")
+  if [ -n "$LIVE_DEV" ] && [[ "$(realpath "$LIVE_DEV" 2>/dev/null || echo "$LIVE_DEV")" == "$CANON_TGT"* ]]; then
+    echo "Error: Target '${TARGET_DISK}' contains the running live installer media! Refusing."
+    continue
+  fi
+  if [ -n "$HOST_ROOT_DEV" ] && [[ "$(realpath "$HOST_ROOT_DEV" 2>/dev/null || echo "$HOST_ROOT_DEV")" == "$CANON_TGT"* ]]; then
+    echo "Error: Target '${TARGET_DISK}' contains the running host root filesystem! Refusing."
+    continue
+  fi
+  break
+done
 
 clear
 # Stage 3: User & Hostname Configuration
