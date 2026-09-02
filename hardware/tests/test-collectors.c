@@ -48,6 +48,16 @@ int main(int argc, char **argv) {
          strstr(response, "Fixture CPU 9000") != NULL && strstr(response, "Fixture NVMe") != NULL);
     TEST("missing hardware is graceful", shreed_collect_cpu("/missing-shreed-fixture", response, sizeof(response)) == 0 &&
          strstr(response, "\"model\":null") != NULL);
+    TEST("battery collector graceful", shreed_collect_battery(root, response, sizeof(response)) == 0 &&
+         strstr(response, "\"ok\":true") != NULL);
+    TEST("power collector graceful", shreed_collect_power(root, response, sizeof(response)) == 0 &&
+         strstr(response, "\"ok\":true") != NULL && strstr(response, "\"ac_online\":") != NULL);
+    TEST("brightness collector graceful", shreed_collect_brightness(root, response, sizeof(response)) == 0 &&
+         strstr(response, "\"ok\":true") != NULL);
+    TEST("audio collector graceful", shreed_collect_audio(root, response, sizeof(response)) == 0 &&
+         strstr(response, "\"ok\":true") != NULL);
+    TEST("display collector graceful", shreed_collect_display(root, response, sizeof(response)) == 0 &&
+         strstr(response, "\"ok\":true") != NULL);
     printf("%d failures\n", failures);
     return failures ? 1 : 0;
 }

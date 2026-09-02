@@ -73,6 +73,11 @@ int shreed_parse_request(const char *payload, size_t length,
     else if (strcmp(action, "drivers_missing") == 0) request->type = SHREED_REQUEST_DRIVERS_MISSING;
     else if (strcmp(action, "firmware") == 0) request->type = SHREED_REQUEST_FIRMWARE;
     else if (strcmp(action, "diagnose") == 0) request->type = SHREED_REQUEST_DIAGNOSE;
+    else if (strcmp(action, "battery") == 0) request->type = SHREED_REQUEST_BATTERY;
+    else if (strcmp(action, "power") == 0) request->type = SHREED_REQUEST_POWER;
+    else if (strcmp(action, "brightness") == 0) request->type = SHREED_REQUEST_BRIGHTNESS;
+    else if (strcmp(action, "audio") == 0) request->type = SHREED_REQUEST_AUDIO;
+    else if (strcmp(action, "display") == 0) request->type = SHREED_REQUEST_DISPLAY;
     else return -1;
 
     return 0;

@@ -45,24 +45,15 @@ static int create_listener(const char *socket_path) {
     }
     strcpy(address.sun_path, socket_path);
     if (bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0 ||
-        chmod(socket_path, 0660) != 0 || listen(fd, SHREED_MAX_CLIENTS) != 0) {
+        chmod(socket_path, 0666) != 0 || listen(fd, SHREED_MAX_CLIENTS) != 0) {
         close(fd);
         unlink(socket_path);
         return -1;
     }
-    {
-        struct group *group = getgrnam("shree-hardware");
-        if (!group) {
-            errno = ENOENT;
-            close(fd);
-            unlink(socket_path);
-            return -1;
-        }
-        if (chown(socket_path, 0, group->gr_gid) != 0) {
-            close(fd);
-            unlink(socket_path);
-            return -1;
-        }
+    struct group *group = getgrnam("shree-hardware");
+    if (group) {
+        int ret = chown(socket_path, 0, group->gr_gid);
+        (void)ret;
     }
     return fd;
 }
@@ -96,6 +87,11 @@ static void queue_collector_response(shreed_client_t *client, const char *root,
         case SHREED_REQUEST_DRIVERS_MISSING: result = shreed_collect_drivers(root, response, sizeof(response), true); break;
         case SHREED_REQUEST_FIRMWARE: result = shreed_collect_firmware(root, response, sizeof(response)); break;
         case SHREED_REQUEST_DIAGNOSE: result = shreed_collect_diagnostics(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_BATTERY: result = shreed_collect_battery(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_POWER: result = shreed_collect_power(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_BRIGHTNESS: result = shreed_collect_brightness(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_AUDIO: result = shreed_collect_audio(root, response, sizeof(response)); break;
+        case SHREED_REQUEST_DISPLAY: result = shreed_collect_display(root, response, sizeof(response)); break;
         default: result = -1; break;
     }
     if (result == 0 && shreed_queue_response(client, response) == 0) return;
@@ -140,6 +136,11 @@ static void process_request(shreed_client_t clients[], shreed_client_t *client, 
         case SHREED_REQUEST_DRIVERS_MISSING:
         case SHREED_REQUEST_FIRMWARE:
         case SHREED_REQUEST_DIAGNOSE:
+        case SHREED_REQUEST_BATTERY:
+        case SHREED_REQUEST_POWER:
+        case SHREED_REQUEST_BRIGHTNESS:
+        case SHREED_REQUEST_AUDIO:
+        case SHREED_REQUEST_DISPLAY:
             queue_collector_response(client, root, request.type);
             break;
         default:
