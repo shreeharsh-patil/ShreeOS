@@ -1,5 +1,5 @@
 /*
- * init/src/initctl.c — ShreeOS Init Control Utility
+ * init/src/initctl.c — ShreeOS Init Control Utility (V2)
  *
  * Communicates with PID 1 via Unix domain socket IPC (/run/init.sock)
  * and fallback control signals. Returns non-zero on command failure.
@@ -14,7 +14,13 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#define INIT_SOCK_PATH "/run/init.sock"
+#define DEFAULT_INIT_SOCK_PATH "/run/init.sock"
+
+static const char *get_sock_path(void) {
+    const char *env = getenv("INIT_SOCK_PATH");
+    if (env && *env) return env;
+    return DEFAULT_INIT_SOCK_PATH;
+}
 
 static int send_ipc_command(const char *cmd, char *out, size_t out_len) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -23,15 +29,18 @@ static int send_ipc_command(const char *cmd, char *out, size_t out_len) {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, INIT_SOCK_PATH, sizeof(addr.sun_path) - 1);
+    const char *sock_path = get_sock_path();
+    strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         close(fd);
         return -1;
     }
 
-    write(fd, cmd, strlen(cmd));
-    write(fd, "\n", 1);
+    ssize_t w = write(fd, cmd, strlen(cmd));
+    (void)w;
+    w = write(fd, "\n", 1);
+    (void)w;
 
     ssize_t n = read(fd, out, out_len - 1);
     if (n >= 0) out[n] = '\0';
@@ -43,10 +52,12 @@ static int send_ipc_command(const char *cmd, char *out, size_t out_len) {
 
 static void usage(void) {
     fprintf(stderr,
-        "initctl — ShreeOS Service & Init Controller\n"
+        "initctl — ShreeOS Service & Init Controller (V2)\n"
         "Usage:\n"
         "  initctl list               List running and supervised services\n"
         "  initctl status [service]   Check service status / init supervisor health\n"
+        "  initctl blame              Show boot duration timeline for services\n"
+        "  initctl logs <service>     Display recent output logs for a service\n"
         "  initctl start <service>    Start a service\n"
         "  initctl stop <service>     Stop a running service\n"
         "  initctl restart <service>  Restart a service\n"
@@ -61,16 +72,32 @@ int main(int argc, char **argv) {
     if (argc < 2) { usage(); return 1; }
 
     const char *cmd = argv[1];
-    char resp[4096] = {0};
+    char resp[8192] = {0};
 
     if (strcmp(cmd, "list") == 0) {
         if (send_ipc_command("LIST", resp, sizeof(resp)) == 0) {
             printf("%s", resp);
             return 0;
         } else {
-            fprintf(stderr, "initctl: could not connect to init socket at %s\n", INIT_SOCK_PATH);
+            fprintf(stderr, "initctl: could not connect to init socket at %s\n", get_sock_path());
             return 1;
         }
+    } else if (strcmp(cmd, "blame") == 0) {
+        if (send_ipc_command("BLAME", resp, sizeof(resp)) == 0) {
+            printf("%s", resp);
+            return 0;
+        } else {
+            fprintf(stderr, "initctl: could not connect to init socket at %s\n", get_sock_path());
+            return 1;
+        }
+    } else if (strcmp(cmd, "logs") == 0) {
+        if (argc < 3) { fprintf(stderr, "Usage: initctl logs <service>\n"); return 1; }
+        char req[128]; snprintf(req, sizeof(req), "LOGS %s", argv[2]);
+        if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
+            printf("%s", resp);
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
+        }
+        return 1;
     } else if (strcmp(cmd, "start") == 0) {
         if (argc < 3) { fprintf(stderr, "Usage: initctl start <service>\n"); return 1; }
         char req[128]; snprintf(req, sizeof(req), "START %s", argv[2]);
@@ -125,12 +152,24 @@ int main(int argc, char **argv) {
         return 1;
     } else if (strcmp(cmd, "reboot") == 0) {
         printf("initctl: requesting system reboot...\n");
+        if (send_ipc_command("SHUTDOWN REBOOT", resp, sizeof(resp)) == 0) {
+            printf("%s", resp);
+            return 0;
+        }
         return kill(1, SIGTERM) == 0 ? 0 : 1;
     } else if (strcmp(cmd, "poweroff") == 0) {
         printf("initctl: requesting system poweroff...\n");
+        if (send_ipc_command("SHUTDOWN POWEROFF", resp, sizeof(resp)) == 0) {
+            printf("%s", resp);
+            return 0;
+        }
         return kill(1, SIGUSR1) == 0 ? 0 : 1;
     } else if (strcmp(cmd, "halt") == 0) {
         printf("initctl: requesting system halt...\n");
+        if (send_ipc_command("SHUTDOWN HALT", resp, sizeof(resp)) == 0) {
+            printf("%s", resp);
+            return 0;
+        }
         return kill(1, SIGUSR2) == 0 ? 0 : 1;
     }
 

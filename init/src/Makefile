@@ -4,7 +4,7 @@
 #   make              # build init, initctl, shree-auth
 #   make clean        # remove build artifacts
 
-CROSS_COMPILE ?= $(or ${CROSS_COMPILE}, x86_64-shreeos-linux-gnu-)
+CROSS_COMPILE ?=
 CC := $(CROSS_COMPILE)gcc
 CFLAGS := -static -Os -Wall -Wextra
 LDFLAGS := -static

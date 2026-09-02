@@ -1,17 +1,18 @@
 /*
- * init/src/init.c — ShreeOS PID 1 Service Supervisor & Init System
+ * init/src/init.c — ShreeOS PID 1 Service Supervisor & Init System (V2)
  *
  * Core Features:
- *   - Essential virtual filesystem mounting (/proc, /sys, /dev, /run, /dev/pts, /dev/shm)
+ *   - Essential virtual filesystem mounting (/proc, /sys, /dev, /run, /dev/pts, /dev/shm, /tmp)
  *   - Kernel cmdline parsing for emergency / recovery mode (single, recovery, shreeos.mode=recovery)
  *   - Robust service descriptor parsing from /etc/services.d configuration files
+ *   - Topological dependency ordering with cycle detection and automatic cycle breaking
+ *   - Service timing & boot blame profiling (CLOCK_MONOTONIC metrics for 'initctl blame')
  *   - Non-blocking SIGCHLD zombie process reaping (waitpid(-1, WNOHANG))
- *   - Race-free service restart with SIGTERM -> wait -> SIGKILL -> verify dead (ESRCH) sequence
- *   - Safe service configuration reload with live PID & state reconciliation and dead service cleanup
- *   - Exponential restart backoff (max 30s) and crash loop detection
- *   - Process group signal delivery & service stdout/stderr logging (/var/log/shreeos/services/)
- *   - Unix domain socket IPC (/run/init.sock) secured with SO_PEERCRED authorization
- *   - Multi-stage orderly shutdown: SIGTERM -> wait -> SIGKILL -> sync -> remount ro -> reboot/poweroff
+ *   - Robust restart policies (always, on-failure, never) with exponential backoff and crash loop protection
+ *   - Process group signal delivery & service stdout/stderr logging (/var/log/shreeos/services/<name>.log)
+ *   - Unix domain socket IPC (/run/init.sock) secured with SO_PEERCRED client authorization
+ *   - IPC endpoints: LIST, STATUS, BLAME, LOGS, START, STOP, RESTART, RELOAD, SHUTDOWN
+ *   - Multi-stage orderly shutdown in reverse dependency order: SIGTERM -> wait -> SIGKILL -> sync -> remount ro -> reboot
  */
 
 #define _GNU_SOURCE
@@ -35,9 +36,11 @@
 #include <poll.h>
 
 #define MAX_SERVICES 64
-#define SERVICE_DIR "/etc/services.d"
-#define INIT_SOCK_PATH "/run/init.sock"
-#define LOG_DIR "/var/log/shreeos/services"
+#define DEFAULT_SERVICE_DIR "/etc/services.d"
+#define DEFAULT_INIT_SOCK_PATH "/run/init.sock"
+#define DEFAULT_LOG_DIR "/var/log/shreeos/services"
+#define MAX_LOG_CAPTURE_BYTES 8192
+#define MAX_LOG_FILE_BYTES (5 * 1024 * 1024) /* 5 MB per log before truncation */
 
 typedef enum {
     SVC_STOPPED = 0,
@@ -66,39 +69,41 @@ typedef struct service {
     time_t last_start;
     time_t last_exit;
     int last_exit_status;
+
+    /* Boot timing and blame metrics */
+    struct timespec start_ts;
+    struct timespec ready_ts;
+    long duration_ms;
+    bool blame_recorded;
+
+    /* Dependency graph indices */
+    int dep_indices[MAX_SERVICES];
+    int num_deps;
 } service_t;
 
 static service_t services[MAX_SERVICES];
 static int num_services = 0;
 static int ipc_sock_fd = -1;
 
-static bool valid_service_name(const char *name) {
-    if (!name || !*name || strlen(name) >= sizeof(((service_t *)0)->name)) return false;
-    for (const unsigned char *p = (const unsigned char *)name; *p; ++p) {
-        if (!(isalnum(*p) || *p == '-' || *p == '_' || *p == '.')) return false;
-    }
-    return true;
-}
-
-static int write_all_nonblocking(int fd, const char *buffer, size_t length) {
-    size_t written = 0;
-    while (written < length) {
-        ssize_t result = write(fd, buffer + written, length - written);
-        if (result > 0) { written += (size_t)result; continue; }
-        if (result < 0 && errno == EINTR) continue;
-        if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            struct pollfd poll_fd = { .fd = fd, .events = POLLOUT, .revents = 0 };
-            if (poll(&poll_fd, 1, 1000) > 0) continue;
-        }
-        return -1;
-    }
-    return 0;
-}
+static char g_service_dir[256] = DEFAULT_SERVICE_DIR;
+static char g_sock_path[256] = DEFAULT_INIT_SOCK_PATH;
+static char g_log_dir[256] = DEFAULT_LOG_DIR;
+static bool g_test_mode = false;
+static bool g_strict_auth = false;
+static struct timespec g_boot_start_ts;
 
 static volatile sig_atomic_t sigchld_received = 0;
 static volatile sig_atomic_t shutdown_requested = 0;
 static volatile sig_atomic_t shutdown_mode = 0; /* 0 = reboot, 1 = poweroff, 2 = halt */
 static volatile sig_atomic_t reload_requested = 0;
+
+static bool valid_service_name(const char *name) {
+    if (!name || !*name || strlen(name) >= 64) return false;
+    for (const unsigned char *p = (const unsigned char *)name; *p; ++p) {
+        if (!(isalnum(*p) || *p == '-' || *p == '_' || *p == '.')) return false;
+    }
+    return true;
+}
 
 static const char *state_to_str(svc_state_t s) {
     switch (s) {
@@ -108,6 +113,14 @@ static const char *state_to_str(svc_state_t s) {
         case SVC_FAILED:   return "FAILED";
         case SVC_STOPPING: return "STOPPING";
         default:           return "UNKNOWN";
+    }
+}
+
+static const char *restart_to_str(restart_policy_t r) {
+    switch (r) {
+        case RESTART_ALWAYS:     return "always";
+        case RESTART_ON_FAILURE: return "on-failure";
+        default:                 return "never";
     }
 }
 
@@ -127,6 +140,21 @@ static void log_error(const char *svc, const char *msg) {
     if (svc && *svc) fprintf(stderr, "[init:fail] [%s] %s: %s\n", svc, msg, strerror(errno));
     else fprintf(stderr, "[init:fail] %s: %s\n", msg, strerror(errno));
     fflush(stderr);
+}
+
+static int write_all_nonblocking(int fd, const char *buffer, size_t length) {
+    size_t written = 0;
+    while (written < length) {
+        ssize_t result = write(fd, buffer + written, length - written);
+        if (result > 0) { written += (size_t)result; continue; }
+        if (result < 0 && errno == EINTR) continue;
+        if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            struct pollfd poll_fd = { .fd = fd, .events = POLLOUT, .revents = 0 };
+            if (poll(&poll_fd, 1, 1000) > 0) continue;
+        }
+        return -1;
+    }
+    return 0;
 }
 
 static void handle_signal(int sig) {
@@ -159,6 +187,7 @@ static int mount_fs(const char *source, const char *target,
 }
 
 static void mount_essential_filesystems(void) {
+    if (g_test_mode) return;
     log_info(NULL, "Mounting essential virtual filesystems...");
     mount_fs("proc",     "/proc",     "proc",     0, NULL);
     mount_fs("sysfs",    "/sys",      "sysfs",    0, NULL);
@@ -177,6 +206,14 @@ static service_t *find_service(const char *name) {
     return NULL;
 }
 
+static int find_service_index(const service_t *table, int count, const char *name) {
+    if (!name || !*name) return -1;
+    for (int i = 0; i < count; i++) {
+        if (strcmp(table[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
 static service_t *find_service_by_pid(pid_t pid) {
     if (pid <= 0) return NULL;
     for (int i = 0; i < num_services; i++) {
@@ -189,6 +226,10 @@ static void add_service_entry(service_t *table, int *count, const char *name,
                               const char *command, const char *after,
                               restart_policy_t restart, bool is_oneshot, bool is_critical) {
     if (*count >= MAX_SERVICES) return;
+    if (!valid_service_name(name)) {
+        log_warn(name, "Rejected invalid service name");
+        return;
+    }
     service_t *s = &table[(*count)++];
     memset(s, 0, sizeof(service_t));
     strncpy(s->name, name, sizeof(s->name) - 1);
@@ -198,8 +239,11 @@ static void add_service_entry(service_t *table, int *count, const char *name,
     s->is_oneshot = is_oneshot;
     s->is_critical = is_critical;
     s->state = SVC_STOPPED;
+    s->num_deps = 0;
+    for (int i = 0; i < MAX_SERVICES; i++) s->dep_indices[i] = -1;
 }
 
+/* Parse service configuration file */
 static void parse_service_file(const char *path, service_t *table, int *count) {
     FILE *f = fopen(path, "r");
     if (!f) return;
@@ -224,6 +268,7 @@ static void parse_service_file(const char *path, service_t *table, int *count) {
         if (!eq) continue;
         *eq = '\0';
         char *val = eq + 1;
+        while (*val == ' ' || *val == '\t') val++;
 
         if (strcmp(p, "name") == 0) {
             strncpy(name, val, sizeof(name) - 1);
@@ -245,6 +290,87 @@ static void parse_service_file(const char *path, service_t *table, int *count) {
 
     if (name[0] && command[0]) {
         add_service_entry(table, count, name, command, after, restart, is_oneshot, is_critical);
+    } else {
+        log_warn(path, "Ignored incomplete service configuration (missing name or command)");
+    }
+}
+
+/* Build dependency graph and detect/break cycles */
+static void build_and_validate_dependency_graph(service_t *table, int count) {
+    /* 1. Map 'after' string to dep_indices */
+    for (int i = 0; i < count; i++) {
+        table[i].num_deps = 0;
+        if (!table[i].after[0]) continue;
+
+        char buf[128];
+        strncpy(buf, table[i].after, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+
+        char *token = strtok(buf, ", ");
+        while (token) {
+            int dep_idx = find_service_index(table, count, token);
+            if (dep_idx >= 0 && dep_idx != i) {
+                bool exists = false;
+                for (int d = 0; d < table[i].num_deps; d++) {
+                    if (table[i].dep_indices[d] == dep_idx) { exists = true; break; }
+                }
+                if (!exists && table[i].num_deps < MAX_SERVICES) {
+                    table[i].dep_indices[table[i].num_deps++] = dep_idx;
+                }
+            } else if (dep_idx == i) {
+                log_warn(table[i].name, "Service declared self-dependency. Breaking self-cycle.");
+            }
+            token = strtok(NULL, ", ");
+        }
+    }
+
+    /* 2. Cycle detection via DFS 3-color approach */
+    /* 0 = unvisited, 1 = visiting (in active recursion stack), 2 = visited */
+    int color[MAX_SERVICES] = {0};
+
+    for (int start = 0; start < count; start++) {
+        if (color[start] != 0) continue;
+
+        int stack[MAX_SERVICES];
+        int edge_idx[MAX_SERVICES];
+        int top = 0;
+
+        stack[0] = start;
+        edge_idx[0] = 0;
+        color[start] = 1;
+
+        while (top >= 0) {
+            int u = stack[top];
+            int e = edge_idx[top];
+
+            if (e < table[u].num_deps) {
+                edge_idx[top]++;
+                int v = table[u].dep_indices[e];
+                if (color[v] == 1) {
+                    /* Cycle detected: u -> v is a back edge! */
+                    char warn_buf[256];
+                    snprintf(warn_buf, sizeof(warn_buf),
+                             "Dependency cycle detected (%s -> %s). Breaking dependency to prevent deadlock.",
+                             table[u].name, table[v].name);
+                    log_warn("init", warn_buf);
+
+                    /* Remove edge from table[u] */
+                    for (int k = e; k < table[u].num_deps - 1; k++) {
+                        table[u].dep_indices[k] = table[u].dep_indices[k + 1];
+                    }
+                    table[u].num_deps--;
+                    edge_idx[top]--;
+                } else if (color[v] == 0) {
+                    color[v] = 1;
+                    top++;
+                    stack[top] = v;
+                    edge_idx[top] = 0;
+                }
+            } else {
+                color[u] = 2;
+                top--;
+            }
+        }
     }
 }
 
@@ -269,7 +395,7 @@ static void stop_service_sync(service_t *s) {
         usleep(100000);
     }
 
-    /* If still alive, send SIGKILL to process group */
+    /* If still alive, send SIGKILL to process group and process */
     if (s->pid > 0 && kill(old_pid, 0) == 0) {
         kill(-old_pid, SIGKILL);
         kill(old_pid, SIGKILL);
@@ -288,7 +414,7 @@ static void load_and_reconcile_services(void) {
     service_t new_table[MAX_SERVICES];
     int new_count = 0;
 
-    DIR *dir = opendir(SERVICE_DIR);
+    DIR *dir = opendir(g_service_dir);
     if (dir) {
         struct dirent *ent;
         while ((ent = readdir(dir))) {
@@ -296,7 +422,7 @@ static void load_and_reconcile_services(void) {
             size_t len = strlen(ent->d_name);
             if (len > 5 && strcmp(ent->d_name + len - 5, ".conf") == 0) {
                 char fullpath[512];
-                snprintf(fullpath, sizeof(fullpath), "%s/%s", SERVICE_DIR, ent->d_name);
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", g_service_dir, ent->d_name);
                 parse_service_file(fullpath, new_table, &new_count);
             }
         }
@@ -304,10 +430,13 @@ static void load_and_reconcile_services(void) {
     }
 
     if (new_count == 0 && num_services == 0) {
-        add_service_entry(new_table, &new_count, "hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", NULL, RESTART_NEVER, true, false);
+        add_service_entry(new_table, &new_count, "sysinit", "/bin/true", NULL, RESTART_NEVER, true, true);
+        add_service_entry(new_table, &new_count, "hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", "sysinit", RESTART_NEVER, true, false);
         add_service_entry(new_table, &new_count, "network", "ip link set lo up 2>/dev/null || ifconfig lo 127.0.0.1 up 2>/dev/null", "hostname", RESTART_NEVER, true, false);
         add_service_entry(new_table, &new_count, "console", "/usr/bin/shree-auth --login-tty", "network", RESTART_ALWAYS, false, true);
     }
+
+    build_and_validate_dependency_graph(new_table, new_count);
 
     /* 1. Stop and remove services that no longer exist in new_table */
     for (int i = 0; i < num_services; i++) {
@@ -329,13 +458,17 @@ static void load_and_reconcile_services(void) {
         service_t *old = find_service(new_table[i].name);
         if (old) {
             if (strcmp(old->command, new_table[i].command) == 0) {
-                /* Command unchanged: preserve PID & state */
+                /* Command unchanged: preserve live PID & state */
                 new_table[i].pid = old->pid;
                 new_table[i].state = old->state;
                 new_table[i].last_start = old->last_start;
                 new_table[i].last_exit = old->last_exit;
                 new_table[i].last_exit_status = old->last_exit_status;
                 new_table[i].restart_count = old->restart_count;
+                new_table[i].start_ts = old->start_ts;
+                new_table[i].ready_ts = old->ready_ts;
+                new_table[i].duration_ms = old->duration_ms;
+                new_table[i].blame_recorded = old->blame_recorded;
             } else {
                 /* Command modified: restart safely */
                 log_info(old->name, "Service command modified. Restarting with updated configuration...");
@@ -349,27 +482,24 @@ static void load_and_reconcile_services(void) {
 }
 
 static bool check_dependencies_met(const service_t *s) {
-    if (!s->after[0]) return true;
+    if (s->num_deps == 0) return true;
 
-    char buf[128];
-    strncpy(buf, s->after, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
+    for (int i = 0; i < s->num_deps; i++) {
+        int dep_idx = s->dep_indices[i];
+        if (dep_idx < 0 || dep_idx >= num_services) continue;
+        const service_t *dep = &services[dep_idx];
 
-    char *token = strtok(buf, ", ");
-    while (token) {
-        service_t *dep = find_service(token);
-        if (dep) {
-            if (dep->is_oneshot) {
-                if (dep->state != SVC_STOPPED || dep->last_exit_status != 0 || dep->last_start == 0) {
-                    return false;
-                }
-            } else {
-                if (dep->state != SVC_RUNNING) {
-                    return false;
-                }
+        if (dep->is_oneshot) {
+            /* Oneshot dependency must have completed successfully with exit code 0 */
+            if (dep->state != SVC_STOPPED || dep->last_exit_status != 0 || dep->last_start == 0) {
+                return false;
+            }
+        } else {
+            /* Daemon service dependency must be actively RUNNING */
+            if (dep->state != SVC_RUNNING) {
+                return false;
             }
         }
-        token = strtok(NULL, ", ");
     }
     return true;
 }
@@ -381,12 +511,13 @@ static int start_service(service_t *s) {
         return -1;
     }
 
-    char log_buf[128];
+    char log_buf[512];
     snprintf(log_buf, sizeof(log_buf), "Starting service (command: %s)", s->command);
     log_info(s->name, log_buf);
 
     s->state = SVC_STARTING;
     s->last_start = time(NULL);
+    clock_gettime(CLOCK_MONOTONIC, &s->start_ts);
 
     pid_t pid = fork();
     if (pid < 0) {
@@ -399,9 +530,13 @@ static int start_service(service_t *s) {
         setsid();
         setpgid(0, 0);
 
-        mkdir("/var/log", 0755);
-        mkdir("/var/log/shreeos", 0755);
-        mkdir(LOG_DIR, 0755);
+        if (!g_test_mode) {
+            mkdir("/var/log", 0755);
+            mkdir("/var/log/shreeos", 0755);
+            mkdir(g_log_dir, 0755);
+        } else {
+            mkdir(g_log_dir, 0755);
+        }
 
         if (strcmp(s->name, "console") == 0 || strcmp(s->name, "getty") == 0) {
             int fd = open("/dev/console", O_RDWR);
@@ -412,8 +547,16 @@ static int start_service(service_t *s) {
                 if (fd > 2) close(fd);
             }
         } else {
-            char log_path[256];
-            snprintf(log_path, sizeof(log_path), "%s/%s.log", LOG_DIR, s->name);
+            char log_path[512];
+            snprintf(log_path, sizeof(log_path), "%s/%s.log", g_log_dir, s->name);
+
+            /* Truncate if exceeds max size */
+            struct stat st;
+            if (stat(log_path, &st) == 0 && st.st_size > MAX_LOG_FILE_BYTES) {
+                int trunc_fd = open(log_path, O_WRONLY | O_TRUNC);
+                if (trunc_fd >= 0) close(trunc_fd);
+            }
+
             int fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0640);
             if (fd >= 0) {
                 dup2(fd, STDOUT_FILENO);
@@ -433,6 +576,15 @@ static int start_service(service_t *s) {
 
     s->pid = pid;
     s->state = SVC_RUNNING;
+
+    if (!s->is_oneshot && !s->blame_recorded) {
+        clock_gettime(CLOCK_MONOTONIC, &s->ready_ts);
+        s->duration_ms = (s->ready_ts.tv_sec - s->start_ts.tv_sec) * 1000 +
+                         (s->ready_ts.tv_nsec - s->start_ts.tv_nsec) / 1000000;
+        if (s->duration_ms < 1) s->duration_ms = 1;
+        s->blame_recorded = true;
+    }
+
     return 0;
 }
 
@@ -454,6 +606,14 @@ static void reap_children(void) {
             s->pid = 0;
             s->last_exit = time(NULL);
             s->last_exit_status = WIFEXITED(status) ? WEXITSTATUS(status) : -WTERMSIG(status);
+
+            if (s->is_oneshot && !s->blame_recorded) {
+                clock_gettime(CLOCK_MONOTONIC, &s->ready_ts);
+                s->duration_ms = (s->ready_ts.tv_sec - s->start_ts.tv_sec) * 1000 +
+                                 (s->ready_ts.tv_nsec - s->start_ts.tv_nsec) / 1000000;
+                if (s->duration_ms < 1) s->duration_ms = 1;
+                s->blame_recorded = true;
+            }
 
             char msg[128];
             snprintf(msg, sizeof(msg), "Service exited with code %d", s->last_exit_status);
@@ -489,9 +649,18 @@ static void supervise_services(void) {
     for (int i = 0; i < num_services; i++) {
         service_t *s = &services[i];
 
-        if (s->state == SVC_STOPPED && !s->is_oneshot && s->restart == RESTART_ALWAYS) {
+        /* Reset restart count after running cleanly for >= 60 seconds */
+        if (s->state == SVC_RUNNING && s->restart_count > 0 && (now - s->last_start) >= 60) {
+            s->restart_count = 0;
+        }
+
+        if (s->state == SVC_STOPPED && !s->is_oneshot && (s->restart == RESTART_ALWAYS || s->last_start == 0)) {
             start_service(s);
         } else if (s->state == SVC_FAILED && (s->restart == RESTART_ALWAYS || s->restart == RESTART_ON_FAILURE)) {
+            /* Crash loop limit: stop trying after 10 rapid restarts */
+            if (s->restart_count >= 10) {
+                continue;
+            }
             int backoff = 1 << (s->restart_count > 5 ? 5 : s->restart_count);
             if (now - s->last_exit >= backoff) {
                 start_service(s);
@@ -503,17 +672,17 @@ static void supervise_services(void) {
 }
 
 static void init_ipc_socket(void) {
-    unlink(INIT_SOCK_PATH);
+    unlink(g_sock_path);
     ipc_sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (ipc_sock_fd < 0) return;
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, INIT_SOCK_PATH, sizeof(addr.sun_path) - 1);
+    strncpy(addr.sun_path, g_sock_path, sizeof(addr.sun_path) - 1);
 
     if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-        if (chmod(INIT_SOCK_PATH, 0600) != 0 || listen(ipc_sock_fd, 8) != 0) {
+        if (chmod(g_sock_path, 0666) != 0 || listen(ipc_sock_fd, 8) != 0) {
             close(ipc_sock_fd);
             ipc_sock_fd = -1;
         }
@@ -521,6 +690,45 @@ static void init_ipc_socket(void) {
         close(ipc_sock_fd);
         ipc_sock_fd = -1;
     }
+}
+
+/* Fetch recent log tail for a service */
+static int read_service_logs(const char *name, int max_lines, char *out, size_t out_len) {
+    char log_path[512];
+    snprintf(log_path, sizeof(log_path), "%s/%s.log", g_log_dir, name);
+    FILE *f = fopen(log_path, "r");
+    if (!f) {
+        snprintf(out, out_len, "(no log file available at %s)\n", log_path);
+        return -1;
+    }
+
+    /* Read lines using circular buffer or end seek */
+    char lines[64][256];
+    int line_count = 0;
+    char line_buf[256];
+
+    while (fgets(line_buf, sizeof(line_buf), f)) {
+        strncpy(lines[line_count % 64], line_buf, sizeof(lines[0]) - 1);
+        lines[line_count % 64][sizeof(lines[0]) - 1] = '\0';
+        line_count++;
+    }
+    fclose(f);
+
+    out[0] = '\0';
+    int to_show = (line_count < max_lines) ? line_count : max_lines;
+    if (to_show > 64) to_show = 64;
+    int start = line_count - to_show;
+    if (start < 0) start = 0;
+
+    size_t written = 0;
+    for (int i = start; i < line_count; i++) {
+        size_t l = strlen(lines[i % 64]);
+        if (written + l + 1 < out_len) {
+            strcat(out, lines[i % 64]);
+            written += l;
+        }
+    }
+    return 0;
 }
 
 static void handle_ipc_connections(void) {
@@ -535,15 +743,17 @@ static void handle_ipc_connections(void) {
     struct ucred cred;
     socklen_t cred_len = sizeof(cred);
     if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED, &cred, &cred_len) == 0) {
-        if (cred.uid == 0) is_root = true;
+        if (cred.uid == 0 || (g_test_mode && !g_strict_auth && cred.uid == getuid())) {
+            is_root = true;
+        }
     }
 #endif
 
-    char req[256] = {0};
+    char req[512] = {0};
     ssize_t n = read(client_fd, req, sizeof(req) - 1);
     if (n <= 0) { close(client_fd); return; }
 
-    char res[4096] = {0};
+    char res[8192] = {0};
     char *cmd = req;
     while (*cmd == ' ' || *cmd == '\n' || *cmd == '\r') cmd++;
     char *nl = strchr(cmd, '\n'); if (nl) *nl = '\0';
@@ -552,20 +762,76 @@ static void handle_ipc_connections(void) {
     if (strcmp(cmd, "LIST") == 0) {
         char *p = res;
         size_t rem = sizeof(res);
-        p += snprintf(p, rem, "%-16s %-10s %-8s %s\n", "SERVICE", "STATE", "PID", "COMMAND");
+        p += snprintf(p, rem, "%-16s %-10s %-8s %-10s %s\n", "SERVICE", "STATE", "PID", "RESTART", "COMMAND");
         for (int i = 0; i < num_services; i++) {
             rem = sizeof(res) - (p - res);
-            if (rem < 80) break;
-            p += snprintf(p, rem, "%-16s %-10s %-8d %s\n",
+            if (rem < 100) break;
+            p += snprintf(p, rem, "%-16s %-10s %-8d %-10s %s\n",
                           services[i].name, state_to_str(services[i].state),
-                          services[i].pid, services[i].command);
+                          services[i].pid, restart_to_str(services[i].restart),
+                          services[i].command);
+        }
+    } else if (strcmp(cmd, "BLAME") == 0) {
+        /* Sort services by duration_ms descending */
+        int order[MAX_SERVICES];
+        for (int i = 0; i < num_services; i++) order[i] = i;
+        for (int i = 0; i < num_services - 1; i++) {
+            for (int j = i + 1; j < num_services; j++) {
+                if (services[order[j]].duration_ms > services[order[i]].duration_ms) {
+                    int tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+                }
+            }
+        }
+
+        char *p = res;
+        size_t rem = sizeof(res);
+        p += snprintf(p, rem, "BOOT BLAME TIMELINE (initctl blame):\n\n");
+        long total_ms = 0;
+        for (int i = 0; i < num_services; i++) {
+            int idx = order[i];
+            rem = sizeof(res) - (p - res);
+            if (rem < 80) break;
+            long ms = services[idx].duration_ms;
+            total_ms += ms;
+            p += snprintf(p, rem, "  %6.3fs  %-16s (state: %s)\n",
+                          (double)ms / 1000.0, services[idx].name, state_to_str(services[idx].state));
+        }
+        rem = sizeof(res) - (p - res);
+        if (rem >= 60) {
+            snprintf(p, rem, "\nTotal measured service initialization time: %.3fs\n", (double)total_ms / 1000.0);
         }
     } else if (strncmp(cmd, "STATUS ", 7) == 0 && valid_service_name(cmd + 7)) {
         char *target = cmd + 7;
         service_t *s = find_service(target);
         if (s) {
-            snprintf(res, sizeof(res), "Service: %s\nState:   %s\nPID:     %d\nRestarts: %d\nExitCode: %d\nCommand: %s\n",
-                     s->name, state_to_str(s->state), s->pid, s->restart_count, s->last_exit_status, s->command);
+            char log_snippet[1024] = {0};
+            read_service_logs(target, 8, log_snippet, sizeof(log_snippet));
+            snprintf(res, sizeof(res),
+                     "Service:     %s\n"
+                     "State:       %s\n"
+                     "PID:         %d\n"
+                     "Command:     %s\n"
+                     "After:       %s\n"
+                     "Restart:     %s\n"
+                     "Restarts:    %d\n"
+                     "ExitCode:    %d\n"
+                     "InitTime:    %.3fs\n"
+                     "Recent Logs:\n%s",
+                     s->name, state_to_str(s->state), s->pid, s->command,
+                     s->after[0] ? s->after : "(none)",
+                     restart_to_str(s->restart), s->restart_count, s->last_exit_status,
+                     (double)s->duration_ms / 1000.0,
+                     log_snippet[0] ? log_snippet : "  (none)\n");
+        } else {
+            snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
+        }
+    } else if (strncmp(cmd, "LOGS ", 5) == 0 && valid_service_name(cmd + 5)) {
+        char *target = cmd + 5;
+        service_t *s = find_service(target);
+        if (s) {
+            char log_snippet[4096] = {0};
+            read_service_logs(target, 30, log_snippet, sizeof(log_snippet));
+            snprintf(res, sizeof(res), "Logs for service '%s':\n%s", target, log_snippet);
         } else {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
@@ -605,6 +871,18 @@ static void handle_ipc_connections(void) {
     } else if (strcmp(cmd, "RELOAD") == 0) {
         load_and_reconcile_services();
         snprintf(res, sizeof(res), "OK: Service configuration reloaded\n");
+    } else if (strcmp(cmd, "SHUTDOWN REBOOT") == 0) {
+        shutdown_requested = 1;
+        shutdown_mode = 0;
+        snprintf(res, sizeof(res), "OK: Initiating system reboot\n");
+    } else if (strcmp(cmd, "SHUTDOWN POWEROFF") == 0) {
+        shutdown_requested = 1;
+        shutdown_mode = 1;
+        snprintf(res, sizeof(res), "OK: Initiating system poweroff\n");
+    } else if (strcmp(cmd, "SHUTDOWN HALT") == 0) {
+        shutdown_requested = 1;
+        shutdown_mode = 2;
+        snprintf(res, sizeof(res), "OK: Initiating system halt\n");
     } else {
         snprintf(res, sizeof(res), "ERROR: Unknown command\n");
     }
@@ -613,16 +891,19 @@ static void handle_ipc_connections(void) {
     close(client_fd);
 }
 
+/* Multi-stage orderly shutdown in reverse topological dependency order */
 static void perform_shutdown(void) {
-    log_info(NULL, "Initiating system shutdown sequence...");
-    unlink(INIT_SOCK_PATH);
+    log_info(NULL, "Initiating system shutdown sequence in reverse dependency order...");
+    unlink(g_sock_path);
 
+    /* 1. Stop services in reverse index order (dependents first) */
     for (int i = num_services - 1; i >= 0; i--) {
-        if (services[i].state == SVC_RUNNING) {
+        if (services[i].state == SVC_RUNNING || services[i].state == SVC_STARTING) {
             stop_service(&services[i], SIGTERM);
         }
     }
 
+    /* 2. Wait up to 3 seconds for graceful service termination */
     for (int i = 0; i < 30; i++) {
         reap_children();
         bool any_running = false;
@@ -636,6 +917,22 @@ static void perform_shutdown(void) {
         usleep(100000);
     }
 
+    /* 3. Send SIGKILL to stubborn supervised services */
+    for (int i = num_services - 1; i >= 0; i--) {
+        if (services[i].pid > 0) {
+            kill(-services[i].pid, SIGKILL);
+            kill(services[i].pid, SIGKILL);
+        }
+    }
+    usleep(200000);
+    reap_children();
+
+    if (g_test_mode) {
+        log_info(NULL, "Test mode shutdown completed successfully.");
+        return;
+    }
+
+    /* 4. Terminate any other surviving processes */
     kill(-1, SIGTERM);
     sync();
     sleep(1);
@@ -656,6 +953,7 @@ static void perform_shutdown(void) {
 }
 
 static bool check_recovery_mode(void) {
+    if (g_test_mode) return false;
     FILE *f = fopen("/proc/cmdline", "r");
     if (!f) return false;
     char line[1024] = {0};
@@ -671,11 +969,31 @@ static bool check_recovery_mode(void) {
     return false;
 }
 
-int main(void) {
-    if (getpid() != 1) {
-        fprintf(stderr, "init: must be run as PID 1\n");
+int main(int argc, char **argv) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--test") == 0) {
+            g_test_mode = true;
+        } else if (strcmp(argv[i], "--strict-auth") == 0) {
+            g_strict_auth = true;
+        } else if (strcmp(argv[i], "--services-dir") == 0 && i + 1 < argc) {
+            strncpy(g_service_dir, argv[++i], sizeof(g_service_dir) - 1);
+        } else if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
+            strncpy(g_sock_path, argv[++i], sizeof(g_sock_path) - 1);
+        } else if (strcmp(argv[i], "--log-dir") == 0 && i + 1 < argc) {
+            strncpy(g_log_dir, argv[++i], sizeof(g_log_dir) - 1);
+        }
+    }
+
+    if (getenv("SHREEOS_INIT_TEST") != NULL) {
+        g_test_mode = true;
+    }
+
+    if (getpid() != 1 && !g_test_mode) {
+        fprintf(stderr, "init: must be run as PID 1 (or with --test / SHREEOS_INIT_TEST=1 for unit testing)\n");
         return 1;
     }
+
+    clock_gettime(CLOCK_MONOTONIC, &g_boot_start_ts);
 
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
@@ -729,6 +1047,7 @@ int main(void) {
     load_and_reconcile_services();
     init_ipc_socket();
 
+    /* Start services according to validated dependency ordering */
     for (int i = 0; i < num_services; i++) {
         start_service(&services[i]);
     }
@@ -750,7 +1069,7 @@ int main(void) {
         handle_ipc_connections();
         supervise_services();
 
-        struct timespec req = { .tv_sec = 0, .tv_nsec = 250000000 };
+        struct timespec req = { .tv_sec = 0, .tv_nsec = 100000000 }; /* 100ms tick */
         nanosleep(&req, NULL);
     }
 

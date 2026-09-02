@@ -206,7 +206,7 @@ int main(int argc, char **argv) {
 
     do {
         if (username[0] == '\0') {
-            printf("\nShreeOS 0.1.0-dev (x86_64)\n");
+            printf("\nShreeOS 0.2.0-dev (x86_64)\n");
             printf("login: ");
             fflush(stdout);
             if (!fgets(username, sizeof(username), stdin)) {
