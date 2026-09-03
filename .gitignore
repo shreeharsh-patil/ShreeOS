@@ -40,7 +40,11 @@ test-manifest
 /init/src/init
 /init/src/initctl
 /init/src/shree-auth
-/init/tests/test-*
+/init/tests/test-init
+/init/tests/test-initctl
+/init/tests/test-ipc
+/init/tests/test-service
+!/init/tests/*.sh
 
 # Cryptographic private keys (strictly kept outside git)
 *.key
