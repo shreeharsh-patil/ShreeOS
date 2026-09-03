@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 2160" width="3840" height="2160">
+  <defs>
+    <!-- Crisp Light Environment Gradient -->
+    <linearGradient id="light-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBFBFD" />
+      <stop offset="40%" stop-color="#F5F5F7" />
+      <stop offset="100%" stop-color="#EBECEF" />
+    </linearGradient>
+
+    <!-- Warm Daylight Radial Accent -->
+    <radialGradient id="light-ambient" cx="70%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#5E9BFF" stop-opacity="0.25" />
+      <stop offset="50%" stop-color="#2878FF" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#F5F5F7" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Soft Opal Accent -->
+    <radialGradient id="light-accent-soft" cx="25%" cy="75%" r="55%">
+      <stop offset="0%" stop-color="#7B61FF" stop-opacity="0.12" />
+      <stop offset="60%" stop-color="#F5F5F7" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Sculpted Terrace 1 -->
+    <linearGradient id="terrace-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#ECEEF2" />
+    </linearGradient>
+
+    <!-- Sculpted Terrace 2 (Accent Horizon) -->
+    <linearGradient id="terrace-2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E1E7F5" />
+      <stop offset="50%" stop-color="#CFDBF7" />
+      <stop offset="100%" stop-color="#E3E8F4" />
+    </linearGradient>
+
+    <!-- Foreground Terrace -->
+    <linearGradient id="terrace-3" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F4F5F8" />
+    </linearGradient>
+
+    <filter id="light-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="90" />
+    </filter>
+  </defs>
+
+  <!-- Base Canvas -->
+  <rect width="3840" height="2160" fill="url(#light-bg)" />
+  <rect width="3840" height="2160" fill="url(#light-ambient)" />
+  <rect width="3840" height="2160" fill="url(#light-accent-soft)" />
+
+  <!-- Ambient Color Surge -->
+  <path d="M 500 2160 Q 1750 550 3200 1050 Q 3840 1350 3840 2160 Z" fill="#2878FF" opacity="0.16" filter="url(#light-blur)" />
+
+  <!-- Terrace 1: Distant Horizon Ribbon -->
+  <path d="M 0 1520 Q 1150 820 2350 1350 T 3840 1000 L 3840 2160 L 0 2160 Z"
+        fill="url(#terrace-1)"
+        stroke="rgba(0,0,0,0.06)"
+        stroke-width="1.2" />
+
+  <!-- Terrace 2: Blue-Tinted Soft Dune -->
+  <path d="M 0 1740 Q 980 1150 2100 1520 T 3840 1280 L 3840 2160 L 0 2160 Z"
+        fill="url(#terrace-2)"
+        stroke="rgba(40,120,255,0.22)"
+        stroke-width="1.0" />
+
+  <!-- Terrace 3: Crisp Foreground Shelf -->
+  <path d="M 0 1960 Q 1350 1480 2800 1780 T 3840 1660 L 3840 2160 L 0 2160 Z"
+        fill="url(#terrace-3)"
+        stroke="rgba(0,0,0,0.08)"
+        stroke-width="1.2" />
+
+  <!-- Minimal Abstract Brand Watermark -->
+  <g transform="translate(1920, 720) scale(1.4)" opacity="0.14">
+    <path d="M 0 -45 L 39 22.5 L -39 22.5 Z" fill="none" stroke="#2878FF" stroke-width="2.5" />
+    <circle cx="0" cy="0" r="16" fill="none" stroke="#1D1D1F" stroke-width="1.8" />
+  </g>
+</svg>

@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESKTOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LUMEN_ROOT_DIR="$(cd "$DESKTOP_DIR/../.." && pwd)"
+LUMEN_ROOT_DIR="$(cd "$DESKTOP_DIR/.." && pwd)"
 
 source "$LUMEN_ROOT_DIR/build.conf"
 source "$LUMEN_ROOT_DIR/scripts/common.sh"

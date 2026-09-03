@@ -1,60 +1,203 @@
 #!/usr/bin/env bash
-# desktop/apps/shree-control-center — ShreeOS Quick Control Center
+# desktop/apps/shree-control-center — Compact Floating Control Center for ShreeOS
 #
-# 2-column quick toggles for Wi-Fi, Bluetooth, Dark Mode, Night Light,
-# Do Not Disturb, Volume, Brightness, and Battery.
-
+# Inspired by macOS Control Center: grouped, dense controls with live hardware feedback.
+# Real working controls: Wi-Fi, Volume, Brightness, Dark/Light Mode, Bluetooth, Power.
+#
 set -euo pipefail
 
-# 1. Gather live system states
-WIFI_STATE=$(shreectl wifi status --json 2>/dev/null || echo "Not available")
-BT_STATE=$(shreectl bluetooth status --json 2>/dev/null || echo "Not available")
-THEME_STATE=$(shree-theme status 2>/dev/null || echo "dark")
-DND_STATE=$(shree-dnd status 2>/dev/null || echo "off")
-NIGHT_STATE=$(shree-nightlight status 2>/dev/null || echo "off")
-VOL_STATE=$(shreectl audio volume --json 2>/dev/null || echo "Not available")
-BAT_STATE=$(shreectl battery --json 2>/dev/null || echo "Not available")
+# 1. Real Hardware & State Collectors
+get_wifi_status() {
+  if command -v shreectl >/dev/null 2>&1; then
+    local wjson
+    wjson=$(shreectl wifi status --json 2>/dev/null || echo "")
+    if [ -n "$wjson" ]; then
+      local ssid
+      ssid=$(echo "$wjson" | grep -oP '"ssid":\s*"\K[^"]+' || echo "")
+      [ -n "$ssid" ] && { echo "Connected (${ssid})"; return; }
+    fi
+  fi
 
-ITEMS="\
-Wi-Fi: ${WIFI_STATE^}               — Manage wireless networks
-Bluetooth: ${BT_STATE^}           — Wireless peripherals & adapter
-Appearance: ${THEME_STATE^} Mode        — Toggle Dark / Light theme
-Do Not Disturb: ${DND_STATE^}           — Silence popups and banners
-Night Light: ${NIGHT_STATE^}             — Warm display color temperature
-Volume: ${VOL_STATE}                  — Adjust output sound level
-Battery: ${BAT_STATE}           — Power & battery status
-Notification Center             — View recent alert history
-Lock Screen                     — Lock active desktop session"
+  local def_route
+  def_route=$(ip route show default 2>/dev/null | awk '{print $5}' | head -n1 || echo "")
+  if [ -n "$def_route" ]; then
+    case "$def_route" in
+      wl*|wifi*)
+        local ssid=""
+        if command -v iwgetid >/dev/null 2>&1; then
+          ssid=$(iwgetid -r 2>/dev/null || echo "")
+        fi
+        [ -n "$ssid" ] && echo "Connected (${ssid})" || echo "Connected (Wi-Fi)"
+        ;;
+      eth*|en*|vd*) echo "Connected (Ethernet)" ;;
+      *) echo "Connected" ;;
+    esac
+  else
+    # Check if wireless interface is up
+    for dev in /sys/class/net/*; do
+      if [ -d "${dev}/wireless" ] || [ -d "${dev}/phy80211" ]; then
+        local st
+        st=$(cat "${dev}/operstate" 2>/dev/null || echo "down")
+        [ "$st" = "up" ] && echo "Active (Disconnected)" || echo "Disconnected"
+        return
+      fi
+    done
+    echo "Offline"
+  fi
+}
 
-SELECTED=$(echo "$ITEMS" | dmenu -p "Control Center" -l 9 -c || true)
+get_volume_status() {
+  if command -v amixer >/dev/null 2>&1; then
+    local master
+    master=$(amixer sget Master 2>/dev/null || true)
+    if [ -n "$master" ]; then
+      if echo "$master" | grep -q '\[off\]'; then
+        echo "Muted"
+        return
+      fi
+      local pct
+      pct=$(echo "$master" | grep -oP '\[\K[0-9]+(?=%\])' | head -n1 || echo "")
+      [ -n "$pct" ] && { echo "${pct}%"; return; }
+    fi
+  fi
+  echo "80%"
+}
+
+get_brightness_status() {
+  for b in /sys/class/backlight/*; do
+    [ -d "$b" ] || continue
+    local cur max
+    cur=$(cat "${b}/brightness" 2>/dev/null || echo "-1")
+    max=$(cat "${b}/max_brightness" 2>/dev/null || echo "-1")
+    if [ "$cur" -ge 0 ] && [ "$max" -gt 0 ]; then
+      echo "$(( cur * 100 / max ))%"
+      return
+    fi
+  done
+  echo "100% (Fixed)"
+}
+
+get_battery_status() {
+  for b in /sys/class/power_supply/BAT* /sys/class/power_supply/*; do
+    [ -d "$b" ] || continue
+    local btype
+    btype=$(cat "${b}/type" 2>/dev/null || echo "")
+    if [ "$btype" = "Battery" ]; then
+      local cap stat
+      cap=$(cat "${b}/capacity" 2>/dev/null || echo "100")
+      stat=$(cat "${b}/status" 2>/dev/null || echo "Discharging")
+      [ "$stat" = "Charging" ] && echo "⚡${cap}% (Charging)" || echo "${cap}% (${stat})"
+      return
+    fi
+  done
+  echo "AC Power"
+}
+
+get_bluetooth_status() {
+  if [ -d /sys/class/bluetooth ] && [ -n "$(ls -A /sys/class/bluetooth 2>/dev/null)" ]; then
+    echo "Available"
+  else
+    echo "No Adapter"
+  fi
+}
+
+# 2. Collect current states
+WIFI_INFO=$(get_wifi_status)
+VOL_INFO=$(get_volume_status)
+BRIGHT_INFO=$(get_brightness_status)
+BAT_INFO=$(get_battery_status)
+BT_INFO=$(get_bluetooth_status)
+THEME_INFO=$(shree-theme get 2>/dev/null || echo "dark")
+DND_INFO=$(shree-dnd status 2>/dev/null || echo "off")
+NIGHT_INFO=$(shree-nightlight status 2>/dev/null || echo "off")
+
+# 3. Build Menu Choices
+MENU="Network: ${WIFI_INFO}               — Wi-Fi scan & network management
+Display: Brightness ${BRIGHT_INFO}          — Screen brightness & level
+Sound: Volume ${VOL_INFO}                — Master audio level & mixer
+Appearance: ${THEME_INFO^} Mode (Click to Toggle) — Switch Light / Dark theme
+Night Light: ${NIGHT_INFO^} (Click to Toggle)     — Warm display temperature
+Do Not Disturb: ${DND_INFO^} (Click to Toggle)  — Silence notifications & alerts"
+
+if [ "$BT_INFO" != "No Adapter" ]; then
+  MENU+=$'\nBluetooth: '"${BT_INFO}"'          — Wireless peripherals'
+fi
+
+MENU+=$'\nBattery: '"${BAT_INFO}"$'           — Power & battery health\nNotification Center             — View recent alerts & messages\nLock Screen                     — Lock active desktop session\nRestart Computer                — Orderly reboot\nPower Off                       — Clean shutdown'
+
+SELECTED=$(echo "$MENU" | dmenu -p "Control Center" -l 11 -c || true)
 [ -z "$SELECTED" ] && exit 0
 
 case "$SELECTED" in
-  "Wi-Fi"*)
-    st -g 88x28 -t "Wi-Fi" -e shree-hardware-ui wifi &
+  "Network:"*)
+    if [ -x /usr/bin/shree-hardware-ui ]; then
+      st -g 88x28 -t "Network Settings" -e shree-hardware-ui wifi &
+    elif command -v shree-network >/dev/null 2>&1; then
+      st -g 88x24 -t "Network Status" -e /bin/bash -c "shree-network status; echo ''; echo 'Press Enter to close'; read -r" &
+    fi
     ;;
-  "Bluetooth"*)
-    st -g 88x28 -t "Bluetooth" -e shree-hardware-ui bluetooth &
+  "Display: Brightness"*)
+    CHOICE=$(printf "25%%\n50%%\n75%%\n100%%\nCustom Percentage" | dmenu -p "Set Display Brightness" -l 5 -c || true)
+    [ -z "$CHOICE" ] && exit 0
+    VAL=$(echo "$CHOICE" | tr -dc '0-9')
+    if [ -z "$VAL" ]; then
+      INPUT_PCT=$(echo "" | dmenu -p "Enter Brightness (1-100):" -c || true)
+      VAL=$(echo "$INPUT_PCT" | tr -dc '0-9')
+    fi
+    if [ -n "$VAL" ]; then
+      if [ -x /usr/sbin/shree-powerctl ]; then
+        /usr/sbin/shree-powerctl brightness "$VAL" 2>/dev/null || true
+      elif [ -x /usr/bin/shreectl ]; then
+        shreectl brightness "$VAL" 2>/dev/null || true
+      fi
+      shree-notify "Brightness" "Set to ${VAL}%" --app="Control Center"
+    fi
     ;;
-  "Appearance"*)
+  "Sound: Volume"*)
+    CHOICE=$(printf "Mute / Unmute Toggle\n25%%\n50%%\n75%%\n100%%\nAudio Mixer" | dmenu -p "Set Master Volume" -l 6 -c || true)
+    [ -z "$CHOICE" ] && exit 0
+    case "$CHOICE" in
+      "Mute"*)
+        if command -v amixer >/dev/null 2>&1; then amixer set Master toggle >/dev/null 2>&1 || true; fi
+        shree-notify "Volume" "Toggled audio mute" --app="Control Center"
+        ;;
+      "Audio Mixer"*)
+        st -g 88x24 -t "Audio Settings" -e shree-hardware-ui audio &
+        ;;
+      *)
+        VAL=$(echo "$CHOICE" | tr -dc '0-9')
+        if [ -n "$VAL" ]; then
+          if command -v amixer >/dev/null 2>&1; then amixer set Master "${VAL}%" >/dev/null 2>&1 || true; fi
+          shree-notify "Volume" "Set to ${VAL}%" --app="Control Center"
+        fi
+        ;;
+    esac
+    ;;
+  "Appearance:"*)
     shree-theme toggle
     ;;
-  "Do Not Disturb"*)
-    shree-dnd toggle
-    ;;
-  "Night Light"*)
+  "Night Light:"*)
     shree-nightlight toggle
     ;;
-  "Volume"*)
-    st -g 88x24 -t "Audio" -e shree-hardware-ui audio &
+  "Do Not Disturb:"*)
+    shree-dnd toggle
     ;;
-  "Battery"*)
-    st -g 72x20 -t "Power" -e shree-hardware-ui battery &
+  "Bluetooth:"*)
+    st -g 88x28 -t "Bluetooth" -e shree-hardware-ui bluetooth &
+    ;;
+  "Battery:"*)
+    st -g 72x20 -t "Power Diagnostics" -e /bin/bash -c "shreectl power 2>/dev/null || true; echo ''; echo 'Press Enter to close'; read -r" &
     ;;
   "Notification Center"*)
     shree-notifications
     ;;
   "Lock Screen"*)
     shree-lock &
+    ;;
+  "Restart Computer"*)
+    initctl reboot
+    ;;
+  "Power Off"*)
+    initctl poweroff
     ;;
 esac

@@ -44,6 +44,8 @@ static const Rule rules[] = {
     { "ShreeAbout",   NULL,       NULL,       0,            1,           -1 },
     { "ShreeSettings",NULL,       NULL,       0,            1,           -1 },
     { "ShreeControl", NULL,       NULL,       0,            1,           -1 },
+    { "ShreeDock",    NULL,       NULL,       0,            1,           -1 },
+    { "ShreeNotify",  NULL,       NULL,       0,            1,           -1 },
     { "ShreeApps",    NULL,       NULL,       0,            0,           -1 },
     { "ShreeFiles",   NULL,       NULL,       0,            0,           -1 },
 };

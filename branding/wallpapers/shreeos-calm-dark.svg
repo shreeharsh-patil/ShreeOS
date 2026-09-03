@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 2160" width="3840" height="2160">
+  <defs>
+    <!-- Deep Canvas Gradient -->
+    <linearGradient id="dark-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1C1C1E" />
+      <stop offset="50%" stop-color="#141416" />
+      <stop offset="100%" stop-color="#0F0F11" />
+    </linearGradient>
+
+    <!-- Ambient Cool Blue Luminescence -->
+    <radialGradient id="dark-glow" cx="65%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#2878FF" stop-opacity="0.32" />
+      <stop offset="45%" stop-color="#1A4DB3" stop-opacity="0.12" />
+      <stop offset="80%" stop-color="#141416" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Secondary Soft Violet Accent -->
+    <radialGradient id="dark-glow-secondary" cx="30%" cy="70%" r="50%">
+      <stop offset="0%" stop-color="#4F388E" stop-opacity="0.22" />
+      <stop offset="60%" stop-color="#141416" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Architectural Tier 1: Slate Obsidian -->
+    <linearGradient id="layer-dark-slate" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2C2C30" />
+      <stop offset="100%" stop-color="#1C1C1F" />
+    </linearGradient>
+
+    <!-- Architectural Tier 2: Precision Cool Blue Ribbon -->
+    <linearGradient id="layer-dark-accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2878FF" stop-opacity="0.80" />
+      <stop offset="60%" stop-color="#1E54B7" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#141416" stop-opacity="0.05" />
+    </linearGradient>
+
+    <!-- Architectural Tier 3: Foreground Monolith -->
+    <linearGradient id="layer-dark-fore" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#222226" />
+      <stop offset="100%" stop-color="#18181A" />
+    </linearGradient>
+
+    <filter id="dark-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="80" />
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="3840" height="2160" fill="url(#dark-bg)" />
+  <rect width="3840" height="2160" fill="url(#dark-glow)" />
+  <rect width="3840" height="2160" fill="url(#dark-glow-secondary)" />
+
+  <!-- Ambient Light Wave -->
+  <path d="M 600 2160 Q 1800 650 3100 1150 Q 3840 1450 3840 2160 Z" fill="url(#layer-dark-accent)" filter="url(#dark-blur)" />
+
+  <!-- Layer 1: Background Dune -->
+  <path d="M 0 1550 Q 1100 850 2300 1380 T 3840 1050 L 3840 2160 L 0 2160 Z"
+        fill="url(#layer-dark-slate)"
+        stroke="rgba(255,255,255,0.06)"
+        stroke-width="1.5" />
+
+  <!-- Layer 2: Middle Architectural Contour -->
+  <path d="M 0 1780 Q 950 1200 2050 1580 T 3840 1350 L 3840 2160 L 0 2160 Z"
+        fill="url(#layer-dark-fore)"
+        stroke="rgba(255,255,255,0.08)"
+        stroke-width="1.2" />
+
+  <!-- Layer 3: Foreground Horizon Crest -->
+  <path d="M 0 1980 Q 1300 1520 2750 1820 T 3840 1720 L 3840 2160 L 0 2160 Z"
+        fill="#141416"
+        stroke="rgba(40,120,255,0.22)"
+        stroke-width="1.0" />
+
+  <!-- Subtle Emblem Monogram Watermark -->
+  <g transform="translate(1920, 720) scale(1.4)" opacity="0.12">
+    <path d="M 0 -45 L 39 22.5 L -39 22.5 Z" fill="none" stroke="#2878FF" stroke-width="2.5" />
+    <circle cx="0" cy="0" r="16" fill="none" stroke="#FFFFFF" stroke-width="1.8" />
+  </g>
+</svg>

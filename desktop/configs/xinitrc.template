@@ -52,9 +52,16 @@ if command -v xset >/dev/null 2>&1; then
   xset s 600 dpms 600 900 1200 &
 fi
 
-# 4. Start Picom Compositor (non-daemonized background job for proper tracking)
+# 4. Start Picom Compositor with automatic performance detection
 if command -v picom >/dev/null 2>&1; then
-  picom --config /etc/X11/picom.conf &
+  PICOM_OPTS="--config /etc/X11/picom.conf"
+  # If running in software rasterizer (e.g. QEMU llvmpipe / swrast), automatically reduce effects
+  if command -v glxinfo >/dev/null 2>&1; then
+    if glxinfo 2>/dev/null | grep -iqE "llvmpipe|softpipe|swrast"; then
+      PICOM_OPTS="--backend xrender --no-blur"
+    fi
+  fi
+  picom $PICOM_OPTS &
   SESSION_PIDS="$SESSION_PIDS $!"
 fi
 
@@ -75,14 +82,23 @@ elif [ -x /usr/bin/shree-topbar ]; then
   SESSION_PIDS="$SESSION_PIDS $!"
 fi
 
-# 7. Check First-Run Desktop Onboarding
+# 7. Start Floating Desktop Dock Service
+if [ -x /usr/bin/shree-dock.sh ]; then
+  /usr/bin/shree-dock.sh --daemon &
+  SESSION_PIDS="$SESSION_PIDS $!"
+elif [ -x /usr/bin/shree-dock ]; then
+  /usr/bin/shree-dock --daemon &
+  SESSION_PIDS="$SESSION_PIDS $!"
+fi
+
+# 8. Check First-Run Desktop Onboarding
 if [ -x /usr/bin/shree-onboarding.sh ]; then
   /usr/bin/shree-onboarding.sh &
 elif [ -x /usr/bin/shree-onboarding ]; then
   /usr/bin/shree-onboarding &
 fi
 
-# 8. Start Window Manager as managed child and wait for session exit
+# 9. Start Window Manager as managed child and wait for session exit
 dwm &
 WM_PID=$!
 wait "$WM_PID"

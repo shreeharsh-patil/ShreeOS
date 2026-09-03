@@ -10,7 +10,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESKTOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SHREEOS_ROOT_DIR="$(cd "$DESKTOP_DIR/../.." && pwd)"
+SHREEOS_ROOT_DIR="$(cd "$DESKTOP_DIR/.." && pwd)"
 
 source "$SHREEOS_ROOT_DIR/build.conf" 2>/dev/null || true
 source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
@@ -103,9 +103,18 @@ if [ -f "${SHREEOS_ROOT_DIR}/branding/logo/shreeos-logo.svg" ]; then
   cp "${SHREEOS_ROOT_DIR}/branding/logo/shreeos-logo.svg" "${STAGE_ROOT}/usr/share/icons/shreeos/logo.svg"
 fi
 
-if [ -f "${SHREEOS_ROOT_DIR}/branding/wallpapers/shreeos-wallpaper.svg" ]; then
-  cp "${SHREEOS_ROOT_DIR}/branding/wallpapers/shreeos-wallpaper.svg" \
-     "${STAGE_ROOT}/usr/share/wallpapers/shreeos-wallpaper.svg"
+if [ -d "${SHREEOS_ROOT_DIR}/branding/wallpapers" ]; then
+  cp "${SHREEOS_ROOT_DIR}/branding/wallpapers/"*.svg "${STAGE_ROOT}/usr/share/wallpapers/" 2>/dev/null || true
+  cp "${SHREEOS_ROOT_DIR}/branding/wallpapers/"*.png "${STAGE_ROOT}/usr/share/wallpapers/" 2>/dev/null || true
+fi
+
+# 8. Install centralized design tokens
+mkdir -p "${STAGE_ROOT}/etc/shreeos"
+if [ -f "${SHREEOS_ROOT_DIR}/branding/theme/tokens.conf" ]; then
+  cp "${SHREEOS_ROOT_DIR}/branding/theme/tokens.conf" "${STAGE_ROOT}/etc/shreeos/tokens.conf"
+fi
+if [ -f "${SHREEOS_ROOT_DIR}/branding/theme/tokens.css" ]; then
+  cp "${SHREEOS_ROOT_DIR}/branding/theme/tokens.css" "${STAGE_ROOT}/etc/shreeos/tokens.css"
 fi
 
 BUILD_END=$(date +%s)

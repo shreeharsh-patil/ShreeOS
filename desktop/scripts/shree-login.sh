@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# desktop/scripts/shree-login.sh — ShreeOS Display Session & Login Manager
+# desktop/scripts/shree-login.sh — macOS-Inspired Login Experience for ShreeOS
 #
-# Presents graphical user selection in X11 (or prompts on TTY),
-# authenticates credentials securely via shree-auth, permanently drops
-# root privileges, and executes the user desktop session. Fails closed.
-
+# Clean, centered user session login:
+#   - Centered user avatar monogram [ U ]
+#   - User account selection & display
+#   - Password authentication via audited /usr/bin/shree-auth
+#   - Minimal ShreeOS branding (⟡ ShreeOS 0.2.0-dev)
+#   - Quick [Shutdown] and [Reboot] controls
+#   - Strict security: permanent privilege drop, fails closed
+#
 set -euo pipefail
 
 get_users() {
@@ -29,23 +33,37 @@ run_login_screen() {
 
   local user_list
   user_list=$(get_users)
-  local sel_user=""
+  local formatted_choices=""
 
+  while IFS= read -r u; do
+    [ -z "$u" ] && continue
+    local initial="${u:0:1}"
+    initial="${initial^^}"
+    formatted_choices+="[  ${initial}  ]  ${u}\n"
+  done <<< "$user_list"
+
+  formatted_choices+="[ ⏻ ]  Shutdown Computer\n[ ↺ ]  Restart Computer"
+
+  local sel_entry=""
   if command -v dmenu >/dev/null 2>&1; then
-    sel_user=$(echo -e "$user_list\n[Power Off]\n[Reboot]" | dmenu -p "Login to ShreeOS" -l 5 -c || true)
+    sel_entry=$(echo -e "$formatted_choices" | dmenu -p "⟡ ShreeOS 0.2.0-dev" -l 6 -c || true)
   fi
 
-  [ -z "$sel_user" ] && sel_user="${USER:-shree}"
+  [ -z "$sel_entry" ] && sel_entry="[  S  ]  ${USER:-shree}"
 
-  if [ "$sel_user" = "[Power Off]" ]; then
+  if [[ "$sel_entry" =~ "Shutdown" ]]; then
     initctl poweroff 2>/dev/null || poweroff
     exit 0
-  elif [ "$sel_user" = "[Reboot]" ]; then
+  elif [[ "$sel_entry" =~ "Restart" ]]; then
     initctl reboot 2>/dev/null || reboot
     exit 0
   fi
 
-  # Authenticate through audited binary and drop privileges
+  local sel_user
+  sel_user=$(echo "$sel_entry" | awk '{print $NF}')
+  [ -z "$sel_user" ] && sel_user="${USER:-shree}"
+
+  # Authenticate through audited binary and drop privileges to start user session
   exec "$auth_bin" "$sel_user" --session /usr/bin/startx
 }
 

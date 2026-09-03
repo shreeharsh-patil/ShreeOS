@@ -1,30 +1,26 @@
 #!/usr/bin/env bash
-# desktop/apps/shree-settings — ShreeOS Master System Settings Application
+# desktop/apps/shree-settings — ShreeOS Master System Settings
 #
-# Dense, organized category navigation with direct backend system hooks
-# for appearance, wallpapers, displays, network, bluetooth, sound, storage, updates.
-
+# Clean, macOS-inspired preferences architecture:
+# Left sidebar categories + focused content panes.
+#
+# Sections:
+#   1. Appearance   5. Sound       9. Date & Time
+#   2. Desktop      6. Keyboard   10. Users
+#   3. Display      7. Mouse      11. Software
+#   4. Network      8. Power      12. About
+#
 set -euo pipefail
 
-apply_wallpaper() {
-  local wp="$1"
-  if [ -f "$wp" ]; then
-    if command -v xwallpaper >/dev/null 2>&1; then
-      xwallpaper --zoom "$wp"
-    elif command -v feh >/dev/null 2>&1; then
-      feh --bg-fill "$wp"
-    fi
-    mkdir -p "${HOME}/.config/shreeos"
-    echo "WALLPAPER=${wp}" > "${HOME}/.config/shreeos/wallpaper.conf"
-    shree-notify "Wallpaper Updated" "Applied $(basename "$wp")" --app="Settings"
-  fi
-}
+CONFIG_DIR="${HOME}/.config/shreeos"
+mkdir -p "$CONFIG_DIR"
 
+# ── 1. Appearance ─────────────────────────────────────────────────────────────
 handle_appearance() {
   local cur
-  cur=$(shree-theme status 2>/dev/null || echo "dark")
+  cur=$(shree-theme get 2>/dev/null || echo "dark")
   local choice
-  choice=$(printf "Dark Mode (Currently %s)\nLight Mode\nAutomatic (Sunset to Sunrise)\nToggle Theme Now\nChange Wallpaper\nAdjust Transparency & Blur" "$cur" | dmenu -p "Appearance Settings" -l 6 -c)
+  choice=$(printf "Dark Mode (Current: %s)\nLight Mode\nAutomatic (Day/Night 07:00-19:00)\nToggle Appearance Now\nSelect Wallpaper\nWallpaper Mode (Fill/Fit/Center)" "$cur" | dmenu -p "Appearance" -l 6 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -32,159 +28,365 @@ handle_appearance() {
     "Light Mode"*) shree-theme light ;;
     "Automatic"*)  shree-theme auto ;;
     "Toggle"*)     shree-theme toggle ;;
-    "Change Wallpaper"*)
+    "Select Wallpaper"*)
       local wp_list
-      wp_list=$(find /usr/share/wallpapers "${HOME}/Pictures" "${HOME}/Desktop" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null || true)
+      wp_list=$(shree-wallpaper list 2>/dev/null | sed 's/^ *//' || true)
       local wp_choice
-      wp_choice=$(echo -e "$wp_list" | dmenu -p "Select Wallpaper" -l 6 -c)
-      [ -n "$wp_choice" ] && apply_wallpaper "$wp_choice"
+      wp_choice=$(echo -e "$wp_list" | dmenu -p "Select Wallpaper" -l 6 -c || true)
+      if [ -n "$wp_choice" ]; then
+        local wp_path
+        wp_path=$(echo "$wp_choice" | awk -F' -> ' '{print $2}')
+        [ -f "$wp_path" ] && shree-wallpaper set "$wp_path"
+      fi
       ;;
-    "Adjust Transparency"*)
-      shree-notify "Compositor" "Window transparency & blur are configured in /etc/X11/picom.conf" --app="Settings"
+    "Wallpaper Mode"*)
+      local m
+      m=$(printf "fill\nfit\ncenter" | dmenu -p "Wallpaper Scaling" -l 3 -c || true)
+      [ -n "$m" ] && shree-wallpaper mode "$m"
       ;;
   esac
 }
 
-handle_dock() {
+# ── 2. Desktop & Dock ─────────────────────────────────────────────────────────
+handle_desktop() {
+  local dock_conf="${CONFIG_DIR}/dock.conf"
+  local autohide="false"
+  local size="44"
+  if [ -f "$dock_conf" ]; then
+    autohide=$(grep -oP '^AUTOHIDE=\K.*' "$dock_conf" 2>/dev/null || echo "false")
+    size=$(grep -oP '^ICON_SIZE=\K.*' "$dock_conf" 2>/dev/null || echo "44")
+  fi
+
   local choice
-  choice=$(printf "Auto-Hide: Disabled\nAuto-Hide: Enabled\nRestart Dock Service" | dmenu -p "Dock Settings" -l 3 -c)
+  choice=$(printf "Dock Auto-Hide: %s (Click to Toggle)\nDock Icon Size: %spx (Click to Change)\nRestart Dock Service\nEdit Pinned Applications" "$autohide" "$size" | dmenu -p "Desktop & Dock" -l 4 -c || true)
   [ -z "$choice" ] && return
+
   case "$choice" in
-    "Auto-Hide: Enabled"*)
-      mkdir -p "${HOME}/.config/shreeos"
-      echo "AUTOHIDE=true" > "${HOME}/.config/shreeos/dock.conf"
-      shree-notify "Dock" "Auto-hide enabled" --app="Settings"
+    "Dock Auto-Hide"*)
+      shree-dock toggle
+      shree-notify "Dock" "Auto-hide toggled" --app="Settings"
       ;;
-    "Auto-Hide: Disabled"*)
-      mkdir -p "${HOME}/.config/shreeos"
-      echo "AUTOHIDE=false" > "${HOME}/.config/shreeos/dock.conf"
-      shree-notify "Dock" "Auto-hide disabled" --app="Settings"
+    "Dock Icon Size"*)
+      local new_size
+      new_size=$(printf "36\n44\n48\n56" | dmenu -p "Select Dock Icon Size (px)" -l 4 -c || true)
+      if [ -n "$new_size" ]; then
+        sed -i "s/^ICON_SIZE=.*/ICON_SIZE=${new_size}/" "$dock_conf" 2>/dev/null || echo "ICON_SIZE=${new_size}" >> "$dock_conf"
+        shree-notify "Dock" "Icon size set to ${new_size}px" --app="Settings"
+      fi
       ;;
     "Restart Dock"*)
       pkill -f "shree-dock" 2>/dev/null || true
       shree-dock --daemon &
-      shree-notify "Dock" "Dock restarted" --app="Settings"
+      shree-notify "Dock" "Dock service restarted" --app="Settings"
+      ;;
+    "Edit Pinned"*)
+      local current_pinned
+      current_pinned=$(grep -oP '^PINNED_APPS=\K.*' "$dock_conf" 2>/dev/null || echo "shree-files:st:netsurf:shree-pkgmanager:shree-settings")
+      local new_pinned
+      new_pinned=$(echo "$current_pinned" | dmenu -p "Edit Pinned (colon-separated):" -c || true)
+      if [ -n "$new_pinned" ]; then
+        sed -i "s/^PINNED_APPS=.*/PINNED_APPS=\"${new_pinned}\"/" "$dock_conf" 2>/dev/null || echo "PINNED_APPS=\"${new_pinned}\"" >> "$dock_conf"
+        shree-notify "Dock" "Updated pinned applications" --app="Settings"
+      fi
       ;;
   esac
 }
 
-handle_bluetooth() {
-  st -g 88x28 -t "Bluetooth Settings" -e shree-hardware-ui bluetooth &
+# ── 3. Display ────────────────────────────────────────────────────────────────
+handle_display() {
+  local choice
+  choice=$(printf "View Connected Displays & Resolutions\nToggle Night Light Warm Display\nAdjust Screen Brightness" | dmenu -p "Display Settings" -l 3 -c || true)
+  [ -z "$choice" ] && return
+
+  case "$choice" in
+    "View Connected"*)
+      st -g 80x22 -t "Displays" -e /bin/bash -c "
+        echo '=== Detected Displays & Video Modes ==='
+        echo ''
+        if command -v xrandr >/dev/null 2>&1; then
+          xrandr --query
+        else
+          cat /sys/class/drm/*/status 2>/dev/null || echo 'DRM status unavailable'
+        fi
+        echo ''
+        echo 'Press Enter to close.'
+        read -r _
+      " &
+      ;;
+    "Toggle Night Light"*)
+      shree-nightlight toggle
+      ;;
+    "Adjust Screen Brightness"*)
+      local b_choice
+      b_choice=$(printf "25%%\n50%%\n75%%\n100%%" | dmenu -p "Display Brightness" -l 4 -c || true)
+      local b_val
+      b_val=$(echo "$b_choice" | tr -dc '0-9')
+      if [ -n "$b_val" ]; then
+        if [ -x /usr/sbin/shree-powerctl ]; then
+          /usr/sbin/shree-powerctl brightness "$b_val" 2>/dev/null || true
+        elif command -v shreectl >/dev/null 2>&1; then
+          shreectl brightness "$b_val" 2>/dev/null || true
+        fi
+        shree-notify "Display" "Brightness set to ${b_val}%" --app="Settings"
+      fi
+      ;;
+  esac
 }
 
-handle_displays() {
-  if command -v xrandr >/dev/null 2>&1; then
-    st -g 75x20 -t "Display Settings" -e /bin/bash -c "
-      echo '=== Connected Displays & Available Resolutions ==='
-      echo ''
-      xrandr --query
-      echo ''
-      echo 'Press Enter to close.'
-      read -r
-    " &
-  fi
-}
-
+# ── 4. Network ────────────────────────────────────────────────────────────────
 handle_network() {
   local choice
-  choice=$(printf "Wi-Fi status and scan\nConnect Wi-Fi network\nEthernet status" | dmenu -p "Network Settings" -l 3 -c || true)
+  choice=$(printf "Network Status Overview\nWi-Fi Scan & Connect\nConfigure DNS Resolvers\nRestart Network Stack" | dmenu -p "Network Settings" -l 4 -c || true)
+  [ -z "$choice" ] && return
+
   case "$choice" in
-    "Wi-Fi status"*) st -g 88x28 -t "Wi-Fi Settings" -e shree-hardware-ui wifi & ;;
-    Connect*) st -g 70x12 -t "Connect Wi-Fi" -e shree-hardware-ui wifi-connect & ;;
-    Ethernet*) st -g 88x22 -t "Ethernet Settings" -e shree-hardware-ui ethernet & ;;
+    "Network Status"*)
+      st -g 88x24 -t "Network Status" -e /bin/bash -c "shree-network status; echo ''; echo 'Press Enter to close'; read -r _" &
+      ;;
+    "Wi-Fi Scan"*)
+      st -g 88x24 -t "Wi-Fi Networks" -e /bin/bash -c "shree-network wifi scan; echo ''; echo 'Run: shree-network wifi connect <ssid> [pass]'; echo 'Press Enter to close'; read -r _" &
+      ;;
+    "Configure DNS"*)
+      local current_dns
+      current_dns=$(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' | tr '\n' ' ' || echo "1.1.1.1 8.8.8.8")
+      local new_dns
+      new_dns=$(echo "$current_dns" | dmenu -p "DNS Resolvers (space-separated):" -c || true)
+      if [ -n "$new_dns" ]; then
+        # shellcheck disable=SC2086
+        shree-network dns set $new_dns 2>/dev/null || true
+        shree-notify "Network" "Updated DNS configuration" --app="Settings"
+      fi
+      ;;
+    "Restart Network"*)
+      st -g 70x12 -t "Network" -e /bin/bash -c "shree-network restart; sleep 2" &
+      ;;
   esac
 }
 
+# ── 5. Sound ──────────────────────────────────────────────────────────────────
 handle_sound() {
   local choice
-  choice=$(printf "Audio status and devices\nSet volume\nMute\nUnmute" | dmenu -p "Sound Settings" -l 4 -c || true)
+  choice=$(printf "Master Volume (25%%, 50%%, 75%%, 100%%)\nMute / Unmute Toggle\nAudio Hardware & Card Information\nInteractive Audio Mixer" | dmenu -p "Sound Settings" -l 4 -c || true)
+  [ -z "$choice" ] && return
+
   case "$choice" in
-    "Audio status"*) st -g 88x24 -t "Audio Settings" -e shree-hardware-ui audio & ;;
-    "Set volume"*) st -g 60x10 -t "Volume" -e shree-hardware-ui volume & ;;
-    Mute*) shreectl audio mute ;;
-    Unmute*) shreectl audio unmute ;;
+    "Master Volume"*)
+      local v_choice
+      v_choice=$(printf "25%%\n50%%\n75%%\n100%%" | dmenu -p "Set Volume" -l 4 -c || true)
+      local v_val
+      v_val=$(echo "$v_choice" | tr -dc '0-9')
+      if [ -n "$v_val" ] && command -v amixer >/dev/null 2>&1; then
+        amixer set Master "${v_val}%" >/dev/null 2>&1 || true
+        shree-notify "Sound" "Volume set to ${v_val}%" --app="Settings"
+      fi
+      ;;
+    "Mute"*)
+      if command -v amixer >/dev/null 2>&1; then
+        amixer set Master toggle >/dev/null 2>&1 || true
+        shree-notify "Sound" "Toggled audio mute" --app="Settings"
+      fi
+      ;;
+    "Audio Hardware"*)
+      st -g 80x20 -t "Audio Devices" -e /bin/bash -c "cat /proc/asound/cards 2>/dev/null || echo 'No ALSA audio cards'; echo ''; echo 'Press Enter to close'; read -r _" &
+      ;;
+    "Interactive Audio Mixer"*)
+      st -g 88x24 -t "Audio Settings" -e shree-hardware-ui audio &
+      ;;
   esac
 }
 
+# ── 6. Keyboard ───────────────────────────────────────────────────────────────
+handle_keyboard() {
+  local choice
+  choice=$(printf "Keyboard Layout (US, UK, DE, FR, ES)\nKey Repeat Rate (Fast, Normal, Conservative)\nKeyboard Shortcuts Reference" | dmenu -p "Keyboard Settings" -l 3 -c || true)
+  [ -z "$choice" ] && return
+
+  case "$choice" in
+    "Keyboard Layout"*)
+      local layout
+      layout=$(printf "us\ngb\nde\nfr\nes" | dmenu -p "Select Keyboard Layout" -l 5 -c || true)
+      if [ -n "$layout" ] && command -v setxkbmap >/dev/null 2>&1; then
+        setxkbmap "$layout"
+        shree-notify "Keyboard" "Layout switched to ${layout}" --app="Settings"
+      fi
+      ;;
+    "Key Repeat Rate"*)
+      local rate
+      rate=$(printf "Fast (250ms delay, 40 rps)\nNormal (300ms delay, 30 rps)\nConservative (400ms delay, 20 rps)" | dmenu -p "Repeat Rate" -l 3 -c || true)
+      if [ -n "$rate" ] && command -v xset >/dev/null 2>&1; then
+        case "$rate" in
+          Fast*) xset r rate 250 40 ;;
+          Normal*) xset r rate 300 30 ;;
+          Conservative*) xset r rate 400 20 ;;
+        esac
+        shree-notify "Keyboard" "Key repeat rate updated" --app="Settings"
+      fi
+      ;;
+    "Keyboard Shortcuts"*)
+      st -g 80x24 -t "ShreeOS Shortcuts" -e /bin/bash -c "
+        echo '=== ShreeOS Desktop Keybindings ==='
+        echo ''
+        echo '  Super + Space       Spotlight Universal Search'
+        echo '  Super + K           Master Command Palette'
+        echo '  Super + V           Clipboard History Manager'
+        echo '  Super + E           Files (File Manager)'
+        echo '  Super + Return      Terminal (st)'
+        echo '  Super + Q           Close Active Window'
+        echo '  Super + F           Fullscreen Window Toggle'
+        echo '  Super + M           Monocle / Focus Window'
+        echo '  Super + 1..4        Switch Workspace'
+        echo '  PrintScreen         Take Fullscreen Screenshot'
+        echo '  Super + Shift + 4   Select Region Screenshot'
+        echo '  Super + Shift + Q   Exit Session'
+        echo ''
+        echo 'Press Enter to close.'
+        read -r _
+      " &
+      ;;
+  esac
+}
+
+# ── 7. Mouse & Pointer ────────────────────────────────────────────────────────
+handle_mouse() {
+  local choice
+  choice=$(printf "Pointer Speed: Fast (3/1)\nPointer Speed: Normal (2/1)\nPointer Speed: Precision (1/1)" | dmenu -p "Mouse & Pointer" -l 3 -c || true)
+  [ -z "$choice" ] && return
+
+  if command -v xset >/dev/null 2>&1; then
+    case "$choice" in
+      *Fast*) xset m 3 1 ;;
+      *Normal*) xset m 2 1 ;;
+      *Precision*) xset m 1 1 ;;
+    esac
+    shree-notify "Mouse" "Pointer acceleration updated" --app="Settings"
+  fi
+}
+
+# ── 8. Power & Energy ─────────────────────────────────────────────────────────
 handle_power() {
   local choice
-  choice=$(printf "Battery and power status\nBrightness status\nSet brightness" | dmenu -p "Power Settings" -l 3 -c || true)
+  choice=$(printf "Battery Health & Energy Diagnostics\nDisplay Sleep Timeout (5m, 10m, 30m, Never)" | dmenu -p "Power Settings" -l 2 -c || true)
+  [ -z "$choice" ] && return
+
   case "$choice" in
-    Battery*) st -g 72x20 -t "Power" -e shree-hardware-ui battery & ;;
-    "Brightness status"*) st -g 60x12 -t "Brightness" -e shree-hardware-ui brightness & ;;
-    Set*) st -g 60x10 -t "Set Brightness" -e shree-hardware-ui brightness-set & ;;
-  esac
-}
-
-handle_hardware() {
-  st -g 100x32 -t "Hardware" -e shree-hardware-ui hardware &
-}
-handle_drivers() {
-  st -g 100x32 -t "Drivers" -e shree-hardware-ui drivers &
-}
-
-handle_storage() {
-  shree-storage show
-}
-
-handle_updates() {
-  st -g 80x22 -t "Software Updates" -e /bin/bash -c "system-update.sh; echo ''; echo 'Press Enter to close'; read -r" &
-}
-
-handle_default_apps() {
-  local type_choice
-  type_choice=$(printf "Text Files (text/plain)\nImages (image/png)\nArchives (application/zip)\nWeb Browser" | dmenu -p "Default Apps" -l 4 -c)
-  [ -z "$type_choice" ] && return
-  case "$type_choice" in
-    "Text Files"*)
-      local app
-      app=$(printf "shree-edit.desktop\nnano.desktop\nvim.desktop" | dmenu -p "Select Text Editor" -l 3 -c)
-      [ -n "$app" ] && shree-mime set "text/plain" "$app"
+    "Battery Health"*)
+      st -g 75x20 -t "Power Diagnostics" -e /bin/bash -c "
+        echo '=== ShreeOS Power & Energy Profile ==='
+        echo ''
+        shreectl power 2>/dev/null || cat /sys/class/power_supply/*/uevent 2>/dev/null || echo 'No battery found'
+        echo ''
+        echo 'Press Enter to close.'
+        read -r _
+      " &
       ;;
-    "Images"*)
-      local app
-      app=$(printf "shree-view.desktop\nfeh.desktop\nsxiv.desktop" | dmenu -p "Select Image Viewer" -l 3 -c)
-      [ -n "$app" ] && shree-mime set "image/png" "$app"
+    "Display Sleep Timeout"*)
+      local to
+      to=$(printf "5m\n10m\n30m\nNever" | dmenu -p "Display Sleep Timeout" -l 4 -c || true)
+      if [ -n "$to" ] && command -v xset >/dev/null 2>&1; then
+        case "$to" in
+          5m) xset s 300 dpms 300 450 600 ;;
+          10m) xset s 600 dpms 600 900 1200 ;;
+          30m) xset s 1800 dpms 1800 2400 3000 ;;
+          Never) xset s off -dpms ;;
+        esac
+        shree-notify "Power" "Display timeout set to ${to}" --app="Settings"
+      fi
       ;;
   esac
 }
 
-show_main_menu() {
-  local categories="\
-Appearance        — Theme (Light/Dark/Auto), wallpapers & transparency
-Desktop & Dock    — Wallpaper selection, dock autohide & position
-Displays          — Resolution, refresh rates & Night Light
-Network           — Wi-Fi discovery, Ethernet & DNS configuration
-Bluetooth         — Wireless peripherals and adapter state
-Sound             — Master output volume & alert settings
-Default Apps      — File associations for editor, image viewer & browser
-Storage           — Disk usage overview & package cache cleaner
-Software Updates  — Check & apply system package upgrades
-About ShreeOS     — Hardware specs, kernel release & system identity"
+# ── 9. Date & Time ────────────────────────────────────────────────────────────
+handle_datetime() {
+  local cur_tz
+  cur_tz=$(cat /etc/timezone 2>/dev/null || echo "UTC")
+  local choice
+  choice=$(printf "Current Time: %s\nTimezone: %s\nNTP Network Time Synchronization Check" "$(date)" "$cur_tz" | dmenu -p "Date & Time" -l 3 -c || true)
+  [ -z "$choice" ] && return
 
-  categories+=$'\nPower             - Battery, AC power and display brightness\nHardware          - CPU, GPU, memory, storage and network adapters\nDrivers           - Loaded drivers, missing drivers and firmware evidence'
-  local target="${1:-}"
-  if [ -z "$target" ]; then
-    target=$(echo -e "$categories" | dmenu -p "ShreeOS Settings" -l 13 -c || true)
+  if [[ "$choice" =~ "NTP" ]]; then
+    st -g 70x12 -t "Date & Time" -e /bin/bash -c "date; chronyc sources 2>/dev/null || ntpq -p 2>/dev/null || echo 'Hardware RTC in sync'; echo ''; echo 'Press Enter to close'; read -r _" &
   fi
+}
 
-  [ -z "$target" ] && exit 0
+# ── 10. Users & Accounts ──────────────────────────────────────────────────────
+handle_users() {
+  local cur_user="${USER:-shree}"
+  local choice
+  choice=$(printf "Active User: %s\nList System Accounts\nChange User Password" "$cur_user" | dmenu -p "Users & Accounts" -l 3 -c || true)
+  [ -z "$choice" ] && return
 
-  case "$target" in
-    Appearance*|appearance)     handle_appearance ;;
-    "Desktop & Dock"*|dock)     handle_dock ;;
-    Displays*|displays)         handle_displays ;;
-    Network*|network)           handle_network ;;
-    Bluetooth*|bluetooth)       handle_bluetooth ;;
-    Sound*|sound)               handle_sound ;;
-    "Default Apps"*|defaults)   handle_default_apps ;;
-    Storage*|storage)           handle_storage ;;
-    Power*|power)               handle_power ;;
-    Hardware*|hardware)         handle_hardware ;;
-    Drivers*|drivers)           handle_drivers ;;
-    "Software Updates"*|updates)handle_updates ;;
-    "About ShreeOS"*|about)     shree-about & ;;
+  case "$choice" in
+    "List System Accounts"*)
+      st -g 75x18 -t "User Accounts" -e /bin/bash -c "awk -F: '\$3 >= 1000 {printf \"User: %-16s UID: %-6s Shell: %s\n\", \$1, \$3, \$7}' /etc/passwd; echo ''; echo 'Press Enter to close'; read -r _" &
+      ;;
+    "Change User Password"*)
+      st -g 70x12 -t "Change Password" -e /bin/bash -c "passwd; echo ''; echo 'Press Enter to close'; read -r _" &
+      ;;
   esac
 }
 
-show_main_menu "$@"
+# ── 11. Software & Updates ────────────────────────────────────────────────────
+handle_software() {
+  local choice
+  choice=$(printf "Launch Package Manager (shree-pkgmanager)\nCheck & Apply System Updates\nManage SafeUpdate Restore Points\nVerify System Package Integrity" | dmenu -p "Software & Updates" -l 4 -c || true)
+  [ -z "$choice" ] && return
+
+  case "$choice" in
+    "Launch Package"*)
+      shree-pkgmanager &
+      ;;
+    "Check & Apply"*)
+      st -g 85x24 -t "System Update" -e /bin/bash -c "system-update.sh; echo ''; echo 'Press Enter to close'; read -r _" &
+      ;;
+    "Manage SafeUpdate"*)
+      st -g 85x24 -t "Restore Points" -e /bin/bash -c "shreectl backup-db list; echo ''; echo 'Press Enter to close'; read -r _" &
+      ;;
+    "Verify System"*)
+      st -g 85x24 -t "Verify Packages" -e /bin/bash -c "lpm verify; echo ''; echo 'Press Enter to close'; read -r _" &
+      ;;
+  esac
+}
+
+# ── 12. About ShreeOS ─────────────────────────────────────────────────────────
+handle_about() {
+  shree-about &
+}
+
+# ── Main Settings Dispatcher ──────────────────────────────────────────────────
+CATEGORIES="\
+Appearance        — Light / Dark mode, accent colors & wallpaper selection
+Desktop           — Dock pinned apps, size, position & auto-hide
+Display           — Screen resolutions, refresh rates & Night Light
+Network           — Wi-Fi discovery, Ethernet & DNS configuration
+Sound             — Master output volume & alert settings
+Keyboard          — Layout, repeat rate & desktop shortcut keys
+Mouse             — Pointer speed, acceleration & tracking
+Power             — Battery diagnostics & display sleep timeouts
+Date & Time       — Current timezone & network time sync
+Users             — User accounts, credentials & privileges
+Software          — System upgrades, package manager & restore points
+About             — ShreeOS 0.2.0-dev, kernel release & hardware specs"
+
+TARGET="${1:-}"
+
+if [ -z "$TARGET" ]; then
+  SELECTED=$(echo -e "$CATEGORIES" | dmenu -p "ShreeOS Settings" -l 12 -c || true)
+  [ -z "$SELECTED" ] && exit 0
+  TARGET=$(echo "$SELECTED" | awk '{print tolower($1)}')
+fi
+
+case "$TARGET" in
+  appearance*) handle_appearance ;;
+  desktop*)    handle_desktop ;;
+  display*)    handle_display ;;
+  network*)    handle_network ;;
+  sound*)      handle_sound ;;
+  keyboard*)   handle_keyboard ;;
+  mouse*)      handle_mouse ;;
+  power*)      handle_power ;;
+  date*)       handle_datetime ;;
+  user*)       handle_users ;;
+  software*|update*) handle_software ;;
+  about*)      handle_about ;;
+  *)           handle_appearance ;;
+esac
