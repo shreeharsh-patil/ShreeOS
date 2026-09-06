@@ -30,8 +30,8 @@ cd "$BUILDDIR"
   --disable-nls \
   libc_cv_slibdir=/usr/lib
 
-make -j"${LUMEN_MAKE_JOBS}"
-make install_root="${LUMEN_SYSROOT}" install
+make -j"${LUMEN_MAKE_JOBS}" CXX=
+make install_root="${LUMEN_SYSROOT}" install CXX=
 
 if [ ! -f "${LUMEN_SYSROOT}/usr/lib/libc.so" ]; then
   lumen_die "glibc installation failed — libc.so not found"

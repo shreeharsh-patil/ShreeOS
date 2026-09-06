@@ -54,9 +54,14 @@ if command -v grub-mkrescue >/dev/null 2>&1 || command -v grub-mkimage >/dev/nul
   if command -v grub-mkimage >/dev/null 2>&1; then
     grub-mkimage \
       -O i386-pc \
-      -o "${STAGING}/boot/grub/i386-pc/eltorito.img" \
+      -o "${STAGING}/boot/grub/i386-pc/core.img" \
       -p "/boot/grub" \
-      biosdisk iso9660 part_msdos part_gpt normal loopback ext2 fat ls
+      biosdisk iso9660 part_msdos part_gpt normal loopback ext2 fat ls serial terminal linux font test gettext
+    if [ -f "/usr/lib/grub/i386-pc/cdboot.img" ]; then
+      cat "/usr/lib/grub/i386-pc/cdboot.img" "${STAGING}/boot/grub/i386-pc/core.img" > "${STAGING}/boot/grub/i386-pc/eltorito.img"
+    else
+      cp "${STAGING}/boot/grub/i386-pc/core.img" "${STAGING}/boot/grub/i386-pc/eltorito.img"
+    fi
   fi
 fi
 
@@ -64,7 +69,7 @@ fi
 grub-install \
   --target=i386-pc \
   --boot-directory="${STAGING}/boot" \
-  --modules="part_msdos part_gpt normal iso9660 loopback ext2 ntfs fat" \
+  --modules="part_msdos part_gpt normal iso9660 loopback ext2 ntfs fat linux" \
   --recheck \
   --force \
   /dev/null 2>/dev/null || true
@@ -76,7 +81,7 @@ if command -v grub-mkimage >/dev/null 2>&1; then
     -O x86_64-efi \
     -o "${STAGING}/EFI/BOOT/BOOTX64.EFI" \
     -p "/boot/grub" \
-    iso9660 part_msdos part_gpt normal loopback ext2 fat search search_fs_file efi_gop efi_uga
+    iso9660 part_msdos part_gpt normal loopback ext2 fat search search_fs_file efi_gop serial terminal linux font test gettext
 
   # Generate FAT EFI image for El-Torito alt-boot
   if command -v mformat >/dev/null 2>&1 && command -v mcopy >/dev/null 2>&1; then

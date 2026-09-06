@@ -37,6 +37,7 @@ lumen_step "Assembling root filesystem in ${LUMEN_STAGE_ROOT}"
 
 # 1. Verify prerequisites
 lumen_require_cmd curl
+export PATH="${LUMEN_TOOLS}/bin:${PATH}"
 if [ "$SKIP_INIT" = false ]; then
   if ! command -v "${LUMEN_TARGET_TRIPLET}-gcc" &>/dev/null; then
     lumen_die "Cross-compiler not found: ${LUMEN_TARGET_TRIPLET}-gcc. Build Phase 1 first."
@@ -193,8 +194,9 @@ if [ "$SKIP_ARCHIVE" = false ]; then
     cd "${LUMEN_STAGE_ROOT}"
     find . | cpio -o -H newc --quiet | gzip -n > "${ROOTFS_ARCHIVE}"
   )
-  if ! gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet | grep -qx './init' || \
-     ! gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet | grep -qx './sbin/init'; then
+  archive_list="$(gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet)"
+  if ! echo "$archive_list" | grep -E -qx '(\./)?init' || \
+     ! echo "$archive_list" | grep -E -qx '(\./)?sbin/init'; then
     lumen_die "Initramfs boot assertion failed: expected /init and /sbin/init."
   fi
   lumen_ok "Rootfs archive: ${ROOTFS_ARCHIVE}"

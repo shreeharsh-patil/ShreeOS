@@ -16,12 +16,19 @@ jobs:
         run: |
           find . -name '*.sh' -not -path './build/*' -print0 \
             | xargs -0 -r shellcheck -x --severity=warning
+          find scripts -type f -name 'shree*' -print0 \
+            | xargs -0 -r shellcheck -x --severity=warning
 
       - name: Syntax-check all configuration and shell scripts
         run: |
           bash -n build.conf
           bash -n scripts/common.sh
           find . -name '*.sh' -not -path './build/*' -exec bash -n {} +
+          find scripts -type f -name 'shree*' -exec bash -n {} +
+
+      - name: Verify file permissions (no 644/755 regressions)
+        run: |
+          bash scripts/audit-permissions.sh
 
   structure-check:
     runs-on: ubuntu-latest

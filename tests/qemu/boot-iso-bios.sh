@@ -56,7 +56,7 @@ echo "  Timeout: ${TIMEOUT}s"
   -m "$MEMORY" \
   -nographic \
   -no-reboot \
-  2>&1 | head -c 131072 > "$LOG_FILE" &
+  > "$LOG_FILE" 2>&1 &
 QEMU_PID=$!
 
 WAITED=0
