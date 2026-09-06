@@ -63,7 +63,7 @@ xz	5.6.4	https://github.com/tukaani-project/xz/releases/download/v5.6.4/xz-5.6.4
 util-linux	2.40.4	https://www.kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.4.tar.xz	5c1daf733b04e9859afdc3bd87cc481180ee0f88b5c0946b16fdec931975fb79
 
 # libxcrypt 4.4.36
-libxcrypt	4.4.36	https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz	e5e1f4caee0a01de2aee26e313880a94d492870a473027f74e648438c4ff5194
+libxcrypt	4.4.36	https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz	e5e1f4caee0a01de2aee26e3138807d6d3ca2b8e67287966d1fefd65e1fd8943
 
 # wpa_supplicant 2.11
 wpa_supplicant	2.11	https://w1.fi/releases/wpa_supplicant-2.11.tar.gz	912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
