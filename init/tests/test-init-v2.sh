@@ -4,7 +4,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$INIT_DIR/.." && pwd)"
 
 export PATH="${INIT_DIR}/src:${PATH}"
 
@@ -89,7 +88,7 @@ export INIT_SOCK_PATH="$SOCKET_PATH"
 INIT_PID=$!
 
 # Wait for socket to become ready
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   if [ -S "$SOCKET_PATH" ]; then break; fi
   sleep 0.1
 done
@@ -254,7 +253,7 @@ fi
 STRICT_SOCK="${TEST_TMP}/strict.sock"
 "$INIT_BIN" --test --strict-auth --services-dir "$SERVICES_DIR" --socket "$STRICT_SOCK" --log-dir "$LOG_DIR" >/dev/null 2>&1 &
 STRICT_PID=$!
-for i in $(seq 1 20); do
+for _ in $(seq 1 20); do
   if [ -S "$STRICT_SOCK" ]; then break; fi
   sleep 0.1
 done
