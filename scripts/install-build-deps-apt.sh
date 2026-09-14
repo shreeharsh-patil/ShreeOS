@@ -20,7 +20,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 "${APT[@]}" update
 "${APT[@]}" install -y --no-install-recommends \
-  git ca-certificates build-essential gcc g++ make \
+  git ca-certificates python3 build-essential gcc g++ make \
   bison flex gawk texinfo gperf \
   curl wget patch file rsync \
   bzip2 gzip xz-utils tar cpio bc \
