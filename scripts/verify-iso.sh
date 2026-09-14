@@ -8,7 +8,7 @@ source "$REPO_ROOT/build.conf"
 source "$REPO_ROOT/scripts/common.sh"
 
 ISO="${ISO:-$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION.iso}"
-SKIP_QEMU="${SKIP_QEMU:-0}"
+SKIP_QEMU="${SKIP_QEMU:-0}"\nALLOW_DEFERRED_GRAPHICS="${ALLOW_DEFERRED_GRAPHICS:-0}"
 
 shreeos_require_cmd sha256sum xorriso
 
