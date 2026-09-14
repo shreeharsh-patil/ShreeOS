@@ -17,9 +17,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex gawk texinfo \
-            curl patch bzip2 xz-utils bc libssl-dev libelf-dev cpio gzip \
-            xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools rsync qemu-system-x86 ovmf \
-            libx11-dev libxinerama-dev libxft-dev libcrypt-dev pkg-config gettext-base
+            curl patch bzip2 xz-utils bc gperf libgmp-dev libmpfr-dev libmpc-dev \
+            libssl-dev libelf-dev cpio gzip xorriso grub-pc-bin grub-efi-amd64-bin \
+            grub-common mtools rsync qemu-system-x86 ovmf libx11-dev libxinerama-dev \
+            libxft-dev libcrypt-dev pkg-config gettext-base
 
       - name: Restore cached toolchain & sysroot
         id: cache-toolchain

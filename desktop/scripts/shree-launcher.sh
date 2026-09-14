@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
-# desktop/scripts/shree-launcher.sh — Spotlight-Style Floating Search Panel
-#
-# Shortcut: Super + Space
-# Features:
-#   - Instant centered floating search panel
-#   - Fast keyboard navigation: Up/Down arrows, Enter to launch, Esc to close
-#   - Search applications, settings panes, cached user files, and terminal commands
-#   - Instant inline math calculation (e.g. 1024 * 4, 1500 / 3)
-#   - High performance: cached file index (never rescans whole disk on keypress)
-#
+# desktop/scripts/shree-launcher.sh — Spotlight-style floating search panel
 set -euo pipefail
 
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/shreeos"
@@ -17,33 +8,40 @@ mkdir -p "$CACHE_DIR"
 
 refresh_file_cache() {
   local tmp_cache="${FILE_CACHE}.tmp"
+  local dir f count
   : > "$tmp_cache"
+
   for dir in "${HOME}/Desktop" "${HOME}/Documents" "${HOME}/Downloads" "${HOME}/Pictures" "${HOME}/Music"; do
     [ -d "$dir" ] || continue
-    find "$dir" -maxdepth 2 -type f ! -name ".*" 2>/dev/null | head -n 30 | while read -r f; do
-      echo "File: $(basename "$f") — ${f}" >> "$tmp_cache"
-    done
+    count=0
+    while IFS= read -r f; do
+      printf 'File: %s — %s\n' "$(basename "$f")" "$f" >> "$tmp_cache"
+      count=$((count + 1))
+      [ "$count" -ge 30 ] && break
+    done < <(find "$dir" -maxdepth 2 -type f ! -name ".*" -print 2>/dev/null | LC_ALL=C sort)
   done
-  mv "$tmp_cache" "$FILE_CACHE" 2>/dev/null || true
+
+  mv "$tmp_cache" "$FILE_CACHE"
 }
 
-# Asynchronously refresh cache if older than 300 seconds or missing
-if [ ! -f "$FILE_CACHE" ] || [ $(( $(date +%s) - $(stat -c %Y "$FILE_CACHE" 2>/dev/null || stat -f %m "$FILE_CACHE" 2>/dev/null || echo 0) )) -gt 300 ]; then
-  (refresh_file_cache) &
+cache_mtime=0
+if [ -f "$FILE_CACHE" ]; then
+  cache_mtime=$(stat -c %Y "$FILE_CACHE" 2>/dev/null || stat -f %m "$FILE_CACHE" 2>/dev/null || echo 0)
+fi
+if [ ! -f "$FILE_CACHE" ] || [ $(( $(date +%s) - cache_mtime )) -gt 300 ]; then
+  (refresh_file_cache >/dev/null 2>&1 || true) &
 fi
 
 calc_eval() {
   local expr="$1"
   if [[ "$expr" =~ ^[0-9\ \+\-\*\/\(\)\.\^\%]+$ ]]; then
+    local res=""
     if command -v bc >/dev/null 2>&1; then
-      local res
-      res=$(echo "scale=4; $expr" | bc -l 2>/dev/null | sed 's/\.0000$//' || true)
-      [ -n "$res" ] && echo "= ${res} (Calculator Result)"
+      res=$(printf 'scale=4; %s\n' "$expr" | bc -l 2>/dev/null | sed 's/\.0000$//' || true)
     elif command -v awk >/dev/null 2>&1; then
-      local res
       res=$(awk "BEGIN {print $expr}" 2>/dev/null || true)
-      [ -n "$res" ] && echo "= ${res} (Calculator Result)"
     fi
+    [ -n "$res" ] && printf '= %s (Calculator Result)\n' "$res"
   fi
 }
 
@@ -77,35 +75,35 @@ Lock Screen               — Secure Current Session
 Restart Computer          — Orderly System Reboot
 Power Off                 — Clean System Shutdown
 ENTRIES
-
-  # Append cached files instantly without disk lag
-  if [ -f "$FILE_CACHE" ]; then
-    cat "$FILE_CACHE"
-  fi
+  [ ! -f "$FILE_CACHE" ] || cat "$FILE_CACHE"
 }
 
-# Run dmenu in centered Spotlight mode (10 lines, centered)
+if ! command -v dmenu >/dev/null 2>&1; then
+  printf 'shree-launcher: dmenu is not installed\n' >&2
+  exit 1
+fi
+
 INPUT=$(get_spotlight_entries | dmenu -p "Spotlight Search" -l 10 -c || true)
+[ -n "$INPUT" ] || exit 0
 
-[ -z "$INPUT" ] && exit 0
-
-# 1. Evaluate instant calculator expression if present
 CALC_RES=$(calc_eval "$INPUT" || true)
 if [ -n "$CALC_RES" ] && [[ "$INPUT" =~ [0-9] ]]; then
   if command -v shree-notify >/dev/null 2>&1; then
     shree-notify "Calculator" "$INPUT $CALC_RES" --app="Calculator"
+  else
+    printf '%s %s\n' "$INPUT" "$CALC_RES"
   fi
   exit 0
 fi
 
-# 2. Dispatch selection
 case "$INPUT" in
   Terminal*)                  st & ;;
   Files*)                     shree-files & ;;
   Browser*)
     if command -v netsurf >/dev/null 2>&1; then netsurf &
     elif command -v shree-browser >/dev/null 2>&1; then shree-browser &
-    else shree-notify "Browser" "No web browser currently installed" --app="Spotlight"; fi
+    elif command -v shree-notify >/dev/null 2>&1; then shree-notify "Browser" "No web browser currently installed" --app="Spotlight"
+    fi
     ;;
   "App Center"*)              shree-apps & ;;
   "Package Manager"*)         shree-pkgmanager & ;;
@@ -132,30 +130,29 @@ case "$INPUT" in
   "Restart Computer"*)        initctl reboot ;;
   "Power Off"*)               initctl poweroff ;;
   "File: "*)
-    FILEPATH=$(echo "$INPUT" | awk -F' — ' '{print $2}')
+    FILEPATH=$(printf '%s\n' "$INPUT" | awk -F' — ' '{print $2}')
     if [ -e "$FILEPATH" ]; then
       if command -v shree-quicklook >/dev/null 2>&1; then
         shree-quicklook "$FILEPATH" &
       elif command -v xdg-open >/dev/null 2>&1; then
-        xdg-open "$FILEPATH" 2>/dev/null || true &
-      elif [ -f "$FILEPATH" ]; then
-        shree-edit "$FILEPATH" 2>/dev/null || st -e nano "$FILEPATH" &
+        xdg-open "$FILEPATH" >/dev/null 2>&1 &
+      elif [ -f "$FILEPATH" ] && command -v shree-edit >/dev/null 2>&1; then
+        shree-edit "$FILEPATH" &
+      elif [ -f "$FILEPATH" ] && command -v nano >/dev/null 2>&1; then
+        st -e nano "$FILEPATH" &
       fi
     fi
     ;;
   *)
-    # Direct command execution from PATH or LPM package search
     if command -v "$INPUT" >/dev/null 2>&1; then
-      $INPUT &
-    elif [[ "$INPUT" =~ ^install\ (.*) ]]; then
+      "$INPUT" &
+    elif [[ "$INPUT" =~ ^install[[:space:]]+(.+) ]]; then
       PKG="${BASH_REMATCH[1]}"
       st -e lpm install "$PKG" &
-    else
+    elif command -v lpm >/dev/null 2>&1; then
       SEARCH_RES=$(lpm search "$INPUT" 2>/dev/null | head -n1 || true)
-      if [ -n "$SEARCH_RES" ]; then
-        if command -v shree-notify >/dev/null 2>&1; then
-          shree-notify "LPM Package Search" "Found: ${SEARCH_RES}" --app="Spotlight"
-        fi
+      if [ -n "$SEARCH_RES" ] && command -v shree-notify >/dev/null 2>&1; then
+        shree-notify "LPM Package Search" "Found: ${SEARCH_RES}" --app="Spotlight"
       fi
     fi
     ;;

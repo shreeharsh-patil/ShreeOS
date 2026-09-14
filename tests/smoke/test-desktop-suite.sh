@@ -51,7 +51,33 @@ for wp in "shreeos-calm-dark.svg" "shreeos-calm-light.svg" "shreeos-wallpaper.sv
 done
 echo "  [OK] Original ShreeOS abstract wallpapers verified"
 
-# 4. Verify system CLI tools execution
+# 4. Verify the macOS-style desktop configuration is actually wired into builds
+grep -q 'cp "$distro_config" config.h' "${PROJECT_ROOT}/desktop/wm/build-wm.sh" || {
+  echo "  [FAIL] ShreeOS WM config headers are not wired into the native build"; exit 1;
+}
+[ -f "${PROJECT_ROOT}/desktop/wm/patches/dwm-bar-height.patch" ] || {
+  echo "  [FAIL] dwm menu-bar height patch missing"; exit 1;
+}
+[ -f "${PROJECT_ROOT}/desktop/wm/patches/dmenu-center.patch" ] || {
+  echo "  [FAIL] centered Spotlight patch missing"; exit 1;
+}
+[ -f "${PROJECT_ROOT}/desktop/wm/shree-dock.c" ] || {
+  echo "  [FAIL] persistent dock source missing"; exit 1;
+}
+
+if grep -R -n --include='*.sh' --include='shree-*' 'grep -oP'     "${PROJECT_ROOT}/desktop/scripts" "${PROJECT_ROOT}/desktop/apps"; then
+  echo "  [FAIL] Desktop contains GNU-PCRE-only grep parsing"; exit 1
+fi
+
+if command -v cc >/dev/null 2>&1 &&
+   printf '#include <X11/Xlib.h>\n' | cc -E -x c - >/dev/null 2>&1; then
+  cc -std=c99 -Wall -Wextra -fsyntax-only "${PROJECT_ROOT}/desktop/wm/shree-dock.c"
+  echo "  [OK] Persistent dock source passes C syntax validation"
+fi
+
+echo "  [OK] Native desktop configuration and compatibility patches verified"
+
+# 5. Verify system CLI tools execution
 if [ -f "${PROJECT_ROOT}/scripts/shreectl" ]; then
   bash "${PROJECT_ROOT}/scripts/shreectl" --help >/dev/null
   echo "  [OK] shreectl responds to --help"

@@ -5,7 +5,18 @@ on:
     branches: [master]
     paths:
       - 'kernel/**'
+      - 'toolchain/**'
+      - 'scripts/common.sh'
       - 'build.conf'
+      - '.github/workflows/kernel.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'kernel/**'
+      - 'toolchain/**'
+      - 'scripts/common.sh'
+      - 'build.conf'
+      - '.github/workflows/kernel.yml'
   workflow_dispatch:
 
 jobs:
@@ -18,7 +29,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc flex bison gawk texinfo \
-            openssl pkg-config cpio gzip libssl-dev libelf-dev curl patch bzip2 xz-utils
+            openssl pkg-config cpio gzip curl patch bzip2 xz-utils gperf \
+            libgmp-dev libmpfr-dev libmpc-dev libssl-dev libelf-dev
 
       - name: Restore cached toolchain & sysroot
         id: cache-toolchain

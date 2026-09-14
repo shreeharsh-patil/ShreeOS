@@ -1,89 +1,143 @@
 #!/usr/bin/env bash
-# desktop/wm/build-wm.sh — Build suckless tools for ShreeOS desktop
+# desktop/wm/build-wm.sh — Build suckless tools for the ShreeOS desktop
 #
-# Compiles dwm, st, and dmenu using the cross-compiler.
-#
-# Usage:
-#   bash desktop/wm/build-wm.sh              # build all
-#   bash desktop/wm/build-wm.sh dwm          # build specific
-#   bash desktop/wm/build-wm.sh st dmenu     # build multiple
-#
+# Builds dwm, st, and dmenu against the ShreeOS target sysroot.  The
+# distribution-owned config headers in desktop/configs/ are copied into each
+# pristine upstream source tree before compilation, then the small audited
+# ShreeOS compatibility patches are applied.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESKTOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LUMEN_ROOT_DIR="$(cd "$DESKTOP_DIR/.." && pwd)"
+SHREEOS_ROOT_DIR="$(cd "$DESKTOP_DIR/.." && pwd)"
 
-source "$LUMEN_ROOT_DIR/build.conf"
-source "$LUMEN_ROOT_DIR/scripts/common.sh"
+source "$SHREEOS_ROOT_DIR/build.conf"
+source "$SHREEOS_ROOT_DIR/scripts/common.sh"
 source "$SCRIPT_DIR/sources.list"
 
-COMPONENTS=("${@:-dwm}" "${@:-st}" "${@:-dmenu}")
-if [ $# -gt 0 ]; then
+if [ "$#" -gt 0 ]; then
   COMPONENTS=("$@")
 else
   COMPONENTS=(dwm st dmenu)
 fi
-BUILDDIR="${LUMEN_BUILD_DIR}/desktop"
-export CC="${LUMEN_TARGET_TRIPLET}-gcc"
-export AR="${LUMEN_TARGET_TRIPLET}-ar"
 
-lumen_require_cmd "${CC}"
+BUILDDIR="${SHREEOS_BUILD_DIR}/desktop"
+CC="${SHREEOS_TOOLS}/bin/${SHREEOS_TARGET_TRIPLET}-gcc"
 
-mkdir -p "$BUILDDIR"
+shreeos_require_dir "$BUILDDIR"
+lumen_require_cmd "$CC"
+lumen_require_cmd patch
+
+# These are target dependencies, not host build dependencies.  Failing here
+# gives an actionable error instead of an opaque compiler/linker failure.
+verify_desktop_sysroot() {
+  local missing_headers=0
+  local required_headers=(
+    "usr/include/X11/Xlib.h"
+    "usr/include/X11/Xft/Xft.h"
+    "usr/include/X11/extensions/Xinerama.h"
+    "usr/include/fontconfig/fontconfig.h"
+    "usr/include/freetype2/ft2build.h"
+  )
+  local header
+
+  for header in "${required_headers[@]}"; do
+    if [ ! -f "${SHREEOS_SYSROOT}/${header}" ]; then
+      shreeos_warn "Desktop target header missing: ${header}"
+      missing_headers=1
+    fi
+  done
+
+  if [ "$missing_headers" -ne 0 ]; then
+    shreeos_die "Desktop target dependencies are incomplete. Build/stage X11, Xft, Xinerama, Fontconfig and FreeType into ${SHREEOS_SYSROOT} before building the desktop."
+  fi
+
+  export PKG_CONFIG_SYSROOT_DIR="${SHREEOS_SYSROOT}"
+  export PKG_CONFIG_LIBDIR="${SHREEOS_SYSROOT}/usr/lib/pkgconfig:${SHREEOS_SYSROOT}/usr/lib64/pkgconfig:${SHREEOS_SYSROOT}/usr/share/pkgconfig"
+
+  if command -v pkg-config >/dev/null 2>&1; then
+    pkg-config --exists fontconfig freetype2 ||
+      shreeos_die "Target Fontconfig/FreeType pkg-config metadata is missing from ${SHREEOS_SYSROOT}."
+  fi
+}
+
+configure_upstream_makefile() {
+  local config_mk="$1"
+
+  # Keep upstream's component-specific linker flags and feature defines while
+  # redirecting all target paths and the compiler to the ShreeOS sysroot.
+  sed -i \
+    -e 's#^PREFIX = .*#PREFIX = /usr#' \
+    -e "s#^X11INC = .*#X11INC = ${SHREEOS_SYSROOT}/usr/include#" \
+    -e "s#^X11LIB = .*#X11LIB = ${SHREEOS_SYSROOT}/usr/lib#" \
+    -e "s#^FREETYPEINC = .*#FREETYPEINC = ${SHREEOS_SYSROOT}/usr/include/freetype2#" \
+    -e "s#^CC = .*#CC = ${CC}#" \
+    "$config_mk"
+}
+
+apply_component_patches() {
+  local name="$1"
+  local patch_file
+  local found=false
+
+  for patch_file in "$SCRIPT_DIR"/patches/"${name}"-*.patch; do
+    [ -f "$patch_file" ] || continue
+    found=true
+    patch --batch --forward -p1 < "$patch_file"
+  done
+
+  if [ "$found" = true ]; then
+    lumen_ok "Applied ShreeOS ${name} compatibility patches"
+  fi
+}
 
 build_suckless() {
-  local name="$1" url="$2" sha="$3"
+  local name="$1"
+  local url="$2"
+  local sha="$3"
   local archive
-  archive="${BUILDDIR}/$(basename "${url}")"
+  archive="${BUILDDIR}/$(basename "$url")"
+  local source_dir="${BUILDDIR}/${name}"
+  local extracted_dir
+  extracted_dir="${BUILDDIR}/$(basename "$archive" .tar.gz)"
+  local distro_config="${DESKTOP_DIR}/configs/${name}-config.h"
 
   lumen_step "Building ${name}"
-
   lumen_fetch "$url" "$archive" "$sha"
 
-  if [ ! -d "${BUILDDIR}/${name}" ]; then
-    tar -xzf "$archive" -C "$BUILDDIR"
-    mv "${BUILDDIR}/${name}-"* "${BUILDDIR}/${name}" 2>/dev/null || true
+  # Always use a pristine source tree.  This makes repeat builds deterministic
+  # and prevents an already-applied patch from breaking the next invocation.
+  rm -rf "$source_dir" "$extracted_dir"
+  tar -xzf "$archive" -C "$BUILDDIR"
+  if [ ! -d "$extracted_dir" ]; then
+    shreeos_die "Expected source directory missing after extraction: ${extracted_dir}"
   fi
+  mv "$extracted_dir" "$source_dir"
 
-  cd "${BUILDDIR}/${name}"
+  cd "$source_dir"
+  apply_component_patches "$name"
 
-  # Apply distro config (config.h or patches)
-  if [ -f "${SCRIPT_DIR}/patches/${name}.patch" ]; then
-    patch -p1 < "${SCRIPT_DIR}/patches/${name}.patch"
+  if [ ! -f "$distro_config" ]; then
+    shreeos_die "Missing ShreeOS config for ${name}: ${distro_config}"
   fi
+  cp "$distro_config" config.h
+  configure_upstream_makefile config.mk
 
-  # Use distro config.mk if available
-  if [ -f "${SCRIPT_DIR}/config/${name}.mk" ]; then
-    cp "${SCRIPT_DIR}/config/${name}.mk" config.mk
-  else
-    # Override config.mk for cross-compilation
-    local ver_clean="${name#*-}"
-    cat > config.mk <<CONFIGMK
-VERSION = ${ver_clean}
-PREFIX = /usr
-MANPREFIX = \${PREFIX}/share/man
-X11INC = ${LUMEN_SYSROOT}/usr/include/X11
-X11LIB = ${LUMEN_SYSROOT}/usr/lib
-CC = ${CC}
-AR = ${AR}
-CFLAGS = -std=c99 -pedantic -Wall -Wextra -Os -I\${X11INC}
-LDFLAGS = -L\${X11LIB} -lX11
-CONFIGMK
-  fi
+  make clean
+  make -j"${SHREEOS_MAKE_JOBS}"
+  make DESTDIR="${SHREEOS_STAGE_ROOT}" install
 
-  make -j"${LUMEN_MAKE_JOBS}"
-  make DESTDIR="${LUMEN_STAGE_ROOT}" install
-
-  lumen_ok "${name} built and installed"
+  lumen_ok "${name} built with ShreeOS desktop configuration"
 }
+
+verify_desktop_sysroot
 
 for comp in "${COMPONENTS[@]}"; do
   case "$comp" in
     dwm)   build_suckless "dwm"   "$DWM_URL"   "$DWM_SHA256" ;;
     st)    build_suckless "st"    "$ST_URL"    "$ST_SHA256" ;;
     dmenu) build_suckless "dmenu" "$DMENU_URL" "$DMENU_SHA256" ;;
-    *)     lumen_warn "Unknown component: ${comp}" ;;
+    *)     shreeos_die "Unknown desktop component: ${comp}" ;;
   esac
 done
 
