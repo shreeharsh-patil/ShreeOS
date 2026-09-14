@@ -162,7 +162,7 @@ while [ "$WAITED" -lt "$TIMEOUT" ]; do
 
   # Check serial output for boot markers
   if [ -f "$BIOS_SERIAL" ]; then
-    if grep -Fq "ShreeOS init: reached PID 1" "$BIOS_SERIAL"; then
+    if grep -Fq "ShreeOS init: critical services ready" "$BIOS_SERIAL"; then
       BIOS_SUCCESS=true
       break
     fi
@@ -218,7 +218,7 @@ if [ -n "$OVMF_PATH" ]; then
     WAITED=$((WAITED + 1))
 
     if [ -f "$UEFI_SERIAL" ]; then
-      if grep -Fq "ShreeOS init: reached PID 1" "$UEFI_SERIAL"; then
+      if grep -Fq "ShreeOS init: critical services ready" "$UEFI_SERIAL"; then
         UEFI_SUCCESS=true
         break
       fi
