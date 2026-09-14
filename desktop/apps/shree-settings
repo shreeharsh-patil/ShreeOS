@@ -53,8 +53,10 @@ handle_desktop() {
   local autohide="false"
   local size="44"
   if [ -f "$dock_conf" ]; then
-    autohide=$(grep -oP '^AUTOHIDE=\K.*' "$dock_conf" 2>/dev/null || echo "false")
-    size=$(grep -oP '^ICON_SIZE=\K.*' "$dock_conf" 2>/dev/null || echo "44")
+    autohide=$(sed -n 's/^AUTOHIDE=//p' "$dock_conf" 2>/dev/null | head -n1)
+    size=$(sed -n 's/^ICON_SIZE=//p' "$dock_conf" 2>/dev/null | head -n1)
+    autohide="${autohide:-false}"
+    size="${size:-44}"
   fi
 
   local choice
@@ -81,7 +83,8 @@ handle_desktop() {
       ;;
     "Edit Pinned"*)
       local current_pinned
-      current_pinned=$(grep -oP '^PINNED_APPS=\K.*' "$dock_conf" 2>/dev/null || echo "shree-files:st:netsurf:shree-pkgmanager:shree-settings")
+      current_pinned=$(sed -n 's/^PINNED_APPS=//p' "$dock_conf" 2>/dev/null | head -n1 | tr -d '"')
+      current_pinned="${current_pinned:-shree-files:st:netsurf:shree-pkgmanager:shree-settings}"
       local new_pinned
       new_pinned=$(echo "$current_pinned" | dmenu -p "Edit Pinned (colon-separated):" -c || true)
       if [ -n "$new_pinned" ]; then
