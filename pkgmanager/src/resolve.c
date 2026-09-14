@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
+#include <sys/stat.h>\n#include <errno.h>
 
 static int safe_exec(const char *file, char *const argv[]) {
     pid_t pid = fork();
@@ -303,7 +303,7 @@ int cmd_update(int argc, char **argv) {
     snprintf(repo_sig_url, sizeof(repo_sig_url), "%s/repo.json.sig", url);
 
     /* Fetch repo.json using curl or wget */
-    char *curl_json_args[] = { "curl", "-sSL", repo_file_url, "-o", tmp_json, NULL };
+    char *curl_json_args[] = { "curl", "-fsSL", "--retry", "3", repo_file_url, "-o", tmp_json, NULL };
     char *wget_json_args[] = { "wget", "-q", repo_file_url, "-O", tmp_json, NULL };
 
     int res = safe_exec("curl", curl_json_args);
@@ -322,7 +322,7 @@ int cmd_update(int argc, char **argv) {
     }
 
     /* Fetch repo.json.sig */
-    char *curl_sig_args[] = { "curl", "-sSL", repo_sig_url, "-o", tmp_sig, NULL };
+    char *curl_sig_args[] = { "curl", "-fsSL", "--retry", "3", repo_sig_url, "-o", tmp_sig, NULL };
     char *wget_sig_args[] = { "wget", "-q", repo_sig_url, "-O", tmp_sig, NULL };
     int sig_res = safe_exec("curl", curl_sig_args);
     if (sig_res != 0) {
@@ -384,11 +384,21 @@ int cmd_update(int argc, char **argv) {
                         free(buf);
                         json_free(root);
 
-                        rename(tmp_json, LPM_REPO_JSON);
+                        if (rename(tmp_json, LPM_REPO_JSON) != 0) {
+                            fprintf(stderr, "lpm: failed to commit repository index: %s\n", strerror(errno));
+                            unlink(tmp_json);
+                            unlink(tmp_sig);
+                            lpm_unlock();
+                            return 1;
+                        }
                         if (access(tmp_sig, F_OK) == 0) {
                             char final_sig[LPM_PATH_MAX];
                             snprintf(final_sig, sizeof(final_sig), "%s.sig", LPM_REPO_JSON);
-                            rename(tmp_sig, final_sig);
+                            if (rename(tmp_sig, final_sig) != 0) {
+                                fprintf(stderr, "lpm: warning: repository index updated, but signature cache could not be stored: %s\n",
+                                        strerror(errno));
+                                unlink(tmp_sig);
+                            }
                         }
                         printf("lpm: repository index updated successfully\n");
                         lpm_unlock();
