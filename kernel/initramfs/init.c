@@ -17,15 +17,15 @@ void _start(void)
 {
     const char msg[] = "ShreeOS kernel boot OK\n";
 
-    /* write(1, msg, 24) via x86_64 syscall */
+    /* write(1, msg, sizeof(msg) - 1) via x86_64 syscall */
     __asm__ __volatile__(
         "mov $1, %%rax\n\t"
         "mov $1, %%rdi\n\t"
         "lea %[buf], %%rsi\n\t"
-        "mov $24, %%rdx\n\t"
+        "mov %[len], %%rdx\n\t"
         "syscall"
         :
-        : [buf] "m"(*msg)
+        : [buf] "m"(*msg), [len] "r"((unsigned long)(sizeof(msg) - 1))
         : "rax", "rdi", "rsi", "rdx", "memory"
     );
 
