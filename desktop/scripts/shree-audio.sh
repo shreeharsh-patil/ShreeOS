@@ -15,7 +15,7 @@ has_alsa() {
 get_volume() {
   if has_alsa; then
     local vol
-    vol=$(amixer sget Master 2>/dev/null | grep -oP '\[\K[0-9]+(?=%\])' | head -n1 || echo "")
+    vol=$(amixer sget Master 2>/dev/null | sed -n 's/.*\[\([0-9][0-9]*\)%\].*/\1/p' | head -n1 || echo "")
     if [ -n "$vol" ]; then
       echo "${vol}%"
       return
