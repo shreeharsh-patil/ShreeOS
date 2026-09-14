@@ -16,7 +16,9 @@ cd "$CURRENT_DIR"
 
 TRASH_FILES="${HOME}/.local/share/Trash/files"
 TRASH_INFO="${HOME}/.local/share/Trash/info"
-CLIPBOARD_FILE="${XDG_RUNTIME_DIR:-/tmp}/shreeos-file-clipboard"
+STATE_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache/shreeos}"
+mkdir -p "$STATE_DIR"
+CLIPBOARD_FILE="${STATE_DIR}/shreeos-file-clipboard"
 mkdir -p "$TRASH_FILES" "$TRASH_INFO"
 
 SORT_MODE="name" # name, date, size
@@ -108,11 +110,13 @@ handle_file_action() {
       show_file_info "$target"
       ;;
     "Copy")
-      echo "COPY:$(realpath "$target")" > "$CLIPBOARD_FILE"
+      umask 077
+      printf 'COPY:%s\n' "$(realpath "$target")" > "$CLIPBOARD_FILE"
       shree-notify "Files" "Copied '${bname}' to clipboard" --app="Files"
       ;;
     "Cut"*)
-      echo "MOVE:$(realpath "$target")" > "$CLIPBOARD_FILE"
+      umask 077
+      printf 'MOVE:%s\n' "$(realpath "$target")" > "$CLIPBOARD_FILE"
       shree-notify "Files" "Cut '${bname}' to clipboard" --app="Files"
       ;;
     "Rename")
@@ -136,9 +140,11 @@ handle_file_action() {
       fi
       ;;
     "Copy File Path")
-      if command -v xclip >/dev/null 2>&1; then
-        printf "%s" "$(realpath "$target")" | xclip -selection clipboard -i 2>/dev/null || true
+      if command -v xclip >/dev/null 2>&1 &&
+         printf "%s" "$(realpath "$target")" | xclip -selection clipboard -i 2>/dev/null; then
         shree-notify "Files" "Copied path to clipboard" --app="Files"
+      else
+        shree-notify "Files" "Unable to copy path to clipboard" --app="Files" --urgent
       fi
       ;;
   esac
