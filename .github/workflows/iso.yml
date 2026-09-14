@@ -48,7 +48,7 @@ jobs:
 
       - name: Build Desktop ISO Profile
         run: |
-          make PROFILE=desktop iso
+          ALLOW_DEFERRED_GRAPHICS=1 make PROFILE=desktop iso
 
       - name: Verify ISO structure and boot paths
         run: |
