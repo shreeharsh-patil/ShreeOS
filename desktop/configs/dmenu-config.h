@@ -1,22 +1,19 @@
 /*
- * desktop/configs/dmenu-config.h — ShreeOS dmenu Launcher Configuration
- *
- * Centered modal launcher layout with Inter font and calm colors.
+ * desktop/configs/dmenu-config.h — ShreeOS Spotlight-style menu configuration
  */
-
 #ifndef DMENU_CONFIG_H
 #define DMENU_CONFIG_H
 
-static int topbar = 1;                      /* -b  option; if 0, dmenu appears at bottom     */
-static int centered = 1;                    /* -c  option; centers dmenu on screen           */
-static int min_width = 540;                 /* minimum width when centered                  */
+static int topbar = 1;
+static int centered = 0;                     /* -c enables the centered Spotlight surface */
+static int min_width = 640;
+static const float menu_height_ratio = 3.4f;/* Spotlight sits above vertical center */
 
-/* -fn option overrides fonts[0]; default list of fonts */
 static const char *fonts[] = {
-    "Inter:size=11:weight=regular:antialias=true:autohint=true",
+    "Inter:size=11:weight=medium:antialias=true:autohint=true",
     "monospace:size=10"
 };
-static const char *prompt      = "Search ShreeOS";      /* -p  option; prompt to the left of input field */
+static const char *prompt = "Search ShreeOS";
 
 static const char *colors[SchemeLast][2] = {
     /*     fg         bg       */
@@ -25,17 +22,7 @@ static const char *colors[SchemeLast][2] = {
     [SchemeOut]  = { "#000000", "#5E9BFF" },
 };
 
-/* -l option; if nonzero, dmenu uses vertical list with given number of lines */
-static unsigned int lines      = 8;
-static unsigned int lineheight = 28;         /* -h option; minimum height of a menu line     */
-
-/*
- * Characters not considered part of a word while deleting words
- * for example: " /?\"&[]"
- */
+static unsigned int lines = 8;
 static const char worddelimiters[] = " ";
-
-/* Size of the window border */
-static unsigned int border_width = 1;
 
 #endif
