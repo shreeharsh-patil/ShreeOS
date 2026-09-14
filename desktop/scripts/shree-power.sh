@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # desktop/scripts/shree-power.sh — ShreeOS Power & Battery Management
-#
-# Reads sysfs battery data truthfully and executes real kernel power operations.
-
 set -euo pipefail
 
 get_status() {
-  if [ -d /sys/class/power_supply/BAT0 ]; then
-    local cap
-    cap=$(cat /sys/class/power_supply/BAT0/capacity 2>/dev/null || echo "")
-    local stat
-    stat=$(cat /sys/class/power_supply/BAT0/status 2>/dev/null || echo "AC")
+  local battery=""
+  for candidate in /sys/class/power_supply/BAT*; do
+    if [ -d "$candidate" ]; then
+      battery="$candidate"
+      break
+    fi
+  done
+
+  if [ -n "$battery" ]; then
+    local cap stat
+    cap=$(cat "$battery/capacity" 2>/dev/null || echo "")
+    stat=$(cat "$battery/status" 2>/dev/null || echo "Unknown")
     if [ -n "$cap" ]; then
       echo "${cap}% (${stat})"
       return
@@ -20,37 +24,38 @@ get_status() {
 }
 
 suspend_system() {
+  shree-notify "Power" "Requesting system sleep..." --app="Power"
+
   if [ -w /sys/power/state ]; then
-    shree-notify "Power" "Entering system sleep state..." --app="Power"
-    echo mem > /sys/power/state 2>/dev/null || true
+    if printf '%s\n' mem > /sys/power/state 2>/dev/null; then
+      return 0
+    fi
   elif command -v systemctl >/dev/null 2>&1; then
-    systemctl suspend 2>/dev/null || true
-  else
-    shree-notify "Power Alert" "System suspend not supported on this kernel (no /sys/power/state)" --app="Power" --urgent
+    if systemctl suspend >/dev/null 2>&1; then
+      return 0
+    fi
   fi
+
+  shree-notify "Power Alert" "System suspend request failed or is unsupported" --app="Power" --urgent
+  return 1
 }
 
 interactive_menu() {
-  local status
+  local status choice
   status=$(get_status)
   local options="Power Status: ${status}\nDisplay Sleep (Turn off screen now)\nSystem Suspend (Sleep)\nReboot System Cleanly\nPower Off Computer"
-  local choice
-  choice=$(echo -e "$options" | dmenu -p "Power Management" -l 5 -c || true)
+  choice=$(printf "%b\n" "$options" | dmenu -p "Power Management" -l 5 -c || true)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in
     "Display Sleep"*)
-      if command -v xset >/dev/null 2>&1; then xset dpms force off; fi
+      if command -v xset >/dev/null 2>&1; then
+        xset dpms force off || shree-notify "Power Alert" "Unable to turn off the display" --app="Power" --urgent
+      fi
       ;;
-    "System Suspend"*)
-      suspend_system
-      ;;
-    "Reboot"*)
-      initctl reboot
-      ;;
-    "Power Off"*)
-      initctl poweroff
-      ;;
+    "System Suspend"*) suspend_system ;;
+    "Reboot"*) initctl reboot ;;
+    "Power Off"*) initctl poweroff ;;
   esac
 }
 
