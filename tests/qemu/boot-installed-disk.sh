@@ -8,7 +8,7 @@ source "$PROJECT_ROOT/build.conf"
 source "$PROJECT_ROOT/scripts/common.sh"
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
-MARKER_STRING="${MARKER_STRING:-ShreeOS init: reached PID 1}"
+MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
 TIMEOUT="${TIMEOUT:-60}"
 MEMORY="${MEMORY:-256M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
