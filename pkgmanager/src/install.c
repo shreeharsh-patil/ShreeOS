@@ -91,7 +91,12 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
         return -1;
     }
 
-    mkdir_p(LPM_CACHE_DIR);
+    if (mkdir_p(LPM_CACHE_DIR) != 0 && errno != EEXIST) {
+        fprintf(stderr, "lpm: failed to create package cache directory '%s': %s\n",
+                LPM_CACHE_DIR, strerror(errno));
+        free(version); free(filename); free(sha256);
+        return -1;
+    }
     const char *basename_fn = strrchr(filename, '/');
     basename_fn = basename_fn ? basename_fn + 1 : filename;
     snprintf(out_path, maxlen, "%s/%s", LPM_CACHE_DIR, basename_fn);
@@ -101,11 +106,16 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
 
     printf("lpm: downloading %s from %s...\n", pkgname, pkg_download_url);
 
-    char *curl_args[] = { "curl", "-sSL", pkg_download_url, "-o", out_path, NULL };
-    char *wget_args[] = { "wget", "-q", pkg_download_url, "-O", out_path, NULL };
+    char tmp_path[LPM_PATH_MAX + 64];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.part.%ld", out_path, (long)getpid());
+    unlink(tmp_path);
+
+    char *curl_args[] = { "curl", "-fsSL", "--retry", "3", pkg_download_url, "-o", tmp_path, NULL };
+    char *wget_args[] = { "wget", "-q", pkg_download_url, "-O", tmp_path, NULL };
 
     int res = safe_exec("curl", curl_args);
     if (res != 0) {
+        unlink(tmp_path);
         res = safe_exec("wget", wget_args);
     }
 
@@ -113,8 +123,16 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
     free(filename);
     free(sha256);
 
-    if (res != 0 || access(out_path, F_OK) != 0) {
+    if (res != 0 || access(tmp_path, F_OK) != 0) {
+        unlink(tmp_path);
         fprintf(stderr, "lpm: failed to download package '%s'\n", pkgname);
+        return -1;
+    }
+
+    if (rename(tmp_path, out_path) != 0) {
+        fprintf(stderr, "lpm: failed to commit downloaded package '%s' to cache: %s\n",
+                pkgname, strerror(errno));
+        unlink(tmp_path);
         return -1;
     }
     return 0;
@@ -232,6 +250,9 @@ int cmd_install(int argc, char **argv) {
         if (lpm_sha256_file(lpkg_path, actual_sha) != 0 || strcmp(expected_sha, actual_sha) != 0) {
             fprintf(stderr, "lpm: FATAL: SHA256 mismatch for %s\n  expected: %s\n  got:      %s\n",
                     lpkg_path, expected_sha, actual_sha);
+            /* expected_sha is populated only for repository downloads. Never
+             * retain a corrupted cache entry after a failed integrity check. */
+            unlink(lpkg_path);
             lpm_unlock();
             return 1;
         }
