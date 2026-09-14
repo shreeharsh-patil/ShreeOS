@@ -1,50 +1,29 @@
 #!/usr/bin/env bash
-# desktop/scripts/shree-topbar.sh — macOS-Style Menu Bar Status Feed for ShreeOS
-#
-# Height: 28px (configured via dwm user_bh=28)
-# Left:
-#   - ShreeOS logo (⟡)
-#   - Dynamic active application name (event-driven via X11 _NET_ACTIVE_WINDOW)
-#   - Contextual application actions (File, Edit, View, Window, Help)
-# Right:
-#   - Wi-Fi state
-#   - Audio volume
-#   - Battery capacity & status
-#   - Clean formatted clock (e.g., Wed Sep 3  12:30 PM)
-#   - Control Center shortcut indicator
-#
-# Avoids expensive polling: uses event-driven window spy + 15s metric cache.
-#
+# desktop/scripts/shree-topbar.sh — compact macOS-inspired ShreeOS menu bar feed
 set -euo pipefail
 
-# Cache files to avoid subshell overhead
 CACHE_DIR="${XDG_RUNTIME_DIR:-/tmp}/shreeos-topbar"
 mkdir -p "$CACHE_DIR"
 METRICS_CACHE="${CACHE_DIR}/metrics.txt"
 ACTIVE_APP_CACHE="${CACHE_DIR}/active_app.txt"
-
-echo "Desktop" > "$ACTIVE_APP_CACHE"
+printf 'Desktop\n' > "$ACTIVE_APP_CACHE"
 
 get_active_app() {
-  if ! command -v xdotool >/dev/null 2>&1 || ! command -v xprop >/dev/null 2>&1; then
+  if ! command -v xprop >/dev/null 2>&1 || [ -z "${DISPLAY:-}" ]; then
     echo "ShreeOS"
     return
   fi
 
-  local win_id
-  win_id=$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}' || echo "")
-
+  local win_id win_class win_name
+  win_id=$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}' || true)
   if [ -z "$win_id" ] || [ "$win_id" = "0x0" ] || [ "$win_id" = "0" ]; then
     echo "Desktop"
     return
   fi
 
-  # Query window class first (more stable application name)
-  local win_class
-  win_class=$(xprop -id "$win_id" WM_CLASS 2>/dev/null | awk -F'"' '{print $(NF-1)}' || echo "")
-
+  win_class=$(xprop -id "$win_id" WM_CLASS 2>/dev/null | awk -F'"' '{print $(NF-1)}' || true)
   case "$win_class" in
-    st|st-256color)       echo "Terminal" ;;
+    st|st-256color) echo "Terminal" ;;
     shree-files|ShreeFiles) echo "Files" ;;
     shree-apps|ShreeApps) echo "App Center" ;;
     shree-edit|ShreeEdit) echo "Editor" ;;
@@ -53,22 +32,21 @@ get_active_app() {
     shree-settings|ShreeSettings) echo "Settings" ;;
     shree-control-center|ShreeControl) echo "Control Center" ;;
     shree-about|ShreeAbout) echo "About ShreeOS" ;;
-    netsurf|Netsurf)      echo "Browser" ;;
+    netsurf|Netsurf) echo "Browser" ;;
     "")
-      local win_name
-      win_name=$(xdotool getwindowname "$win_id" 2>/dev/null | cut -c1-24 || echo "")
+      if command -v xdotool >/dev/null 2>&1; then
+        win_name=$(xdotool getwindowname "$win_id" 2>/dev/null | cut -c1-24 || true)
+      else
+        win_name=$(xprop -id "$win_id" _NET_WM_NAME 2>/dev/null | sed -n 's/.*= "//; s/"$//; p' | cut -c1-24)
+      fi
       [ -n "$win_name" ] && echo "$win_name" || echo "ShreeOS"
       ;;
-    *)
-      # Capitalize class name
-      echo "${win_class^}"
-      ;;
+    *) printf '%s\n' "${win_class^}" ;;
   esac
 }
 
 get_context_actions() {
-  local app="$1"
-  case "$app" in
+  case "$1" in
     Terminal) echo "Shell  Edit  View  Window  Help" ;;
     Files)    echo "File  Edit  View  Go  Window  Help" ;;
     Editor)   echo "File  Edit  Selection  View  Help" ;;
@@ -78,120 +56,84 @@ get_context_actions() {
 }
 
 collect_metrics() {
-  # 1. Wi-Fi / Network
-  local net_str="Offline"
-  local def_route
-  def_route=$(ip route show default 2>/dev/null | awk '{print $5}' | head -n1 || echo "")
+  local net_str="Offline" def_route ssid=""
+  def_route=$(ip route show default 2>/dev/null | awk 'NR==1 {print $5}' || true)
   if [ -n "$def_route" ]; then
     case "$def_route" in
       wl*|wifi*)
-        local ssid=""
-        if command -v iwgetid >/dev/null 2>&1; then
-          ssid=$(iwgetid -r 2>/dev/null || echo "")
-        fi
+        if command -v iwgetid >/dev/null 2>&1; then ssid=$(iwgetid -r 2>/dev/null || true); fi
         [ -n "$ssid" ] && net_str="Wi-Fi: ${ssid}" || net_str="Wi-Fi"
         ;;
-      eth*|en*|vd*)
-        net_str="Ethernet"
-        ;;
-      *)
-        net_str="Online"
-        ;;
+      eth*|en*|vd*) net_str="Ethernet" ;;
+      *) net_str="Online" ;;
     esac
   fi
 
-  # 2. Audio Volume
-  local vol_str=""
+  local vol_str="Audio: —" master_info pct
   if command -v amixer >/dev/null 2>&1; then
-    local master_info
     master_info=$(amixer sget Master 2>/dev/null || true)
     if [ -n "$master_info" ]; then
-      if echo "$master_info" | grep -q '\[off\]'; then
+      if printf '%s\n' "$master_info" | grep -q '\[off\]'; then
         vol_str="Mute"
       else
-        local pct
-        pct=$(echo "$master_info" | grep -oP '\[\K[0-9]+(?=%\])' | head -n1 || echo "")
-        [ -n "$pct" ] && vol_str="Vol: ${pct}%"
+        pct=$(printf '%s\n' "$master_info" | sed -n 's/.*\[\([0-9][0-9]*\)%\].*/\1/p' | head -n1)
+        [ -z "$pct" ] || vol_str="Vol: ${pct}%"
       fi
     fi
   fi
-  if [ -z "$vol_str" ]; then
-    if [ -S /run/shreed.sock ] && command -v shreedctl >/dev/null 2>&1; then
-      vol_str="Audio"
-    fi
-  fi
-  [ -z "$vol_str" ] && vol_str="Vol: 80%"
 
-  # 3. Battery
-  local bat_str="AC"
+  local bat_str="AC" bat btype cap stat
   for bat in /sys/class/power_supply/BAT* /sys/class/power_supply/*; do
     [ -d "$bat" ] || continue
-    local btype
-    btype=$(cat "${bat}/type" 2>/dev/null || echo "")
-    if [ "$btype" = "Battery" ]; then
-      local cap stat
-      cap=$(cat "${bat}/capacity" 2>/dev/null || echo "100")
-      stat=$(cat "${bat}/status" 2>/dev/null || echo "Discharging")
-      if [ "$stat" = "Charging" ]; then
-        bat_str="⚡${cap}%"
-      else
-        bat_str="${cap}%"
-      fi
-      break
-    fi
+    btype=$(cat "${bat}/type" 2>/dev/null || true)
+    [ "$btype" = "Battery" ] || continue
+    cap=$(cat "${bat}/capacity" 2>/dev/null || echo "?")
+    stat=$(cat "${bat}/status" 2>/dev/null || echo "Unknown")
+    [ "$stat" = "Charging" ] && bat_str="⚡${cap}%" || bat_str="${cap}%"
+    break
   done
 
-  # 4. macOS formatted Date & Time (e.g. Wed Sep 3  12:30 PM)
   local datetime
   datetime=$(date +"%a %b %-d   %-I:%M %p" 2>/dev/null || date +"%a %b %d   %H:%M")
-
-  # Write right side metrics
-  echo "  ${net_str}  │  ${vol_str}  │  ${bat_str}  │  ${datetime}  │  ⚙ " > "$METRICS_CACHE"
+  printf '  %s  │  %s  │  %s  │  %s  │  ⚙ \n' "$net_str" "$vol_str" "$bat_str" "$datetime" > "$METRICS_CACHE"
 }
 
 render_bar() {
-  local app
+  local app actions right_metrics
   app=$(cat "$ACTIVE_APP_CACHE" 2>/dev/null || echo "Desktop")
-  local actions
   actions=$(get_context_actions "$app")
-  local right_metrics
   right_metrics=$(cat "$METRICS_CACHE" 2>/dev/null || echo "  ShreeOS  ")
-
-  # Format full bar string: Left actions + right hardware & clock metrics
-  local full_status="⟡  ${app}   ${actions}   ${right_metrics}"
-
-  if command -v xsetroot >/dev/null 2>&1; then
-    xsetroot -name "${full_status}"
+  if command -v xsetroot >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+    xsetroot -name "⟡  ${app}   ${actions}   ${right_metrics}"
   else
-    echo "${full_status}"
+    printf '⟡  %s   %s   %s\n' "$app" "$actions" "$right_metrics"
   fi
 }
 
-# Initial calculation
 collect_metrics
-echo "$(get_active_app)" > "$ACTIVE_APP_CACHE"
+get_active_app > "$ACTIVE_APP_CACHE"
 render_bar
+[ "${1:-}" != "--once" ] || exit 0
 
-if [ "${1:-}" = "--once" ]; then
-  exit 0
-fi
-
-# Run background event spy for X11 window focus updates (0% CPU event-driven)
+SPY_PID=""
 if command -v xprop >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
   (
-    xprop -root -spy _NET_ACTIVE_WINDOW 2>/dev/null | while read -r _; do
-      NEW_APP=$(get_active_app)
-      echo "$NEW_APP" > "$ACTIVE_APP_CACHE"
+    xprop -root -spy _NET_ACTIVE_WINDOW 2>/dev/null | while IFS= read -r _; do
+      get_active_app > "$ACTIVE_APP_CACHE"
       render_bar
     done
   ) &
   SPY_PID=$!
-  trap 'kill "$SPY_PID" 2>/dev/null || true; rm -rf "$CACHE_DIR"' EXIT INT TERM
 fi
 
-# Periodic metric updates for clock, battery, network (every 10s)
+cleanup() {
+  [ -z "$SPY_PID" ] || kill "$SPY_PID" 2>/dev/null || true
+  rm -rf "$CACHE_DIR"
+}
+trap cleanup EXIT INT TERM
+
 while true; do
-  sleep 10
+  sleep 15
   collect_metrics
   render_bar
 done
