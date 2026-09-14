@@ -6,6 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+if [ -z "${SHREEOS_MAKE_JOBS:-}" ]; then
+  jobs="$(nproc 2>/dev/null || echo 4)"
+  if [ "$jobs" -gt 8 ]; then
+    jobs=8
+  fi
+  export SHREEOS_MAKE_JOBS="$jobs"
+fi
+
 profile="${1:-desktop}"
 case "$profile" in
   desktop|minimal|server) ;;
