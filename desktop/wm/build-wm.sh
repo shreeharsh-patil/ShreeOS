@@ -98,6 +98,8 @@ build_suckless() {
   local archive
   archive="${BUILDDIR}/$(basename "$url")"
   local source_dir="${BUILDDIR}/${name}"
+  local extracted_dir
+  extracted_dir="${BUILDDIR}/$(basename "$archive" .tar.gz)"
   local distro_config="${DESKTOP_DIR}/configs/${name}-config.h"
 
   lumen_step "Building ${name}"
@@ -105,9 +107,12 @@ build_suckless() {
 
   # Always use a pristine source tree.  This makes repeat builds deterministic
   # and prevents an already-applied patch from breaking the next invocation.
-  rm -rf "$source_dir"
+  rm -rf "$source_dir" "$extracted_dir"
   tar -xzf "$archive" -C "$BUILDDIR"
-  mv "${BUILDDIR}/${name}-"* "$source_dir"
+  if [ ! -d "$extracted_dir" ]; then
+    shreeos_die "Expected source directory missing after extraction: ${extracted_dir}"
+  fi
+  mv "$extracted_dir" "$source_dir"
 
   cd "$source_dir"
   apply_component_patches "$name"
