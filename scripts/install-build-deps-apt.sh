@@ -8,9 +8,9 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 if [ "$(id -u)" -eq 0 ]; then
-  SUDO=""
+  APT=(apt-get)
 elif command -v sudo >/dev/null 2>&1; then
-  SUDO="sudo"
+  APT=(sudo apt-get)
 else
   echo "[fail] sudo is required when not running as root." >&2
   exit 1
@@ -18,8 +18,8 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-$SUDO apt-get update
-$SUDO apt-get install -y --no-install-recommends \
+"${APT[@]}" update
+"${APT[@]}" install -y --no-install-recommends \
   git ca-certificates build-essential gcc g++ make \
   bison flex gawk texinfo gperf \
   curl wget patch file rsync \
