@@ -102,7 +102,7 @@ ISO_DEPS := $(shell find iso-builder bootloader -type f 2>/dev/null)
 .PHONY: toolchain
 toolchain: $(MARKER_DIR)/.toolchain
 
-$(MARKER_DIR)/.toolchain: | $(MARKER_DIR)
+$(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR)
 	bash toolchain/scripts/build-all.sh --skip-tests
 	@touch $@
 
@@ -114,7 +114,7 @@ toolchain-test:
 .PHONY: base-system
 base-system: $(MARKER_DIR)/.base-system
 
-$(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain
+$(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS)
 	bash base-system/scripts/build-all.sh
 	@touch $@
 
@@ -122,7 +122,7 @@ $(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain
 .PHONY: kernel
 kernel: $(MARKER_DIR)/.kernel
 
-$(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain
+$(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS)
 	bash kernel/scripts/build-kernel.sh
 	@touch $@
 
