@@ -33,6 +33,8 @@ source "$ROOT_DIR/scripts/common.sh" 2>/dev/null || {
 TIMEOUT=60
 MEMORY="512M"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
+REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
+FAILURES=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -48,9 +50,11 @@ done
 shreeos_step "ShreeOS QEMU E2E Test Suite (Phase 7)"
 
 if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
-  shreeos_warn "QEMU (${QEMU_BIN}) is not installed on this host."
-  shreeos_warn "Skipping runtime emulation (install qemu-system-x86 to enable)."
-  exit 0
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_die "QEMU (${QEMU_BIN}) is required for strict E2E validation"
+  fi
+  shreeos_warn "QEMU (${QEMU_BIN}) is not installed; skipping E2E emulation"
+  exit 77
 fi
 
 LOG_DIR="${ROOT_DIR}/build/logs"
@@ -88,10 +92,11 @@ if [ ! -s "$ROOTFS_CPIO" ]; then
 fi
 
 if [ "$CAN_INSTALL" = false ]; then
-  shreeos_warn "Kernel bzImage or initramfs.cpio.gz artifacts not built yet."
-  shreeos_warn "Run 'make kernel' and 'make rootfs' before running full QEMU E2E test."
-  shreeos_ok "QEMU E2E test harness validated (preflight checks passed)"
-  exit 0
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_die "Kernel bzImage or initramfs.cpio.gz is missing; strict E2E validation cannot continue"
+  fi
+  shreeos_warn "Kernel bzImage or initramfs.cpio.gz artifacts not built yet"
+  exit 77
 fi
 
 # 2. Create 2GB test disk
@@ -128,7 +133,8 @@ BIOS_SERIAL="${LOG_DIR}/qemu-bios-serial.log"
 "$QEMU_BIN" \
   -drive file="$TEST_DISK",format=raw,if=virtio \
   -m "$MEMORY" \
-  -nographic \
+  -display none \
+  -monitor none \
   -serial file:"$BIOS_SERIAL" \
   -no-reboot \
   > "$BIOS_LOG" 2>&1 &
@@ -163,6 +169,7 @@ if [ "$BIOS_SUCCESS" = true ]; then
 else
   shreeos_warn "BIOS boot test FAILED. Serial log saved to ${BIOS_SERIAL}"
   [ -f "$BIOS_SERIAL" ] && tail -n 25 "$BIOS_SERIAL" || true
+  FAILURES=$((FAILURES + 1))
 fi
 
 # 5. UEFI Boot Test
@@ -183,7 +190,8 @@ if [ -n "$OVMF_PATH" ]; then
     -bios "$OVMF_PATH" \
     -drive file="$TEST_DISK",format=raw,if=virtio \
     -m "$MEMORY" \
-    -nographic \
+    -display none \
+    -monitor none \
     -serial file:"$UEFI_SERIAL" \
     -no-reboot \
     > "$UEFI_LOG" 2>&1 &
@@ -217,10 +225,19 @@ if [ -n "$OVMF_PATH" ]; then
   else
     shreeos_warn "UEFI boot test FAILED. Serial log saved to ${UEFI_SERIAL}"
     [ -f "$UEFI_SERIAL" ] && tail -n 25 "$UEFI_SERIAL" || true
+    FAILURES=$((FAILURES + 1))
   fi
 else
-  shreeos_warn "OVMF UEFI firmware not found on host — skipping UEFI boot emulation"
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_warn "OVMF UEFI firmware not found on host"
+    FAILURES=$((FAILURES + 1))
+  else
+    shreeos_warn "OVMF UEFI firmware not found on host — skipping UEFI boot emulation"
+  fi
 fi
 
+if [ "$FAILURES" -gt 0 ]; then
+  shreeos_die "ShreeOS QEMU E2E validation failed (${FAILURES} boot path failure(s))"
+fi
 shreeos_ok "ShreeOS QEMU E2E test sequence completed successfully"
 exit 0
