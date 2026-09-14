@@ -22,7 +22,18 @@ source "$PROJECT_ROOT/scripts/common.sh"
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 ISO="${ISO:-${PROJECT_ROOT}/out/${DISTRO_ID}-${DISTRO_VERSION}.iso}"
-UEFI_FIRMWARE="${UEFI_FIRMWARE:-/usr/share/ovmf/OVMF.fd}"
+UEFI_FIRMWARE="${UEFI_FIRMWARE:-}"
+if [ -z "$UEFI_FIRMWARE" ]; then
+  for candidate in \
+    /usr/share/ovmf/OVMF.fd \
+    /usr/share/OVMF/OVMF_CODE.fd \
+    /usr/share/OVMF/OVMF_CODE_4M.fd; do
+    if [ -f "$candidate" ]; then
+      UEFI_FIRMWARE="$candidate"
+      break
+    fi
+  done
+fi
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: reached PID 1}"
 TIMEOUT="${TIMEOUT:-90}"
 MEMORY="${MEMORY:-256M}"
