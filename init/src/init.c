@@ -643,6 +643,31 @@ static void restart_service_sync(service_t *s) {
     start_service(s);
 }
 
+static bool critical_services_healthy(void) {
+    bool found_critical = false;
+
+    for (int i = 0; i < num_services; i++) {
+        const service_t *s = &services[i];
+        if (!s->is_critical) continue;
+        found_critical = true;
+
+        if (s->is_oneshot) {
+            if (s->last_start == 0 || s->state != SVC_STOPPED || s->last_exit_status != 0) {
+                return false;
+            }
+        } else {
+            if (s->state != SVC_RUNNING || s->pid <= 0) {
+                return false;
+            }
+            if (kill(s->pid, 0) != 0 && errno == ESRCH) {
+                return false;
+            }
+        }
+    }
+
+    return found_critical;
+}
+
 static void supervise_services(void) {
     time_t now = time(NULL);
 
@@ -1053,6 +1078,7 @@ int main(int argc, char **argv) {
     }
 
     log_info(NULL, "Supervisor main loop active.");
+    bool boot_ready_reported = false;
 
     while (!shutdown_requested) {
         if (sigchld_received) {
@@ -1068,6 +1094,13 @@ int main(int argc, char **argv) {
 
         handle_ipc_connections();
         supervise_services();
+
+        if (!boot_ready_reported && critical_services_healthy()) {
+            log_info(NULL, "Critical services are healthy.");
+            printf("ShreeOS init: critical services ready\n");
+            fflush(stdout);
+            boot_ready_reported = true;
+        }
 
         struct timespec req = { .tv_sec = 0, .tv_nsec = 100000000 }; /* 100ms tick */
         nanosleep(&req, NULL);
