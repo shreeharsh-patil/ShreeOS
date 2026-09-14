@@ -112,7 +112,19 @@ chmod 600 "$CREDS_FILE"
 # 3. Perform automated installation to virtual disk
 shreeos_step "Executing automated installation to virtual disk (install-to-disk.sh)"
 INSTALL_LOG="${LOG_DIR}/qemu-e2e-install.log"
-if bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" "$TEST_DISK" --yes \
+INSTALL_PREFIX=()
+if [ "$(id -u)" -ne 0 ]; then
+  if command -v sudo >/dev/null 2>&1; then
+    INSTALL_PREFIX=(sudo -E)
+  elif [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_die "sudo/root privileges are required for strict installation testing"
+  else
+    shreeos_warn "sudo/root privileges unavailable; skipping E2E installation test"
+    exit 77
+  fi
+fi
+
+if "${INSTALL_PREFIX[@]}" bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" "$TEST_DISK" --yes \
     --hostname="shreeos-e2e" \
     --timezone="UTC" \
     --username="shree" \
@@ -150,7 +162,7 @@ while [ "$WAITED" -lt "$TIMEOUT" ]; do
 
   # Check serial output for boot markers
   if [ -f "$BIOS_SERIAL" ]; then
-    if grep -E -q "reached PID 1|supervisor ready|ShreeOS init|Linux version" "$BIOS_SERIAL"; then
+    if grep -Fq "ShreeOS init: reached PID 1" "$BIOS_SERIAL"; then
       BIOS_SUCCESS=true
       break
     fi
@@ -206,7 +218,7 @@ if [ -n "$OVMF_PATH" ]; then
     WAITED=$((WAITED + 1))
 
     if [ -f "$UEFI_SERIAL" ]; then
-      if grep -E -q "reached PID 1|supervisor ready|ShreeOS init|Linux version" "$UEFI_SERIAL"; then
+      if grep -Fq "ShreeOS init: reached PID 1" "$UEFI_SERIAL"; then
         UEFI_SUCCESS=true
         break
       fi
