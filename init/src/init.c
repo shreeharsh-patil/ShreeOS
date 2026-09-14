@@ -659,7 +659,17 @@ static bool critical_services_healthy(void) {
             if (s->state != SVC_RUNNING || s->pid <= 0) {
                 return false;
             }
-            if (kill(s->pid, 0) != 0 && errno == ESRCH) {
+            if (kill(s->pid, 0) != 0) {
+                return false;
+            }
+
+            /* Do not report a freshly forked daemon as healthy before exec/
+             * startup failures have had a chance to surface and be reaped. */
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            long stable_ms = (now.tv_sec - s->start_ts.tv_sec) * 1000 +
+                             (now.tv_nsec - s->start_ts.tv_nsec) / 1000000;
+            if (stable_ms < 1000) {
                 return false;
             }
         }
