@@ -28,9 +28,34 @@ shreeos_step "Building and assembling ShreeOS desktop environment"
 
 STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}"
 
-# 1. Build window manager and tools
+# 1. Build window manager and tools.
+# The graphical target stack is still being brought into the source build, so
+# report a deferred native build explicitly instead of pretending it succeeded.
+DESKTOP_NATIVE_STATUS="ready"
 if [ -f "$SCRIPT_DIR/build-wm.sh" ]; then
-  bash "$SCRIPT_DIR/build-wm.sh" || shreeos_warn "build-wm.sh skipped or partial"
+  if ! bash "$SCRIPT_DIR/build-wm.sh"; then
+    DESKTOP_NATIVE_STATUS="deferred"
+    shreeos_warn "Native WM build deferred: target X11/Xft/Xinerama/Fontconfig/FreeType stack is not fully staged"
+  fi
+fi
+
+# Build the persistent dock when the target X11 SDK is available.
+if [ "$DESKTOP_NATIVE_STATUS" = "ready" ] && [ -f "$SCRIPT_DIR/shree-dock.c" ]; then
+  DOCK_CC="${SHREEOS_TOOLS}/bin/${SHREEOS_TARGET_TRIPLET}-gcc"
+  mkdir -p "${STAGE_ROOT}/usr/bin"
+  if "$DOCK_CC" -std=c99 -Os -Wall -Wextra \
+      --sysroot="${SHREEOS_SYSROOT}" \
+      -I"${SHREEOS_SYSROOT}/usr/include" \
+      "$SCRIPT_DIR/shree-dock.c" \
+      -L"${SHREEOS_SYSROOT}/usr/lib" -lX11 \
+      -o "${STAGE_ROOT}/usr/bin/shree-dock-ui"; then
+    chmod 755 "${STAGE_ROOT}/usr/bin/shree-dock-ui"
+    shreeos_ok "Built persistent ShreeOS dock"
+  else
+    DESKTOP_NATIVE_STATUS="deferred"
+    rm -f "${STAGE_ROOT}/usr/bin/shree-dock-ui"
+    shreeos_warn "Native dock build deferred"
+  fi
 fi
 
 # 2. Install X11 and desktop configs
@@ -116,16 +141,22 @@ fi
 if [ -f "${SHREEOS_ROOT_DIR}/branding/theme/tokens.css" ]; then
   cp "${SHREEOS_ROOT_DIR}/branding/theme/tokens.css" "${STAGE_ROOT}/etc/shreeos/tokens.css"
 fi
+printf '%s\n' "$DESKTOP_NATIVE_STATUS" > "${STAGE_ROOT}/etc/shreeos/desktop-native.status"
 
 BUILD_END=$(date +%s)
 
 echo ""
 echo "============================================"
-shreeos_ok "ShreeOS Desktop build & integration COMPLETE"
+if [ "$DESKTOP_NATIVE_STATUS" = "ready" ]; then
+  shreeos_ok "ShreeOS Desktop build & integration COMPLETE"
+else
+  shreeos_warn "Desktop assets staged; native graphical build is DEFERRED"
+fi
 echo "============================================"
-echo "  Duration: $((BUILD_END - BUILD_START))s"
-echo "  Components: dwm, st, dmenu, picom, shree-launcher, shree-settings, shreectl"
-echo "  Install:    ${STAGE_ROOT}"
+echo "  Duration:      $((BUILD_END - BUILD_START))s"
+echo "  Native status: ${DESKTOP_NATIVE_STATUS}"
+echo "  Components:    dwm, st, dmenu, dock, picom, launcher, settings, shreectl"
+echo "  Install:       ${STAGE_ROOT}"
 echo "============================================"
 echo ""
 echo "To launch desktop: startx"
