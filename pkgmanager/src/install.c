@@ -550,7 +550,10 @@ cleanup:
 }
 
 int cmd_remove(int argc, char **argv) {
-    if (argc < 1) { fprintf(stderr, "Usage: lpm remove [--cascade] <package>\n"); return 1; }
+    if (argc < 1) {
+        fprintf(stderr, "Usage: lpm remove [--cascade] <package>\n");
+        return 1;
+    }
 
     bool cascade = false;
     const char *name = NULL;
@@ -559,6 +562,9 @@ int cmd_remove(int argc, char **argv) {
             cascade = true;
         } else if (!name) {
             name = argv[i];
+        } else {
+            fprintf(stderr, "Usage: lpm remove [--cascade] <package>\n");
+            return 1;
         }
     }
 
@@ -571,14 +577,20 @@ int cmd_remove(int argc, char **argv) {
     char dbdir[LPM_PATH_MAX];
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
     manifest *m = manifest_load(dbdir);
-    if (!m) { fprintf(stderr, "lpm: '%s' not installed\n", name); lpm_unlock(); return 1; }
+    if (!m) {
+        fprintf(stderr, "lpm: '%s' not installed\n", name);
+        lpm_unlock();
+        return 1;
+    }
 
-    /* Check for dependent packages */
+    /* Resolve dependents recursively instead of deleting only direct
+     * dependents and potentially leaving a transitive package broken. */
     char **dependents = NULL;
     int ndependents = 0;
     if (lpm_find_dependents(name, &dependents, &ndependents) > 0) {
         if (!cascade) {
-            fprintf(stderr, "lpm: error: cannot remove '%s': required by %d installed package(s):\n", name, ndependents);
+            fprintf(stderr, "lpm: error: cannot remove '%s': required by %d installed package(s):\n",
+                    name, ndependents);
             for (int i = 0; i < ndependents; i++) {
                 fprintf(stderr, "  - %s\n", dependents[i]);
                 free(dependents[i]);
@@ -588,44 +600,100 @@ int cmd_remove(int argc, char **argv) {
             manifest_free(m);
             lpm_unlock();
             return 1;
-        } else {
-            printf("lpm: cascading removal of dependent packages (%d):\n", ndependents);
-            for (int i = 0; i < ndependents; i++) {
-                printf("  -> Removing dependent package: %s\n", dependents[i]);
-                char dep_dbdir[LPM_PATH_MAX];
-                snprintf(dep_dbdir, sizeof(dep_dbdir), LPM_INSTALLED "/%s", dependents[i]);
-                manifest *dep_m = manifest_load(dep_dbdir);
-                if (dep_m) {
-                    for (int f = dep_m->nfiles - 1; f >= 0; f--) {
-                        if (lpm_safe_path(dep_m->files[f])) unlink(dep_m->files[f]);
-                    }
-                    char dmp[LPM_PATH_MAX + 32];
-                    snprintf(dmp, sizeof(dmp), "%s/manifest.json", dep_dbdir);
-                    unlink(dmp);
-                    rmdir(dep_dbdir);
-                    printf("lpm: removed %s-%s\n", dep_m->name, dep_m->version);
-                    manifest_free(dep_m);
-                }
-                free(dependents[i]);
-            }
+        }
+
+        char **pending = calloc((size_t)ndependents, sizeof(char *));
+        if (!pending) {
+            for (int i = 0; i < ndependents; i++) free(dependents[i]);
             free(dependents);
+            manifest_free(m);
+            lpm_unlock();
+            return 1;
+        }
+
+        for (int i = 0; i < ndependents; i++) {
+            pending[i] = strdup(dependents[i]);
+            free(dependents[i]);
+            if (!pending[i]) {
+                for (int j = 0; j < i; j++) free(pending[j]);
+                free(pending);
+                free(dependents);
+                manifest_free(m);
+                lpm_unlock();
+                return 1;
+            }
+        }
+        free(dependents);
+        manifest_free(m);
+        m = NULL;
+        lpm_unlock();
+
+        printf("lpm: cascading removal of dependent packages (%d):\n", ndependents);
+        for (int i = 0; i < ndependents; i++) {
+            char *dep_args[] = { "--cascade", pending[i] };
+            printf("  -> Removing dependent package: %s\n", pending[i]);
+            if (cmd_remove(2, dep_args) != 0) {
+                fprintf(stderr, "lpm: cascade stopped because removal of '%s' failed\n", pending[i]);
+                for (int j = i; j < ndependents; j++) free(pending[j]);
+                free(pending);
+                return 1;
+            }
+            free(pending[i]);
+        }
+        free(pending);
+
+        if (lpm_lock() != 0) return 1;
+        m = manifest_load(dbdir);
+        if (!m) {
+            fprintf(stderr, "lpm: target '%s' disappeared during cascade removal\n", name);
+            lpm_unlock();
+            return 1;
         }
     }
 
-    /* Remove package files */
+    int removal_failures = 0;
+
+    /* Keep the package database entry until every managed payload path has
+     * either been removed or was already absent. If deletion fails, leaving
+     * the manifest in place lets 'lpm verify/repair' diagnose the partial
+     * state instead of falsely claiming that the package is gone. */
     for (int i = m->nfiles - 1; i >= 0; i--) {
         if (!lpm_safe_path(m->files[i])) {
-            fprintf(stderr, "lpm: warning: skipping unsafe path '%s' in %s\n", m->files[i], m->name);
+            fprintf(stderr, "lpm: refusing unsafe managed path '%s' in %s\n",
+                    m->files[i], m->name);
+            removal_failures++;
             continue;
         }
-        if (unlink(m->files[i]) != 0 && errno != ENOENT)
-            fprintf(stderr, "lpm: warning: could not remove %s\n", m->files[i]);
+        if (unlink(m->files[i]) != 0 && errno != ENOENT) {
+            fprintf(stderr, "lpm: could not remove %s: %s\n",
+                    m->files[i], strerror(errno));
+            removal_failures++;
+        }
+    }
+
+    if (removal_failures > 0) {
+        fprintf(stderr,
+                "lpm: removal of %s stopped with %d filesystem error(s); "
+                "the installed manifest was preserved for repair/retry\n",
+                m->name, removal_failures);
+        manifest_free(m);
+        lpm_unlock();
+        return 1;
     }
 
     char mp[LPM_PATH_MAX + 32];
     snprintf(mp, sizeof(mp), "%s/manifest.json", dbdir);
-    unlink(mp);
-    rmdir(dbdir);
+    if (unlink(mp) != 0 && errno != ENOENT) {
+        fprintf(stderr, "lpm: payload removed but could not remove package manifest for %s: %s\n",
+                m->name, strerror(errno));
+        manifest_free(m);
+        lpm_unlock();
+        return 1;
+    }
+    if (rmdir(dbdir) != 0 && errno != ENOENT && errno != ENOTEMPTY) {
+        fprintf(stderr, "lpm: warning: package metadata directory remains at %s: %s\n",
+                dbdir, strerror(errno));
+    }
 
     printf("lpm: removed %s-%s\n", m->name, m->version);
     manifest_free(m);
