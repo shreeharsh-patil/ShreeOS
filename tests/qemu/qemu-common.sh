@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
-MARKER_STRING="${MARKER_STRING:-ShreeOS init: reached PID 1}"
+MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
 MEMORY="${MEMORY:-256M}"
 
 qemu_find() {
