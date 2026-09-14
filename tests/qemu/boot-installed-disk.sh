@@ -1,95 +1,81 @@
 #!/usr/bin/env bash
-# tests/qemu/boot-installed-disk.sh — QEMU boot test for installed disk
-#
-# Boots a raw disk image and checks for the init marker.
-#
-# Usage:
-#   bash tests/qemu/boot-installed-disk.sh [disk-image]
-#
-set -euo pipefail
+# QEMU boot test for an installed ShreeOS disk image.
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-source "$PROJECT_ROOT/build.conf" 2>/dev/null || true
-source "$PROJECT_ROOT/scripts/common.sh" 2>/dev/null || {
-  lumen_step() { echo "==> $1"; }
-  lumen_ok() { echo "  [OK] $1"; }
-  lumen_warn() { echo "  [WARN] $1"; }
-  lumen_die() { echo "  [ERROR] $1" >&2; exit 1; }
-}
-
-DISK_IMAGE="${1:-}"
-TEMP_DISK=""
-
-if [ -z "$DISK_IMAGE" ]; then
-  if [ -f "${PROJECT_ROOT}/build/installed-disk.img" ]; then
-    DISK_IMAGE="${PROJECT_ROOT}/build/installed-disk.img"
-  else
-    # Create temporary sparse test disk for automated CI
-    TEMP_DISK=$(mktemp /tmp/shreeos-test-disk-XXXXXX.img)
-    truncate -s 2G "$TEMP_DISK"
-    DISK_IMAGE="$TEMP_DISK"
-    trap 'rm -f "$TEMP_DISK"' EXIT INT TERM
-    
-    # If rootfs and installer exist, run quick install test on image
-    if [ -f "${PROJECT_ROOT}/build/initramfs.cpio.gz" ] && command -v sfdisk >/dev/null 2>&1; then
-      CREDS_FILE=$(mktemp /tmp/test-creds-XXXXXX)
-      chmod 600 "$CREDS_FILE"
-      printf "testrootpass\ntestuserpass\n" > "$CREDS_FILE"
-      bash "${PROJECT_ROOT}/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
-      rm -f "$CREDS_FILE"
-    else
-      lumen_warn "No built rootfs (initramfs.cpio.gz) found — skipping disk boot test"
-      exit 0
-    fi
-  fi
-fi
+source "$PROJECT_ROOT/build.conf"
+source "$PROJECT_ROOT/scripts/common.sh"
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: reached PID 1}"
 TIMEOUT="${TIMEOUT:-60}"
 MEMORY="${MEMORY:-256M}"
+REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
+DISK_IMAGE="${1:-}"
+TEMP_DISK=""
 
-lumen_step "Booting disk image: ${DISK_IMAGE}"
-
-if [ ! -f "$DISK_IMAGE" ]; then
-  lumen_die "Disk image not found: ${DISK_IMAGE}"
+if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then shreeos_die "QEMU not found: $QEMU_BIN"; fi
+  shreeos_warn "QEMU not found: $QEMU_BIN"; exit 77
 fi
 
-LOG_FILE=$(mktemp /tmp/shreeos-qemu-disk.XXXXXX)
+if [ -z "$DISK_IMAGE" ]; then
+  if [ -s "$PROJECT_ROOT/build/installed-disk.img" ]; then
+    DISK_IMAGE="$PROJECT_ROOT/build/installed-disk.img"
+  else
+    if [ ! -s "$PROJECT_ROOT/build/initramfs.cpio.gz" ] || ! command -v sfdisk >/dev/null 2>&1; then
+      if [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+        shreeos_die "Cannot create installed-disk test: rootfs or sfdisk is unavailable"
+      fi
+      shreeos_warn "Installed-disk prerequisites unavailable"
+      exit 77
+    fi
 
-"$QEMU_BIN" \
-  -drive file="$DISK_IMAGE",format=raw \
-  -m "$MEMORY" \
-  -nographic \
-  -no-reboot \
-  2>&1 | head -c 131072 > "$LOG_FILE" &
+    TEMP_DISK="$(mktemp /tmp/shreeos-test-disk-XXXXXX.img)"
+    truncate -s 2G "$TEMP_DISK"
+    DISK_IMAGE="$TEMP_DISK"
+    CREDS_FILE="$(mktemp /tmp/shreeos-test-creds-XXXXXX)"
+    cleanup_files() { rm -f "$TEMP_DISK" "$CREDS_FILE"; }
+    trap cleanup_files EXIT INT TERM
+    chmod 600 "$CREDS_FILE"
+    printf 'testrootpass\ntestuserpass\n' > "$CREDS_FILE"
+    bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
+  fi
+fi
+
+[ -s "$DISK_IMAGE" ] || shreeos_die "Disk image not found or empty: $DISK_IMAGE"
+shreeos_step "Booting disk image: $DISK_IMAGE"
+
+LOG_FILE="$(mktemp /tmp/shreeos-qemu-disk.XXXXXX)"
+QEMU_PID=""
+cleanup_qemu() {
+  if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
+    kill "$QEMU_PID" 2>/dev/null || true
+    wait "$QEMU_PID" 2>/dev/null || true
+  fi
+}
+trap 'cleanup_qemu; [ -n "$TEMP_DISK" ] && rm -f "$TEMP_DISK"; [ -n "${CREDS_FILE:-}" ] && rm -f "$CREDS_FILE"' EXIT INT TERM
+
+"$QEMU_BIN"   -drive file="$DISK_IMAGE",format=raw   -m "$MEMORY"   -nographic   -no-reboot   > "$LOG_FILE" 2>&1 &
 QEMU_PID=$!
 
 WAITED=0
 FOUND=false
-while [ $WAITED -lt "$TIMEOUT" ]; do
+while [ "$WAITED" -lt "$TIMEOUT" ]; do
   sleep 1
   WAITED=$((WAITED + 1))
-  if grep -q "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then
-    FOUND=true
-    break
-  fi
-  if ! kill -0 "$QEMU_PID" 2>/dev/null; then
-    break
-  fi
+  if grep -Fq "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then FOUND=true; break; fi
+  kill -0 "$QEMU_PID" 2>/dev/null || break
 done
-
-kill "$QEMU_PID" 2>/dev/null || true
-wait "$QEMU_PID" 2>/dev/null || true
+cleanup_qemu
+QEMU_PID=""
 
 if [ "$FOUND" = true ]; then
-  lumen_ok "Disk boot test PASSED — init marker found (${WAITED}s)"
+  shreeos_ok "Disk boot test PASSED — init marker found after ${WAITED}s"
   rm -f "$LOG_FILE"
   exit 0
-else
-  lumen_warn "Disk boot test failed without marker (Log saved to ${LOG_FILE})"
-  rm -f "$LOG_FILE"
-  exit 1
 fi
+shreeos_warn "Disk boot test FAILED — marker not found"
+echo "Log: $LOG_FILE"
+exit 1
