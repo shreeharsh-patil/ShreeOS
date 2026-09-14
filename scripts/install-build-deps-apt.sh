@@ -27,8 +27,8 @@ export DEBIAN_FRONTEND=noninteractive
   pkg-config gettext-base \
   libgmp-dev libmpfr-dev libmpc-dev \
   libssl-dev libelf-dev libcrypt-dev \
-  xorriso mtools dosfstools \
-  grub-pc-bin grub-efi-amd64-bin grub-common \
+  xorriso mtools dosfstools fdisk util-linux e2fsprogs kmod \
+  grub-pc-bin grub-efi-amd64-bin grub-common grub2-common \
   qemu-system-x86 ovmf \
   libx11-dev libxinerama-dev libxft-dev \
   shellcheck
