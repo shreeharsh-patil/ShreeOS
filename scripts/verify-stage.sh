@@ -31,9 +31,10 @@ case "$stage" in
     require_file "$SHREEOS_SYSROOT/usr/include/stdio.h" "target libc headers"
     ;;
   base-system)
-    require_exec "$SHREEOS_STAGE_ROOT/bin/bash" "/bin/bash"
-    require_exec "$SHREEOS_STAGE_ROOT/bin/ls" "/bin/ls"
-    require_exec "$SHREEOS_STAGE_ROOT/bin/mount" "/bin/mount"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/bash" "/usr/bin/bash"
+    require_exec "$SHREEOS_STAGE_ROOT/bin/bash" "/bin/bash compatibility link"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/ls" "/usr/bin/ls"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/mount" "/usr/bin/mount"
     ;;
   kernel)
     require_file "$SHREEOS_BUILD_DIR/build-kernel/arch/x86/boot/bzImage" "kernel bzImage"
