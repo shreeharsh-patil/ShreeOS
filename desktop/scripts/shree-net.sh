@@ -28,7 +28,7 @@ scan_networks() {
       fi
     done
     if [ -n "$wlan_dev" ]; then
-      iwlist "$wlan_dev" scan 2>/dev/null | grep -oP 'ESSID:"\K[^"]+' | sort -u || echo ""
+      iwlist "$wlan_dev" scan 2>/dev/null | sed -n 's/.*ESSID:"\([^"]*\)".*/\1/p' | sort -u || echo ""
     fi
   elif command -v nmcli >/dev/null 2>&1; then
     nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u || echo ""
