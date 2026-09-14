@@ -60,7 +60,7 @@ get_volume_status() {
       [ -n "$pct" ] && { echo "${pct}%"; return; }
     fi
   fi
-  echo "80%"
+  echo "Unavailable"
 }
 
 get_brightness_status() {
