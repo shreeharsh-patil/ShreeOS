@@ -20,7 +20,7 @@ static void usage(void) {
         "lpm — ShreeOS Package Manager\n"
         "Usage:\n"
         "  lpm install <package | file.lpkg>  Install a package (from repo or local file)\n"
-        "  lpm upgrade [package]              Upgrade installed packages to latest versions\n"
+        "  lpm upgrade [--dry-run] [package]  Upgrade packages or show the upgrade plan\n"
         "  lpm remove  <package>              Remove an installed package\n"
         "  lpm info    <package>              Show detailed package info (from repo or DB)\n"
         "  lpm query   <package>              Show installed package metadata and file list\n"
