@@ -125,6 +125,13 @@ if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
 fi
 
+# Partitioning, loop setup, filesystem creation, mounting and GRUB installation
+# all require real root privileges. Fail before touching the requested target
+# rather than failing half-way through an installation.
+if [ "$(id -u)" -ne 0 ]; then
+  shreeos_die "Installation requires root privileges. Re-run with sudo: sudo bash installer/scripts/install-to-disk.sh ..."
+fi
+
 # Complete every non-destructive preflight before creating a loop device,
 # partitioning, formatting, or mounting the requested disk.
 STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
@@ -139,7 +146,7 @@ elif [ ! -s "${ROOTFS_CPIO}" ]; then
 fi
 if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"; fi
 if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
-shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid cpio gzip
+shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip
 if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
     shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
