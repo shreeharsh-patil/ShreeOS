@@ -1,31 +1,79 @@
 #!/usr/bin/env bash
 # desktop/scripts/shree-record.sh — ShreeOS Screen Recording Tool
-#
-# Supports fullscreen screen video recording using ffmpeg.
-
 set -euo pipefail
 
 REC_DIR="${HOME}/Videos/Recordings"
 mkdir -p "$REC_DIR"
 
-PID_FILE="/tmp/shree-recording.pid"
+STATE_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache/shreeos}"
+if ! mkdir -p "$STATE_DIR" 2>/dev/null || [ ! -w "$STATE_DIR" ]; then
+  STATE_DIR="${HOME}/.cache/shreeos"
+  mkdir -p "$STATE_DIR"
+fi
+STATE_FILE="${STATE_DIR}/shree-recording.state"
+
+read_state() {
+  REC_PID=""
+  REC_FILE=""
+  [ -f "$STATE_FILE" ] || return 1
+  {
+    IFS= read -r REC_PID || true
+    IFS= read -r REC_FILE || true
+  } < "$STATE_FILE"
+  [[ "$REC_PID" =~ ^[0-9]+$ ]] || return 1
+  [ -n "$REC_FILE" ] || return 1
+}
 
 is_recording() {
-  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-    return 0
+  if ! read_state; then
+    rm -f "$STATE_FILE"
+    return 1
   fi
-  return 1
+  if ! kill -0 "$REC_PID" 2>/dev/null; then
+    rm -f "$STATE_FILE"
+    return 1
+  fi
+
+  # Protect against a stale state file whose PID has been reused by another
+  # process before attempting to send a signal.
+  if [ -r "/proc/${REC_PID}/cmdline" ]; then
+    if ! tr '\0' ' ' < "/proc/${REC_PID}/cmdline" | grep -q 'ffmpeg'; then
+      rm -f "$STATE_FILE"
+      return 1
+    fi
+  fi
+  return 0
 }
 
 stop_recording() {
-  if is_recording; then
-    local pid
-    pid=$(cat "$PID_FILE")
-    kill -2 "$pid" 2>/dev/null || kill -15 "$pid" 2>/dev/null || true
-    rm -f "$PID_FILE"
-    shree-notify "Screen Recording" "Recording saved to ${REC_DIR}" --app="System"
-  else
+  if ! is_recording; then
     shree-notify "Screen Recording" "No active recording in progress" --app="System"
+    return 0
+  fi
+
+  local pid="$REC_PID"
+  local out_file="$REC_FILE"
+
+  if ! kill -2 "$pid" 2>/dev/null; then
+    shree-notify "Screen Recording" "Unable to stop the active recording process" --app="System" --urgent
+    return 1
+  fi
+
+  for _attempt in {1..20}; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.25
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -15 "$pid" 2>/dev/null || true
+  fi
+  rm -f "$STATE_FILE"
+
+  if [ -s "$out_file" ]; then
+    shree-notify "Screen Recording" "Saved to $(basename "$out_file")" --app="System"
+  else
+    rm -f "$out_file"
+    shree-notify "Screen Recording" "Recording stopped, but no valid video was produced" --app="System" --urgent
+    return 1
   fi
 }
 
@@ -37,44 +85,53 @@ start_recording() {
 
   if ! command -v ffmpeg >/dev/null 2>&1; then
     shree-notify "Screen Recording" "ffmpeg is required for video capture" --app="System" --urgent
-    return
+    return 1
   fi
 
-  local ts
+  local ts out_file disp res pid
   ts=$(date +"%Y-%m-%d_%H-%M-%S")
-  local out_file="${REC_DIR}/Recording_${ts}.mp4"
-  local disp="${DISPLAY:-:0}"
+  out_file="${REC_DIR}/Recording_${ts}_$$.mp4"
+  disp="${DISPLAY:-:0}"
+  res=""
 
-  local res
-  res=$(xrandr 2>/dev/null | grep '\*' | awk '{print $1}' | head -n1 || echo "1920x1080")
+  if command -v xrandr >/dev/null 2>&1; then
+    res=$(xrandr 2>/dev/null | awk '$0 ~ /\*/ {print $1; exit}' || true)
+  fi
+  res="${res:-1920x1080}"
 
-  shree-notify "Recording Started" "Capturing screen to $(basename "$out_file")..." --app="System"
+  ffmpeg -y -f x11grab -video_size "$res" -framerate 30 -i "$disp" \
+    -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$out_file" >/dev/null 2>&1 &
+  pid=$!
 
-  ffmpeg -f x11grab -video_size "$res" -framerate 30 -i "${disp}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$out_file" >/dev/null 2>&1 &
-  echo "$!" > "$PID_FILE"
+  sleep 0.5
+  if ! kill -0 "$pid" 2>/dev/null; then
+    wait "$pid" 2>/dev/null || true
+    rm -f "$out_file"
+    shree-notify "Screen Recording" "ffmpeg could not start screen capture" --app="System" --urgent
+    return 1
+  fi
+
+  umask 077
+  printf '%s\n%s\n' "$pid" "$out_file" > "$STATE_FILE"
+  shree-notify "Recording Started" "Capturing screen to $(basename "$out_file")" --app="System"
 }
 
 interactive_menu() {
   if is_recording; then
     local choice
-    choice=$(printf "⏹ [Stop Active Screen Recording]\nCancel" | dmenu -p "Screen Recorder Active" -l 2 -c)
-    [ "$choice" = "⏹ [Stop Active Screen Recording]" ] && stop_recording
+    choice=$(printf "Stop Active Screen Recording\nCancel" | dmenu -p "Screen Recorder Active" -l 2 -c || true)
+    [ "$choice" = "Stop Active Screen Recording" ] && stop_recording
     return
   fi
 
-  local options="Start Screen Recording\nCancel"
   local choice
-  choice=$(echo -e "$options" | dmenu -p "Screen Recorder" -l 2 -c)
-  [ -z "$choice" ] && return
-
-  case "$choice" in
-    "Start Screen Recording"*) start_recording ;;
-  esac
+  choice=$(printf "Start Screen Recording\nCancel" | dmenu -p "Screen Recorder" -l 2 -c || true)
+  [ "$choice" = "Start Screen Recording" ] && start_recording
 }
 
 case "${1:-menu}" in
   start) start_recording ;;
-  stop)  stop_recording ;;
+  stop) stop_recording ;;
   status)
     if is_recording; then echo "recording"; else echo "idle"; fi
     ;;
