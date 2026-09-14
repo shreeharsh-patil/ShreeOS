@@ -28,7 +28,7 @@ libs=(
   "freetype"
 )
 
-missing=0
+missing_count=0
 
 echo "==> Target graphics readiness"
 for rel in "${headers[@]}"; do
@@ -36,7 +36,7 @@ for rel in "${headers[@]}"; do
     printf "  [OK]      %s\n" "$rel"
   else
     printf "  [MISSING] %s\n" "$rel"
-    missing=$((missing + 1))
+    missing_count=$((missing_count + 1))
   fi
 done
 
@@ -52,20 +52,20 @@ for lib in "${libs[@]}"; do
     printf "  [OK]      target library %s\n" "$lib"
   else
     printf "  [MISSING] target library %s\n" "$lib"
-    missing=$((missing + 1))
+    missing_count=$((missing_count + 1))
   fi
 done
 
 state_dir="$SHREEOS_BUILD_DIR/.state"
 mkdir -p "$state_dir"
-if [ "$missing" -eq 0 ]; then
+if [ "$missing_count" -eq 0 ]; then
   printf 'ready\n' > "$state_dir/graphics.status"
   shreeos_ok "Target graphical SDK is ready."
   exit 0
 fi
 
-printf 'missing:%s\n' "$missing" > "$state_dir/graphics.status"
-shreeos_warn "Target graphical SDK is incomplete ($missing required items missing)."
+printf 'missing:%s\n' "$missing_count" > "$state_dir/graphics.status"
+shreeos_warn "Target graphical SDK is incomplete ($missing_count required items missing)."
 echo "The desktop profile currently declares the graphics stack, but those packages"
 echo "are not yet source-built into the ShreeOS target sysroot."
 echo
