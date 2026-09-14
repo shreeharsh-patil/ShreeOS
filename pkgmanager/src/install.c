@@ -613,18 +613,42 @@ int cmd_remove(int argc, char **argv) {
 }
 
 int cmd_upgrade(int argc, char **argv) {
+    bool dry_run = false;
+    const char *requested_name = NULL;
+
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--dry-run") == 0) {
+            dry_run = true;
+        } else if (!requested_name) {
+            requested_name = argv[i];
+        } else {
+            fprintf(stderr, "Usage: lpm upgrade [--dry-run] [package]\n");
+            return 1;
+        }
+    }
+
+    if (requested_name && !lpm_valid_pkgname(requested_name)) {
+        fprintf(stderr, "lpm: invalid package name '%s'\n", requested_name);
+        return 1;
+    }
+
     if (access(LPM_REPO_JSON, F_OK) != 0) {
         fprintf(stderr, "lpm: no repository index found. Run 'lpm update' first.\n");
         return 1;
     }
     if (lpm_lock() != 0) return 1;
 
-    if (argc >= 1) {
-        const char *name = argv[0];
+    if (requested_name) {
+        const char *name = requested_name;
         char dbdir[LPM_PATH_MAX];
         snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
         manifest *cur = manifest_load(dbdir);
         if (!cur) {
+            if (dry_run) {
+                printf("lpm: %s is not installed; upgrade would install it\n", name);
+                lpm_unlock();
+                return 0;
+            }
             printf("lpm: package '%s' is not installed. Installing...\n", name);
             char *pkg_args[] = { (char *)name };
             lpm_unlock();
@@ -633,59 +657,111 @@ int cmd_upgrade(int argc, char **argv) {
 
         char *repo_ver = NULL, *filename = NULL, *sha256 = NULL;
         if (lpm_repo_lookup(name, &repo_ver, &filename, &sha256) != 0) {
-            printf("lpm: '%s' is up to date (not in repository index)\n", name);
+            printf("lpm: '%s' is installed but not present in the repository index\n", name);
             manifest_free(cur);
             lpm_unlock();
             return 0;
         }
 
         if (lpm_version_cmp(cur->version, repo_ver) < 0) {
-            printf("lpm: upgrading %s (%s -> %s)\n", name, cur->version, repo_ver);
+            printf("lpm: upgrade available for %s: %s -> %s\n", name, cur->version, repo_ver);
             manifest_free(cur);
             free(repo_ver); free(filename); free(sha256);
+            if (dry_run) {
+                lpm_unlock();
+                return 0;
+            }
             char *pkg_args[] = { (char *)name };
             lpm_unlock();
             return cmd_install(1, pkg_args);
-        } else {
-            printf("lpm: %s-%s is already up to date\n", cur->name, cur->version);
-            manifest_free(cur);
-            free(repo_ver); free(filename); free(sha256);
-            lpm_unlock();
-            return 0;
         }
+
+        printf("lpm: %s-%s is already up to date\n", cur->name, cur->version);
+        manifest_free(cur);
+        free(repo_ver); free(filename); free(sha256);
+        lpm_unlock();
+        return 0;
     }
 
     DIR *dir = opendir(LPM_INSTALLED);
-    if (!dir) { printf("lpm: no packages installed\n"); lpm_unlock(); return 0; }
+    if (!dir) {
+        printf("lpm: no packages installed\n");
+        lpm_unlock();
+        return 0;
+    }
 
     struct dirent *ent;
+    int planned_count = 0;
     int upgraded_count = 0;
+    int failed_count = 0;
+    int lock_held = 1;
+
     while ((ent = readdir(dir))) {
         if (ent->d_name[0] == '.') continue;
         if (!lpm_valid_pkgname(ent->d_name)) continue;
 
+        char pkgname[LPM_PATH_MAX];
+        snprintf(pkgname, sizeof(pkgname), "%s", ent->d_name);
+
         char dbdir[LPM_PATH_MAX];
-        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", ent->d_name);
+        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", pkgname);
         manifest *cur = manifest_load(dbdir);
         if (!cur) continue;
 
         char *repo_ver = NULL, *filename = NULL, *sha256 = NULL;
-        if (lpm_repo_lookup(ent->d_name, &repo_ver, &filename, &sha256) == 0) {
-            if (lpm_version_cmp(cur->version, repo_ver) < 0) {
-                printf("lpm: upgrade available for %s: %s -> %s\n", ent->d_name, cur->version, repo_ver);
-                char *pkg_args[] = { ent->d_name };
-                lpm_unlock();
-                if (cmd_install(1, pkg_args) == 0) {
-                    upgraded_count++;
-                }
-                if (lpm_lock() != 0) break;
-            }
+        if (lpm_repo_lookup(pkgname, &repo_ver, &filename, &sha256) == 0 &&
+            lpm_version_cmp(cur->version, repo_ver) < 0) {
+            printf("lpm: upgrade available for %s: %s -> %s\n", pkgname, cur->version, repo_ver);
+            planned_count++;
+
             free(repo_ver); free(filename); free(sha256);
+            manifest_free(cur);
+
+            if (dry_run) {
+                continue;
+            }
+
+            char *pkg_args[] = { pkgname };
+            lpm_unlock();
+            lock_held = 0;
+
+            if (cmd_install(1, pkg_args) == 0) {
+                upgraded_count++;
+            } else {
+                fprintf(stderr, "lpm: upgrade FAILED for %s\n", pkgname);
+                failed_count++;
+            }
+
+            if (lpm_lock() != 0) {
+                fprintf(stderr, "lpm: failed to reacquire package database lock after upgrading %s\n", pkgname);
+                failed_count++;
+                break;
+            }
+            lock_held = 1;
+            continue;
         }
+
+        free(repo_ver); free(filename); free(sha256);
         manifest_free(cur);
     }
+
     closedir(dir);
-    lpm_unlock();
+    if (lock_held) lpm_unlock();
+
+    if (dry_run) {
+        if (planned_count == 0) {
+            printf("lpm: all packages are up to date\n");
+        } else {
+            printf("lpm: %d package upgrade(s) available\n", planned_count);
+        }
+        return 0;
+    }
+
+    if (failed_count > 0) {
+        fprintf(stderr, "lpm: upgrade finished with %d failure(s); %d package(s) upgraded successfully\n",
+                failed_count, upgraded_count);
+        return 1;
+    }
 
     if (upgraded_count == 0) {
         printf("lpm: all packages are up to date\n");
