@@ -89,8 +89,11 @@ check_cmd shellcheck "ShellCheck" false
 echo
 echo "==> Packaging, boot and ISO tools"
 check_cmd xorriso "ISO creation (xorriso)" true
-check_cmd mcopy "FAT manipulation (mtools)" true
+check_cmd mcopy "FAT copy (mtools)" true
+check_cmd mformat "FAT formatter (mtools)" true
+check_cmd mmd "FAT directory tool (mtools)" true
 check_cmd grub-mkimage "GRUB image builder" true
+check_cmd envsubst "Template substitution (gettext-base)" true
 check_cmd qemu-system-x86_64 "QEMU x86_64 emulator" false
 
 if [ -f /usr/share/ovmf/OVMF.fd ] || [ -f /usr/share/OVMF/OVMF_CODE.fd ] || [ -f /usr/share/OVMF/OVMF_CODE_4M.fd ]; then
