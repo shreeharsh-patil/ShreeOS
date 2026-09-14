@@ -127,6 +127,7 @@ ISO_DEPS := $(COMMON_BUILD_DEPS) scripts/verify-iso.sh $(shell find iso-builder 
 # -- Phase 1: Toolchain -----------------------------------------------
 .PHONY: toolchain
 toolchain: $(MARKER_DIR)/.toolchain
+	bash scripts/verify-stage.sh toolchain
 
 $(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR)
 	bash toolchain/scripts/build-all.sh --skip-tests
@@ -139,6 +140,7 @@ toolchain-test:
 # -- Phase 2: Base System --------------------------------------------
 .PHONY: base-system
 base-system: $(MARKER_DIR)/.base-system
+	bash scripts/verify-stage.sh base-system
 
 $(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS)
 	bash base-system/scripts/build-all.sh
@@ -147,6 +149,7 @@ $(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS)
 # -- Phase 3: Kernel --------------------------------------------------
 .PHONY: kernel
 kernel: $(MARKER_DIR)/.kernel
+	bash scripts/verify-stage.sh kernel
 
 $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS)
 	bash kernel/scripts/build-kernel.sh
@@ -155,6 +158,7 @@ $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS)
 # -- Phase 4: Package Manager, Init & Hardware Service ----------------
 .PHONY: packages
 packages: $(MARKER_DIR)/.packages
+	bash scripts/verify-stage.sh packages
 
 $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(PKG_DEPS)
 	$(MAKE) -C pkgmanager/src
@@ -165,6 +169,7 @@ $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(P
 # -- Phase 5: Desktop Suite (Profile-aware) ---------------------------
 .PHONY: desktop
 desktop: $(MARKER_DIR)/.desktop-$(PROFILE)
+	bash scripts/verify-stage.sh desktop
 
 $(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(DESKTOP_DEPS)
 ifeq ($(PROFILE),desktop)
@@ -175,6 +180,7 @@ endif
 # -- Phase 6: RootFS Assembly (Profile-aware) -------------------------
 .PHONY: rootfs
 rootfs: $(MARKER_DIR)/.rootfs-$(PROFILE)
+	bash scripts/verify-stage.sh rootfs
 
 $(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS)
 	bash rootfs/scripts/make-rootfs.sh
@@ -183,6 +189,7 @@ $(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kern
 # -- Phase 7: ISO Creation (Profile-aware) ----------------------------
 .PHONY: iso
 iso: $(MARKER_DIR)/.iso-$(PROFILE)
+	bash scripts/verify-stage.sh iso
 
 $(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS)
 	bash iso-builder/scripts/build-iso.sh
@@ -279,6 +286,7 @@ clean-base:
 .PHONY: clean-kernel
 clean-kernel:
 	rm -rf $(BUILD_DIR)/build-kernel
+	rm -rf $(BUILD_DIR)/rootfs/lib/modules
 	rm -f $(MARKER_DIR)/.kernel $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
 
 .PHONY: clean-desktop
