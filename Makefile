@@ -124,12 +124,31 @@ DESKTOP_DEPS := $(COMMON_BUILD_DEPS) scripts/graphics-readiness.sh $(shell find 
 ROOTFS_DEPS := $(COMMON_BUILD_DEPS) $(shell find rootfs -type f 2>/dev/null)
 ISO_DEPS := $(COMMON_BUILD_DEPS) scripts/verify-iso.sh $(shell find iso-builder bootloader -type f 2>/dev/null)
 
+# Marker cache guards. Order-only phony prerequisites execute on every invocation
+# without making a valid marker look stale. They fail fast when a marker exists
+# but its real stage output is gone/corrupt.
+.PHONY: check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache check-iso-cache
+check-toolchain-cache:
+	@if [ -f "$(MARKER_DIR)/.toolchain" ]; then bash scripts/verify-stage.sh toolchain; fi
+check-base-cache:
+	@if [ -f "$(MARKER_DIR)/.base-system" ]; then bash scripts/verify-stage.sh base-system; fi
+check-kernel-cache:
+	@if [ -f "$(MARKER_DIR)/.kernel" ]; then bash scripts/verify-stage.sh kernel; fi
+check-packages-cache:
+	@if [ -f "$(MARKER_DIR)/.packages" ]; then bash scripts/verify-stage.sh packages; fi
+check-desktop-cache:
+	@if [ -f "$(MARKER_DIR)/.desktop-$(PROFILE)" ]; then bash scripts/verify-stage.sh desktop; fi
+check-rootfs-cache:
+	@if [ -f "$(MARKER_DIR)/.rootfs-$(PROFILE)" ]; then bash scripts/verify-stage.sh rootfs; fi
+check-iso-cache:
+	@if [ -f "$(MARKER_DIR)/.iso-$(PROFILE)" ]; then bash scripts/verify-stage.sh iso; fi
+
 # -- Phase 1: Toolchain -----------------------------------------------
 .PHONY: toolchain
 toolchain: $(MARKER_DIR)/.toolchain
 	bash scripts/verify-stage.sh toolchain
 
-$(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR)
+$(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR) check-toolchain-cache
 	bash toolchain/scripts/build-all.sh --skip-tests
 	@touch $@
 
@@ -142,7 +161,7 @@ toolchain-test:
 base-system: $(MARKER_DIR)/.base-system
 	bash scripts/verify-stage.sh base-system
 
-$(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS)
+$(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS) | check-toolchain-cache check-base-cache
 	bash base-system/scripts/build-all.sh
 	@touch $@
 
@@ -151,7 +170,7 @@ $(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS)
 kernel: $(MARKER_DIR)/.kernel
 	bash scripts/verify-stage.sh kernel
 
-$(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS)
+$(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS) | check-toolchain-cache check-kernel-cache
 	bash kernel/scripts/build-kernel.sh
 	@touch $@
 
@@ -160,7 +179,7 @@ $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS)
 packages: $(MARKER_DIR)/.packages
 	bash scripts/verify-stage.sh packages
 
-$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(PKG_DEPS)
+$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(PKG_DEPS) | check-toolchain-cache check-base-cache check-packages-cache
 	$(MAKE) -C pkgmanager/src
 	$(MAKE) -C init/src
 	$(MAKE) -C hardware
@@ -171,7 +190,7 @@ $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(P
 desktop: $(MARKER_DIR)/.desktop-$(PROFILE)
 	bash scripts/verify-stage.sh desktop
 
-$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(DESKTOP_DEPS)
+$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(DESKTOP_DEPS) | check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache
 ifeq ($(PROFILE),desktop)
 	bash desktop/wm/build-all.sh
 endif
@@ -182,7 +201,7 @@ endif
 rootfs: $(MARKER_DIR)/.rootfs-$(PROFILE)
 	bash scripts/verify-stage.sh rootfs
 
-$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS)
+$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS) | check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache
 	bash rootfs/scripts/make-rootfs.sh
 	@touch $@
 
@@ -191,7 +210,7 @@ $(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kern
 iso: $(MARKER_DIR)/.iso-$(PROFILE)
 	bash scripts/verify-stage.sh iso
 
-$(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS)
+$(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS) | check-rootfs-cache check-iso-cache
 	bash iso-builder/scripts/build-iso.sh
 	@touch $@
 
