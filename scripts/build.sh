@@ -24,7 +24,7 @@ case "$profile" in
 esac
 
 echo "==> ShreeOS reliable build: PROFILE=$profile"
-make doctor
+bash scripts/doctor.sh --strict
 bash scripts/verify-sources.sh --fetch
 
 if [ "$profile" = "desktop" ]; then
