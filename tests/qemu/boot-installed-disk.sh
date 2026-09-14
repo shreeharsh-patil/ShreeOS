@@ -40,7 +40,16 @@ if [ -z "$DISK_IMAGE" ]; then
     trap cleanup_files EXIT INT TERM
     chmod 600 "$CREDS_FILE"
     printf 'testrootpass\ntestuserpass\n' > "$CREDS_FILE"
-    bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
+    if [ "$(id -u)" -eq 0 ]; then
+      bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
+    elif command -v sudo >/dev/null 2>&1; then
+      sudo -E bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
+    elif [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+      shreeos_die "sudo/root privileges are required for the installed-disk test"
+    else
+      shreeos_warn "sudo/root privileges unavailable; skipping installed-disk test"
+      exit 77
+    fi
   fi
 fi
 
