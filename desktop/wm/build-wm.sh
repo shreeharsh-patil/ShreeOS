@@ -31,7 +31,7 @@ lumen_require_cmd patch
 # These are target dependencies, not host build dependencies.  Failing here
 # gives an actionable error instead of an opaque compiler/linker failure.
 verify_desktop_sysroot() {
-  local missing=0
+  local missing_headers=0
   local required_headers=(
     "usr/include/X11/Xlib.h"
     "usr/include/X11/Xft/Xft.h"
@@ -44,11 +44,11 @@ verify_desktop_sysroot() {
   for header in "${required_headers[@]}"; do
     if [ ! -f "${SHREEOS_SYSROOT}/${header}" ]; then
       shreeos_warn "Desktop target header missing: ${header}"
-      missing=1
+      missing_headers=1
     fi
   done
 
-  if [ "$missing" -ne 0 ]; then
+  if [ "$missing_headers" -ne 0 ]; then
     shreeos_die "Desktop target dependencies are incomplete. Build/stage X11, Xft, Xinerama, Fontconfig and FreeType into ${SHREEOS_SYSROOT} before building the desktop."
   fi
 
@@ -95,7 +95,8 @@ build_suckless() {
   local name="$1"
   local url="$2"
   local sha="$3"
-  local archive="${BUILDDIR}/$(basename "$url")"
+  local archive
+  archive="${BUILDDIR}/$(basename "$url")"
   local source_dir="${BUILDDIR}/${name}"
   local distro_config="${DESKTOP_DIR}/configs/${name}-config.h"
 
