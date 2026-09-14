@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate that the target graphical SDK needed by the native ShreeOS desktop exists.
+# Validate that both the target graphical SDK and runtime needed by ShreeOS exist.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,9 +8,7 @@ source "$REPO_ROOT/build.conf"
 source "$REPO_ROOT/scripts/common.sh"
 
 STRICT=false
-if [ "${1:-}" = "--strict" ]; then
-  STRICT=true
-fi
+if [ "${1:-}" = "--strict" ]; then STRICT=true; fi
 
 headers=(
   "usr/include/X11/Xlib.h"
@@ -19,59 +17,79 @@ headers=(
   "usr/include/fontconfig/fontconfig.h"
   "usr/include/freetype2/ft2build.h"
 )
-
-libs=(
-  "libX11"
-  "libXft"
-  "libXinerama"
-  "fontconfig"
-  "freetype"
+libs=(libX11 libXft libXinerama fontconfig freetype)
+runtime_bins=(
+  "usr/bin/Xorg"
+  "usr/bin/xinit"
 )
 
 missing_count=0
-
 echo "==> Target graphics readiness"
+
 for rel in "${headers[@]}"; do
   if [ -f "$SHREEOS_SYSROOT/$rel" ]; then
-    printf "  [OK]      %s\n" "$rel"
+    printf "  [OK]      SDK header %s\n" "$rel"
   else
-    printf "  [MISSING] %s\n" "$rel"
+    printf "  [MISSING] SDK header %s\n" "$rel"
     missing_count=$((missing_count + 1))
   fi
 done
 
-find_target_lib() {
+find_sdk_lib() {
   local name="$1"
-  find "$SHREEOS_SYSROOT/usr/lib" "$SHREEOS_SYSROOT/lib" \
-    -maxdepth 2 -type f \( -name "${name}.so" -o -name "${name}.so.*" -o -name "${name}.a" \) \
-    -print -quit 2>/dev/null
+  find "$SHREEOS_SYSROOT/usr/lib" "$SHREEOS_SYSROOT/lib"     -maxdepth 3 -type f \( -name "${name}.so" -o -name "${name}.so.*" -o -name "${name}.a" \)     -print -quit 2>/dev/null || true
+}
+
+find_runtime_lib() {
+  local name="$1"
+  find "$SHREEOS_STAGE_ROOT/usr/lib" "$SHREEOS_STAGE_ROOT/lib"     -maxdepth 3 \( -type f -o -type l \) \( -name "${name}.so" -o -name "${name}.so.*" \)     -print -quit 2>/dev/null || true
 }
 
 for lib in "${libs[@]}"; do
-  if [ -n "$(find_target_lib "$lib")" ]; then
-    printf "  [OK]      target library %s\n" "$lib"
+  if [ -n "$(find_sdk_lib "$lib")" ]; then
+    printf "  [OK]      SDK library %s\n" "$lib"
   else
-    printf "  [MISSING] target library %s\n" "$lib"
+    printf "  [MISSING] SDK library %s\n" "$lib"
+    missing_count=$((missing_count + 1))
+  fi
+
+  if [ -n "$(find_runtime_lib "$lib")" ]; then
+    printf "  [OK]      runtime library %s\n" "$lib"
+  else
+    printf "  [MISSING] runtime library %s\n" "$lib"
     missing_count=$((missing_count + 1))
   fi
 done
+
+for rel in "${runtime_bins[@]}"; do
+  if [ -x "$SHREEOS_STAGE_ROOT/$rel" ]; then
+    printf "  [OK]      runtime binary %s\n" "$rel"
+  else
+    printf "  [MISSING] runtime binary %s\n" "$rel"
+    missing_count=$((missing_count + 1))
+  fi
+done
+
+if find "$SHREEOS_STAGE_ROOT/usr/share/fonts" -type f \( -name '*.ttf' -o -name '*.otf' \) -print -quit 2>/dev/null | grep -q .; then
+  printf "  [OK]      runtime fonts\n"
+else
+  printf "  [MISSING] runtime fonts under /usr/share/fonts\n"
+  missing_count=$((missing_count + 1))
+fi
 
 state_dir="$SHREEOS_BUILD_DIR/.state"
 mkdir -p "$state_dir"
 if [ "$missing_count" -eq 0 ]; then
   printf 'ready\n' > "$state_dir/graphics.status"
-  shreeos_ok "Target graphical SDK is ready."
+  shreeos_ok "Target graphical SDK and runtime are ready."
   exit 0
 fi
 
 printf 'missing:%s\n' "$missing_count" > "$state_dir/graphics.status"
-shreeos_warn "Target graphical SDK is incomplete ($missing_count required items missing)."
-echo "The desktop profile currently declares the graphics stack, but those packages"
-echo "are not yet source-built into the ShreeOS target sysroot."
-echo
-echo "Required next implementation layer includes FreeType, Fontconfig, Xorg protocol"
-echo "headers, libXau/libXdmcp/libxcb/libX11, Xft, Xinerama and the Xorg runtime stack."
+shreeos_warn "Target graphical stack is incomplete ($missing_count required item(s) missing)."
+echo "A desktop ISO is not considered ready until its SDK libraries, runtime"
+echo "libraries, Xorg server, xinit and fonts are present in the target filesystem."
 
 if [ "$STRICT" = true ]; then
-  shreeos_die "Refusing a strict desktop build until the target graphics stage is complete."
+  shreeos_die "Refusing to certify an incomplete desktop graphics stack."
 fi
