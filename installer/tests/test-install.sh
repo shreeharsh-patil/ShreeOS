@@ -19,7 +19,7 @@ source "$LUMEN_ROOT_DIR/scripts/common.sh"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 DISK_IMAGE="${DISK_IMAGE:-/tmp/shreeos-install-test.img}"
 DISK_SIZE="${DISK_SIZE:-4G}"
-MARKER_STRING="${MARKER_STRING:-ShreeOS init: reached PID 1}"
+MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
 TIMEOUT="${TIMEOUT:-120}"
 KEEP=false
 
