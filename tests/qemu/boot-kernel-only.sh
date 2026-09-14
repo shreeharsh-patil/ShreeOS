@@ -33,12 +33,24 @@ if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
   if [ "$REQUIRE_ARTIFACTS" = "1" ]; then shreeos_die "QEMU not found: $QEMU_BIN"; fi
   shreeos_warn "QEMU not found: $QEMU_BIN"; exit 77
 fi
-for artifact in "$KERNEL_IMAGE" "$INITRAMFS"; do
-  if [ ! -s "$artifact" ]; then
-    if [ "$REQUIRE_ARTIFACTS" = "1" ]; then shreeos_die "Required boot artifact missing or empty: $artifact"; fi
-    shreeos_warn "Boot artifact missing or empty: $artifact"; exit 77
-  fi
-done
+if [ ! -s "$KERNEL_IMAGE" ]; then
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then shreeos_die "Required kernel image missing or empty: $KERNEL_IMAGE"; fi
+  shreeos_warn "Kernel image missing or empty: $KERNEL_IMAGE"
+  exit 77
+fi
+
+# The tiny kernel-test initramfs is deliberately not part of production kernel
+# builds. Build the fixture on demand so strict testing does not depend on a
+# stale generated file being present in the checkout.
+if [ ! -s "$INITRAMFS" ] && [ "$INITRAMFS" = "$PROJECT_ROOT/kernel/initramfs/initramfs.cpio.gz" ]; then
+  shreeos_step "Building dedicated kernel-test initramfs fixture"
+  make -C "$PROJECT_ROOT/kernel/initramfs" all
+fi
+if [ ! -s "$INITRAMFS" ]; then
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then shreeos_die "Required initramfs missing or empty: $INITRAMFS"; fi
+  shreeos_warn "Initramfs missing or empty: $INITRAMFS"
+  exit 77
+fi
 
 LOG_FILE="$(mktemp /tmp/shreeos-qemu-kernel.XXXXXX)"
 QEMU_PID=""
