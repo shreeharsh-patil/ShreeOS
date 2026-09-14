@@ -99,8 +99,10 @@ if [ -n "$CREDS_FILE" ]; then
   if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
     shreeos_die "Credentials file must be a regular, non-symlink file."
   fi
-  if [ "$(stat -c '%u' "$CREDS_FILE")" != "$(id -u)" ] || [ "$(stat -c '%a' "$CREDS_FILE")" != "600" ]; then
-    shreeos_die "Credentials file must be owned by the invoking user and have mode exactly 0600."
+  CREDS_OWNER="$(stat -c '%u' "$CREDS_FILE")"
+  EXPECTED_CREDS_OWNER="${SUDO_UID:-$(id -u)}"
+  if [ "$CREDS_OWNER" != "$EXPECTED_CREDS_OWNER" ] || [ "$(stat -c '%a' "$CREDS_FILE")" != "600" ]; then
+    shreeos_die "Credentials file must be owned by the invoking user (including the original sudo user) and have mode exactly 0600."
   fi
   CREDS_LINE_COUNT=$(awk 'END { print NR }' "$CREDS_FILE")
   if [ "$CREDS_LINE_COUNT" -lt 1 ] || [ "$CREDS_LINE_COUNT" -gt 2 ]; then
