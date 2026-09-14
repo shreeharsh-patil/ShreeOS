@@ -51,8 +51,11 @@ help:
 	@echo "  make all                  Build everything end-to-end"
 	@echo ""
 	@echo "Diagnostic & Verification Targets:"
+	@echo "  make bootstrap-wsl        Install/check supported WSL2 build dependencies"
 	@echo "  make doctor               Check environment, host tools, and build readiness"
 	@echo "  make verify-sources       Verify upstream URLs, checksum format, and downloaded tarballs"
+	@echo "  make graphics             Strictly validate target desktop graphics readiness"
+	@echo "  make verify-iso           Validate ISO structure and BIOS/UEFI boot"
 	@echo ""
 	@echo "Testing & Execution Targets:"
 	@echo "  make test-unit            Run LPM package manager C unit tests"
@@ -69,6 +72,11 @@ help:
 	@echo ""
 	@echo "Maintenance Targets:"
 	@echo "  make clean                Remove build staging and markers"
+	@echo "  make clean-toolchain      Remove toolchain/sysroot and dependent markers"
+	@echo "  make clean-base           Remove base-system state and dependent markers"
+	@echo "  make clean-kernel         Remove kernel state and dependent markers"
+	@echo "  make clean-desktop        Remove desktop state and dependent markers"
+	@echo "  make clean-iso            Remove ISO state/artifacts only"
 	@echo "  make distclean            Full reset including build/ and out/"
 	@echo ""
 	@echo "Options:"
@@ -76,6 +84,10 @@ help:
 	@echo "  FORCE=1                         (rebuild all stages)"
 
 # Diagnostic & source verification
+.PHONY: bootstrap-wsl
+bootstrap-wsl:
+	bash scripts/bootstrap-wsl.sh
+
 .PHONY: doctor
 doctor:
 	bash scripts/doctor.sh
@@ -83,6 +95,14 @@ doctor:
 .PHONY: verify-sources
 verify-sources:
 	bash scripts/verify-sources.sh
+
+.PHONY: graphics
+graphics: toolchain base-system
+	bash scripts/graphics-readiness.sh --strict
+
+.PHONY: verify-iso
+verify-iso:
+	bash scripts/verify-iso.sh
 
 # Marker directory creation
 $(MARKER_DIR):
@@ -92,11 +112,17 @@ ifdef FORCE
 $(shell rm -rf $(MARKER_DIR) 2>/dev/null)
 endif
 
-# Source file dependencies for accurate cache invalidation
-PKG_DEPS := $(shell find pkgmanager/src init/src hardware -type f 2>/dev/null)
-DESKTOP_DEPS := $(shell find desktop -type f 2>/dev/null)
-ROOTFS_DEPS := $(shell find rootfs -type f 2>/dev/null)
-ISO_DEPS := $(shell find iso-builder bootloader -type f 2>/dev/null)
+# Source file dependencies for accurate cache invalidation.
+# A marker is rebuilt when its own stage inputs change, so interrupted builds
+# can resume without silently reusing stale outputs.
+COMMON_BUILD_DEPS := build.conf scripts/common.sh Makefile
+TOOLCHAIN_DEPS := $(COMMON_BUILD_DEPS) $(shell find toolchain -type f 2>/dev/null)
+BASE_DEPS := $(COMMON_BUILD_DEPS) $(shell find base-system -type f 2>/dev/null)
+KERNEL_DEPS := $(COMMON_BUILD_DEPS) $(shell find kernel -type f 2>/dev/null)
+PKG_DEPS := $(COMMON_BUILD_DEPS) $(shell find pkgmanager/src init/src hardware -type f 2>/dev/null)
+DESKTOP_DEPS := $(COMMON_BUILD_DEPS) scripts/graphics-readiness.sh $(shell find desktop -type f 2>/dev/null)
+ROOTFS_DEPS := $(COMMON_BUILD_DEPS) $(shell find rootfs -type f 2>/dev/null)
+ISO_DEPS := $(COMMON_BUILD_DEPS) scripts/verify-iso.sh $(shell find iso-builder bootloader -type f 2>/dev/null)
 
 # -- Phase 1: Toolchain -----------------------------------------------
 .PHONY: toolchain
@@ -237,6 +263,34 @@ clean:
 	$(MAKE) -C pkgmanager/src clean
 	$(MAKE) -C init/src clean
 	$(MAKE) -C hardware clean
+
+.PHONY: clean-toolchain
+clean-toolchain:
+	rm -rf $(BUILD_DIR)/tools $(BUILD_DIR)/sysroot
+	rm -f $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.packages
+	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-base
+clean-base:
+	rm -rf $(BUILD_DIR)/base-system
+	rm -f $(MARKER_DIR)/.base-system $(MARKER_DIR)/.packages
+	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-kernel
+clean-kernel:
+	rm -rf $(BUILD_DIR)/build-kernel
+	rm -f $(MARKER_DIR)/.kernel $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-desktop
+clean-desktop:
+	rm -rf $(BUILD_DIR)/desktop $(BUILD_DIR)/.state/graphics.status
+	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-iso
+clean-iso:
+	rm -rf $(BUILD_DIR)/iso-staging
+	rm -f $(MARKER_DIR)/.iso-*
+	rm -f out/*.iso out/*.iso.sha256 out/*-manifest.json
 
 .PHONY: distclean
 distclean: clean
