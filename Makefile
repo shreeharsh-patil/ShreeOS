@@ -245,7 +245,7 @@ test-smoke:
 
 .PHONY: test-qemu
 test-qemu:
-	bash tests/qemu/run-all-qemu-tests.sh
+	bash tests/qemu/run-all-qemu-tests.sh --strict
 
 .PHONY: test-all
 test-all: test-unit test-init test-security test-auth test-installer test-pkgmanager test-desktop test-hardware test-qemu
