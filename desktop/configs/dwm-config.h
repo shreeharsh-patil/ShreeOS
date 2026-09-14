@@ -91,7 +91,7 @@ static const Key keys[] = {
     { MODKEY|ShiftMask,             XK_4,      spawn,          {.v = shotregcmd } },
     { MODKEY,                       XK_b,      togglebar,      {0} },
     { MODKEY,                       XK_j,      focusstack,     {.i = +1 } },
-    { MODKEY,                       XK_k,      focusstack,     {.i = -1 } },
+    { MODKEY|ShiftMask,             XK_k,      focusstack,     {.i = -1 } },
     { MODKEY,                       XK_h,      setmfact,       {.f = -0.05} },
     { MODKEY,                       XK_l,      setmfact,       {.f = +0.05} },
     { MODKEY,                       XK_Left,   setmfact,       {.f = -0.05} },
