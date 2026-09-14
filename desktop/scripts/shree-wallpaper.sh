@@ -24,20 +24,25 @@ WALLPAPER_DIRS=(
   "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../branding/wallpapers" 2>/dev/null && pwd || true)"
 )
 
-get_current_wallpaper() {
-  if [ -f "$WALLPAPER_CONF" ]; then
-    grep -oP '^WALLPAPER=\K.*' "$WALLPAPER_CONF" 2>/dev/null || echo ""
-  else
-    echo ""
+config_value() {
+  local key="$1"
+  local file="$2"
+  local fallback="$3"
+  local value=""
+
+  if [ -f "$file" ]; then
+    value=$(awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true)
   fi
+
+  printf '%s\n' "${value:-$fallback}"
+}
+
+get_current_wallpaper() {
+  config_value "WALLPAPER" "$WALLPAPER_CONF" ""
 }
 
 get_current_mode() {
-  if [ -f "$WALLPAPER_CONF" ]; then
-    grep -oP '^MODE=\K.*' "$WALLPAPER_CONF" 2>/dev/null || echo "fill"
-  else
-    echo "fill"
-  fi
+  config_value "MODE" "$WALLPAPER_CONF" "fill"
 }
 
 apply_wallpaper() {
@@ -87,7 +92,7 @@ EOF
 cmd_auto() {
   local theme="dark"
   if [ -f "${CONFIG_DIR}/theme.conf" ]; then
-    theme=$(grep -oP '^THEME=\K.*' "${CONFIG_DIR}/theme.conf" 2>/dev/null || echo "dark")
+    theme=$(config_value "THEME" "${CONFIG_DIR}/theme.conf" "dark")
   fi
 
   local target="/usr/share/wallpapers/shreeos-calm-${theme}.svg"
