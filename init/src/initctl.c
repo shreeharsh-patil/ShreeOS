@@ -30,7 +30,13 @@ static int send_ipc_command(const char *cmd, char *out, size_t out_len) {
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     const char *sock_path = get_sock_path();
-    strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+    size_t sock_path_len = strlen(sock_path);
+    if (sock_path_len >= sizeof(addr.sun_path)) {
+        errno = ENAMETOOLONG;
+        close(fd);
+        return -1;
+    }
+    memcpy(addr.sun_path, sock_path, sock_path_len + 1);
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         close(fd);
