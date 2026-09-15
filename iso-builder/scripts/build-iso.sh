@@ -30,6 +30,7 @@ for arg in "$@"; do
   case "$arg" in
     --no-cleanup) NO_CLEANUP=true ;;
     --help|-h) echo "Usage: build-iso.sh [--no-cleanup]"; exit 0 ;;
+    *) lumen_die "Unknown option: $arg" ;;
   esac
 done
 
