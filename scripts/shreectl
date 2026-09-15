@@ -238,7 +238,7 @@ cmd_backup_db() {
       current="/var/lib/lpm/installed"
       rollback="/var/lib/lpm/.installed.pre-restore.$"
 
-      if [ -z "$id" ] || [ ! -d "$source" ]; then
+      if [ -z "$id" ] || ! [[ "$id" =~ ^db_[0-9]{8}_[0-9]{6}_[0-9]+$ ]] || [ ! -d "$source" ]; then
         shreeos_die "Usage: shreectl backup-db restore <backup_id>"
       fi
 
