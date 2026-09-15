@@ -112,12 +112,12 @@ ShreeOS/
 ├── toolchain/            # Phase 1: cross-compiler
 ├── base-system/          # Phase 2: base packages
 ├── kernel/               # Phase 3: Linux kernel
-├── init/                 # Phase 4: PID 1 init
-├── rootfs/               # Phase 4: root filesystem assembly
-├── bootloader/           # Phase 5: GRUB config
-├── iso-builder/          # Phase 5: ISO creation
-├── pkgmanager/           # Phase 6: lpm package manager
-├── desktop/              # Phase 7: window manager
+├── init/                 # Phase 4: target PID 1 init
+├── rootfs/               # Phase 6: root filesystem assembly
+├── bootloader/           # Phase 7: GRUB config
+├── iso-builder/          # Phase 7: ISO creation
+├── pkgmanager/           # Phase 4: lpm package manager
+├── desktop/              # Phase 5: window manager
 ├── installer/            # Phase 7: disk installer
 ├── branding/             # Phase 7: distro assets
 ├── tests/                # Smoke tests
