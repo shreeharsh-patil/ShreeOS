@@ -23,10 +23,18 @@ fi
 
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
-# Flex 2.6.4's bootstrap stage1flex is known to crash while regenerating
-# stage1scan.c on some modern/cross-build toolchains. Release tarballs already
-# contain the generated scanner, so disable the self-bootstrap and build from
-# that shipped source instead.
+# Flex 2.6.4 is old enough that its Autoconf allocation probes cannot be run
+# while cross-compiling.  When those probes are left unresolved, configure
+# pessimistically maps malloc/realloc to rpl_malloc/rpl_realloc.  The generated
+# scanner then sees only implicit declarations; modern GCC treats that as a
+# hard error (and older GCC can produce a pointer-truncating stage1flex).
+#
+# ShreeOS targets glibc, whose malloc(0)/realloc(0) behaviour is compatible
+# with the assumptions Flex needs here, so seed those two cache answers.
+# HELP2MAN is also intentionally disabled for the target build.
+ac_cv_func_malloc_0_nonnull=yes \
+ac_cv_func_realloc_0_nonnull=yes \
+HELP2MAN=/bin/true \
 "${SRCDIR}/configure" \
   --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
