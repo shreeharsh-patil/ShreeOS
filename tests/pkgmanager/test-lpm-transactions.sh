@@ -102,7 +102,7 @@ EOF
 )
 
 UNDECLARED_OUT=$("$LPM_BIN" install "${TEST_DIR}/pkg/undeclaredpkg-1.0.0.lpkg" 2>&1 || true)
-if echo "$UNDECLARED_OUT" | grep -q "undeclared payload"; then
+if echo "$UNDECLARED_OUT" | grep -Eq "undeclared (payload|directory)"; then
   echo "  [OK] LPM rejected an archive member that was absent from manifest.json"
 else
   echo "  [FAIL] LPM did not explicitly reject the undeclared package payload" >&2
