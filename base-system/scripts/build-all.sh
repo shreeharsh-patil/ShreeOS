@@ -104,6 +104,7 @@ for PKG_FILE in "${PACKAGES[@]}"; do
   fi
 
   bash "$PKG_SCRIPT"
+  base_sync_sysroot
   lumen_ok "[${PKG_NUM}/${#PACKAGES[@]}] ${PKG_NAME} built"
 done
 
