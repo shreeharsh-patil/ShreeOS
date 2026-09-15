@@ -707,6 +707,24 @@ cleanup:
     return ret;
 }
 
+#define LPM_MAX_CASCADE_VISITED 512
+static char *cascade_visited[LPM_MAX_CASCADE_VISITED];
+static size_t cascade_visited_count = 0;
+
+static int cascade_mark_visited(const char *name) {
+    for (size_t i = 0; i < cascade_visited_count; i++) {
+        if (strcmp(cascade_visited[i], name) == 0) return 1;
+    }
+    if (cascade_visited_count >= LPM_MAX_CASCADE_VISITED) {
+        errno = ELOOP;
+        return -1;
+    }
+    char *copy = strdup(name);
+    if (!copy) return -1;
+    cascade_visited[cascade_visited_count++] = copy;
+    return 0;
+}
+
 int cmd_remove(int argc, char **argv) {
     if (argc < 1) {
         fprintf(stderr, "Usage: lpm remove [--cascade] <package>\n");
@@ -729,6 +747,17 @@ int cmd_remove(int argc, char **argv) {
     if (!name || !lpm_valid_pkgname(name)) {
         fprintf(stderr, "lpm: invalid package name '%s'\n", name ? name : "");
         return 1;
+    }
+    if (cascade) {
+        int visit_state = cascade_mark_visited(name);
+        if (visit_state > 0) {
+            printf("lpm: skipping already scheduled cascade package: %s\n", name);
+            return 0;
+        }
+        if (visit_state < 0) {
+            fprintf(stderr, "lpm: cascade dependency graph is too large or could not be tracked\n");
+            return 1;
+        }
     }
     if (lpm_lock() != 0) return 1;
 
