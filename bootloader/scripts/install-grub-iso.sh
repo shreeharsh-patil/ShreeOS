@@ -70,7 +70,11 @@ TEMPLATE="$SHREEOS_ROOT_DIR/bootloader/grub/grub.cfg.template"
 [ -f "$TEMPLATE" ] || shreeos_die "GRUB template not found: $TEMPLATE"
 
 if command -v envsubst >/dev/null 2>&1; then
-  DISTRO_NAME="${DISTRO_NAME:-ShreeOS}"   DISTRO_VERSION="${DISTRO_VERSION:-0.2.0-dev}"   CMDLINE_EXTRA="$CMDLINE_EXTRA"     envsubst < "$TEMPLATE" > "${STAGING}/boot/grub/grub.cfg"
+  DISTRO_NAME="${DISTRO_NAME:-ShreeOS}" \
+  DISTRO_VERSION="${DISTRO_VERSION:-0.2.0-dev}" \
+  CMDLINE_EXTRA="$CMDLINE_EXTRA" \
+    envsubst '${DISTRO_NAME} ${DISTRO_VERSION} ${CMDLINE_EXTRA}' \
+      < "$TEMPLATE" > "${STAGING}/boot/grub/grub.cfg"
 else
   # CMDLINE_EXTRA may contain sed-significant characters, so require envsubst
   # rather than silently producing a corrupted boot configuration.
