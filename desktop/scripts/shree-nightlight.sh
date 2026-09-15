@@ -16,8 +16,9 @@ apply_temperature() {
   local gamma="$2"
 
   if command -v sct >/dev/null 2>&1; then
-    sct "$kelvin" >/dev/null 2>&1
-    return
+    if sct "$kelvin" >/dev/null 2>&1; then
+      return 0
+    fi
   fi
   if command -v xrandr >/dev/null 2>&1; then
     xrandr --gamma "$gamma" >/dev/null 2>&1
