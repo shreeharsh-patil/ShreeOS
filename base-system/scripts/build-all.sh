@@ -47,6 +47,7 @@ PACKAGES=(
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --resume)
+      [ -n "${2:-}" ] || lumen_die "--resume requires a package number (1-${#PACKAGES[@]})"
       RESUME_FROM="$2"
       shift 2
       ;;
@@ -104,6 +105,7 @@ for PKG_FILE in "${PACKAGES[@]}"; do
   fi
 
   bash "$PKG_SCRIPT"
+  base_sync_sysroot
   lumen_ok "[${PKG_NUM}/${#PACKAGES[@]}] ${PKG_NAME} built"
 done
 

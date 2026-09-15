@@ -28,6 +28,7 @@ for arg in "$@"; do
       echo "Usage: build-kernel.sh [--skip-init]"
       exit 0
       ;;
+    *) lumen_die "Unknown option: $arg" ;;
   esac
 done
 

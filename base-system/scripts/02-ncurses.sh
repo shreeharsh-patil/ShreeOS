@@ -25,21 +25,21 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 # Build with shared libraries, wide-character support, no Ada
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
-  --mandir="${LUMEN_STAGE_ROOT}/usr/share/man" \
+  --mandir=/usr/share/man \
   --with-shared \
   --without-debug \
   --without-normal \
   --enable-widec \
   --enable-pc-files \
-  --with-pkg-config-libdir="${LUMEN_STAGE_ROOT}/usr/lib/pkgconfig" \
+  --with-pkg-config-libdir=/usr/lib/pkgconfig \
   --without-ada
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 # Create symlink for non-widec compatibility (some packages expect libncurses not libncursesw)
 ln -sf libncursesw.so "${LUMEN_STAGE_ROOT}/usr/lib/libncurses.so" 2>/dev/null || true

@@ -68,6 +68,13 @@ libxcrypt	4.4.36	https://github.com/besser82/libxcrypt/releases/download/v4.4.36
 # wpa_supplicant 2.11
 wpa_supplicant	2.11	https://w1.fi/releases/wpa_supplicant-2.11.tar.gz	912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
 
+# ALSA 1.2.14
+alsa-lib	1.2.14	https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.14.tar.bz2	be9c88a0b3604367dd74167a2b754a35e142f670292ae47a2fdef27a2ee97a32
+alsa-utils	1.2.14	https://www.alsa-project.org/files/pub/utils/alsa-utils-1.2.14.tar.bz2	0794c74d33fed943e7c50609c13089e409312b6c403d6ae8984fc429c0960741
+
+# BlueZ 5.79 (optional until target GLib + D-Bus are staged)
+bluez	5.79	https://www.kernel.org/pub/linux/bluetooth/bluez-5.79.tar.xz	4164a5303a9f71c70f48c03ff60be34231b568d93a9ad5e79928d34e6aa0ea8a
+
 # IANA timezone database 2025b. tzcode supplies the host zic compiler;
 # tzdata supplies the source rules installed as target TZif data.
 tzcode	2025b	https://data.iana.org/time-zones/releases/tzcode2025b.tar.gz	05f8fedb3525ee70d49c87d3fae78a8a0dbae4fe87aa565c65cda9948ae135ec

@@ -24,16 +24,16 @@ fi
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
   --without-bash-malloc \
   --with-installed-readline \
-  --docdir="${LUMEN_STAGE_ROOT}/usr/share/doc/bash-${PKG_VER}"
+  --docdir="/usr/share/doc/bash-${PKG_VER}"
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 # Create /bin/sh symlink for POSIX compat
 mkdir -p "${LUMEN_STAGE_ROOT}/bin"

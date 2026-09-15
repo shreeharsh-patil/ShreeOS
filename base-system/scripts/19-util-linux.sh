@@ -25,11 +25,11 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 # Minimize build: only what we need for a chroot base system
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
-  --docdir="${LUMEN_STAGE_ROOT}/usr/share/doc/util-linux-${PKG_VER}" \
+  --docdir="/usr/share/doc/util-linux-${PKG_VER}" \
   --disable-chfn-chsh \
   --disable-login \
   --disable-nologin \
@@ -42,6 +42,6 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --without-systemdsystemunitdir
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
