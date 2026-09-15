@@ -78,62 +78,114 @@ static int json_write_string(FILE *f, const char *value) {
     return fputc('"', f) == EOF ? -1 : 0;
 }
 
-static void fill_str_array(const json_value *arr, char ***out, int *n) {
+static int fill_str_array(const json_value *arr, char ***out, int *n) {
     *n = 0;
     *out = NULL;
-    if (!arr || arr->type != JSON_ARRAY) return;
-    *n = json_array_len(arr);
-    *out = calloc(*n + 1, sizeof(char *));
-    if (!*out) return;
-    for (int i = 0; i < *n; i++) {
-        const char *s = json_array_str(arr, i);
-        (*out)[i] = s ? strdup(s) : strdup("");
+    if (!arr) return 0;
+    if (arr->type != JSON_ARRAY) return -1;
+
+    int count = json_array_len(arr);
+    if (count < 0 || count > 65536) return -1;
+    if (count == 0) return 0;
+
+    char **values = calloc((size_t)count + 1, sizeof(char *));
+    if (!values) return -1;
+
+    for (int i = 0; i < count; i++) {
+        const char *value = json_array_str(arr, i);
+        if (!value) {
+            for (int j = 0; j < i; j++) free(values[j]);
+            free(values);
+            return -1;
+        }
+        values[i] = strdup(value);
+        if (!values[i]) {
+            for (int j = 0; j < i; j++) free(values[j]);
+            free(values);
+            return -1;
+        }
     }
+
+    *out = values;
+    *n = count;
+    return 0;
 }
 
-static void fill_checksums(const json_value *obj, checksum_entry **out, int *n) {
+static int fill_checksums(const json_value *obj, checksum_entry **out, int *n) {
     *n = 0;
     *out = NULL;
-    if (!obj || obj->type != JSON_OBJECT) return;
+    if (!obj) return 0;
+    if (obj->type != JSON_OBJECT) return -1;
 
     int count = 0;
     for (json_pair *p = obj->head; p; p = p->next) {
-        if (p->key && p->value && p->value->type == JSON_STRING) {
-            count++;
-        }
+        if (!p->key || !p->value || p->value->type != JSON_STRING) return -1;
+        if (++count > 65536) return -1;
     }
-    if (count == 0) return;
+    if (count == 0) return 0;
 
-    *out = calloc(count, sizeof(checksum_entry));
-    if (!*out) return;
+    checksum_entry *entries = calloc((size_t)count, sizeof(checksum_entry));
+    if (!entries) return -1;
 
     int idx = 0;
     for (json_pair *p = obj->head; p; p = p->next) {
-        if (p->key && p->value && p->value->type == JSON_STRING) {
-            (*out)[idx].path = strdup_safe(p->key);
-            (*out)[idx].sha256 = strdup_safe(p->value->string);
-            idx++;
+        entries[idx].path = strdup_safe(p->key);
+        entries[idx].sha256 = strdup_safe(p->value->string);
+        if (!entries[idx].path || !entries[idx].sha256) {
+            for (int j = 0; j <= idx; j++) {
+                free(entries[j].path);
+                free(entries[j].sha256);
+            }
+            free(entries);
+            return -1;
         }
+        idx++;
     }
-    *n = idx;
+
+    *out = entries;
+    *n = count;
+    return 0;
 }
 
 manifest *manifest_parse(const char *json_str) {
     json_value *root = json_parse(json_str);
-    if (!root) return NULL;
+    if (!root || root->type != JSON_OBJECT) {
+        json_free(root);
+        return NULL;
+    }
+
+    json_value *name_value = json_get(root, "name");
+    json_value *version_value = json_get(root, "version");
+    json_value *description_value = json_get(root, "description");
+    json_value *sha_value = json_get(root, "sha256");
+
+    const char *name = json_string(name_value);
+    const char *version = json_string(version_value);
+    if (!name || !*name || !version || !*version ||
+        (description_value && description_value->type != JSON_STRING) ||
+        (sha_value && sha_value->type != JSON_STRING)) {
+        json_free(root);
+        return NULL;
+    }
 
     manifest *m = calloc(1, sizeof(manifest));
     if (!m) { json_free(root); return NULL; }
-    m->name        = strdup_safe(json_string(json_get(root, "name")));
-    m->version     = strdup_safe(json_string(json_get(root, "version")));
-    m->description = strdup_safe(json_string(json_get(root, "description")));
-    m->sha256      = strdup_safe(json_string(json_get(root, "sha256")));
-    fill_str_array(json_get(root, "dependencies"), &m->deps, &m->ndeps);
-    fill_str_array(json_get(root, "conflicts"),    &m->conflicts, &m->nconflicts);
-    fill_str_array(json_get(root, "provides"),     &m->provides,  &m->nprovides);
-    fill_str_array(json_get(root, "replaces"),     &m->replaces,  &m->nreplaces);
-    fill_str_array(json_get(root, "files"),        &m->files, &m->nfiles);
-    fill_checksums(json_get(root, "checksums"),    &m->checksums, &m->nchecksums);
+
+    m->name = strdup(name);
+    m->version = strdup(version);
+    m->description = strdup_safe(json_string(description_value));
+    m->sha256 = strdup_safe(json_string(sha_value));
+    if (!m->name || !m->version || !m->description || !m->sha256 ||
+        fill_str_array(json_get(root, "dependencies"), &m->deps, &m->ndeps) != 0 ||
+        fill_str_array(json_get(root, "conflicts"), &m->conflicts, &m->nconflicts) != 0 ||
+        fill_str_array(json_get(root, "provides"), &m->provides, &m->nprovides) != 0 ||
+        fill_str_array(json_get(root, "replaces"), &m->replaces, &m->nreplaces) != 0 ||
+        fill_str_array(json_get(root, "files"), &m->files, &m->nfiles) != 0 ||
+        fill_checksums(json_get(root, "checksums"), &m->checksums, &m->nchecksums) != 0) {
+        json_free(root);
+        manifest_free(m);
+        return NULL;
+    }
 
     json_free(root);
     return m;
@@ -515,11 +567,26 @@ int lpm_find_dependents(const char *pkgname, char ***deps_out, int *ndeps_out) {
         }
 
         if (depends) {
-            char **new_res = realloc(result, (count + 1) * sizeof(char *));
-            if (new_res) {
-                result = new_res;
-                result[count++] = strdup(other->name);
+            char **new_res = realloc(result, ((size_t)count + 1) * sizeof(char *));
+            if (!new_res) {
+                manifest_free(other);
+                for (int i = 0; i < count; i++) free(result[i]);
+                free(result);
+                closedir(dir);
+                if (target) manifest_free(target);
+                return -1;
             }
+            result = new_res;
+            result[count] = strdup(other->name);
+            if (!result[count]) {
+                manifest_free(other);
+                for (int i = 0; i < count; i++) free(result[i]);
+                free(result);
+                closedir(dir);
+                if (target) manifest_free(target);
+                return -1;
+            }
+            count++;
         }
         manifest_free(other);
     }
