@@ -387,8 +387,12 @@ int cmd_install(int argc, char **argv) {
 
     /* 7. Extract payload into staging area */
     char stage_root[LPM_PATH_MAX];
-    snprintf(stage_root, sizeof(stage_root), "%s/root", tmpdir);
-    mkdir_p(stage_root);
+    int stage_written = snprintf(stage_root, sizeof(stage_root), "%s/root", tmpdir);
+    if (stage_written < 0 || (size_t)stage_written >= sizeof(stage_root) || mkdir_p(stage_root) != 0) {
+        fprintf(stderr, "lpm: failed to create transaction staging directory: %s\n", strerror(errno));
+        ret = 1;
+        goto cleanup;
+    }
 
     char *tar_payload_args[] = { "tar", "-xzf", lpkg_path, "-C", stage_root, "--exclude=manifest.json", NULL };
     if (safe_exec("tar", tar_payload_args) != 0) {
@@ -451,7 +455,13 @@ int cmd_install(int argc, char **argv) {
             char *last_slash = strrchr(backup_file, '/');
             if (last_slash) {
                 *last_slash = '\0';
-                mkdir_p(backup_file);
+                if (mkdir_p(backup_file) != 0) {
+                    *last_slash = '/';
+                    fclose(ledger);
+                    fprintf(stderr, "lpm: failed to create rollback backup directory: %s\n", strerror(errno));
+                    ret = 1;
+                    goto cleanup;
+                }
                 *last_slash = '/';
             }
             if (copy_file(m->files[i], backup_file) != 0) { fclose(ledger); ret = 1; goto cleanup; }
@@ -487,8 +497,21 @@ int cmd_install(int argc, char **argv) {
     }
 
     /* 11. Update installed database */
-    mkdir_p(LPM_INSTALLED);
-    mkdir_p(dbdir);
+    if (mkdir_p(LPM_INSTALLED) != 0 || mkdir_p(dbdir) != 0) {
+        fprintf(stderr, "lpm: failed to create installed package database directory: %s\n", strerror(errno));
+        for (int i = 0; i < m->nfiles; i++) {
+            if (file_existed[i]) {
+                char backup_file[LPM_PATH_MAX * 2];
+                snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
+                copy_file(backup_file, m->files[i]);
+            } else {
+                unlink(m->files[i]);
+            }
+        }
+        free(file_existed);
+        ret = 1;
+        goto cleanup;
+    }
     if (manifest_save(m, dbdir) != 0) {
         fprintf(stderr, "lpm: failed to write installed database entry. Rolling back...\n");
         for (int i = 0; i < m->nfiles; i++) {
