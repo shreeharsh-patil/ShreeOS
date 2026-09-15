@@ -9,6 +9,10 @@
 #include <dirent.h>
 #include <signal.h>
 
+#define LPM_MANIFEST_MAX_BYTES (1024UL * 1024UL)
+#define LPM_REPO_MAX_BYTES (8UL * 1024UL * 1024UL)
+#define LPM_MAX_PACKAGE_NAME 128U
+
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -23,16 +27,29 @@ static int mkdir_p(const char *path) {
     char tmp[LPM_PATH_MAX];
     char *p = NULL;
     size_t len;
+    int written;
 
-    snprintf(tmp, sizeof(tmp), "%s", path);
+    if (!path || !*path) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    written = snprintf(tmp, sizeof(tmp), "%s", path);
+    if (written < 0 || (size_t)written >= sizeof(tmp)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
     len = strlen(tmp);
-    if (len == 0) return 0;
-    if (tmp[len - 1] == '/') tmp[len - 1] = 0;
+    while (len > 1 && tmp[len - 1] == '/') tmp[--len] = '\0';
 
     for (p = tmp + 1; *p; p++) {
         if (*p == '/') {
-            *p = 0;
-            mkdir(tmp, 0755);
+            *p = '\0';
+            if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+                *p = '/';
+                return -1;
+            }
             *p = '/';
         }
     }
@@ -159,7 +176,10 @@ const char *manifest_get_checksum(const manifest *m, const char *file_path) {
 
 int manifest_save(const manifest *m, const char *dir) {
     char path[LPM_PATH_MAX], temporary[LPM_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    int written;
+    if (!m || !dir || !*dir) { errno = EINVAL; return -1; }
+    written = snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    if (written < 0 || (size_t)written >= sizeof(path)) { errno = ENAMETOOLONG; return -1; }
     if (mkdir_p(dir) != 0 && errno != EEXIST) return -1;
     if (snprintf(temporary, sizeof(temporary), "%s.tmp.%d", path, (int)getpid()) >= (int)sizeof(temporary)) return -1;
 
@@ -244,7 +264,9 @@ fail:
 
 bool lpm_parse_dep_spec(const char *dep_spec, char *name_out, size_t name_sz,
                         char *op_out, size_t op_sz, char *ver_out, size_t ver_sz) {
-    if (!dep_spec || !*dep_spec) return false;
+    if (!dep_spec || !*dep_spec || !name_out || name_sz < 2 ||
+        !op_out || op_sz < 3 || !ver_out || ver_sz < 2) return false;
+
     name_out[0] = '\0';
     op_out[0] = '\0';
     ver_out[0] = '\0';
@@ -254,32 +276,44 @@ bool lpm_parse_dep_spec(const char *dep_spec, char *name_out, size_t name_sz,
 
     size_t ni = 0;
     while (*p && (isalnum((unsigned char)*p) || *p == '.' || *p == '_' || *p == '-')) {
-        if (ni + 1 < name_sz) name_out[ni++] = *p;
-        p++;
+        if (ni + 1 >= name_sz) return false;
+        name_out[ni++] = *p++;
     }
     name_out[ni] = '\0';
-    if (ni == 0) return false;
+    if (ni == 0 || !lpm_valid_pkgname(name_out)) return false;
 
     while (*p == ' ' || *p == '\t') p++;
     if (!*p) return true;
 
     size_t oi = 0;
     while (*p == '>' || *p == '<' || *p == '=' || *p == '!') {
-        if (oi + 1 < op_sz) op_out[oi++] = *p;
-        p++;
+        if (oi + 1 >= op_sz) return false;
+        op_out[oi++] = *p++;
     }
     op_out[oi] = '\0';
 
+    if (strcmp(op_out, ">=") != 0 && strcmp(op_out, "<=") != 0 &&
+        strcmp(op_out, ">") != 0 && strcmp(op_out, "<") != 0 &&
+        strcmp(op_out, "=") != 0 && strcmp(op_out, "==") != 0 &&
+        strcmp(op_out, "!=") != 0) {
+        return false;
+    }
+
     while (*p == ' ' || *p == '\t') p++;
+    if (!*p) return false;
 
     size_t vi = 0;
-    while (*p && *p != ' ' && *p != '\t' && *p != ')') {
-        if (vi + 1 < ver_sz) ver_out[vi++] = *p;
-        p++;
+    while (*p && *p != ' ' && *p != '\t') {
+        if (vi + 1 >= ver_sz) return false;
+        unsigned char c = (unsigned char)*p;
+        if (iscntrl(c)) return false;
+        ver_out[vi++] = *p++;
     }
     ver_out[vi] = '\0';
+    if (vi == 0) return false;
 
-    return true;
+    while (*p == ' ' || *p == '\t') p++;
+    return *p == '\0';
 }
 
 bool lpm_version_matches(const char *installed_ver, const char *op, const char *req_ver) {
@@ -503,17 +537,26 @@ int lpm_find_dependents(const char *pkgname, char ***deps_out, int *ndeps_out) {
 
 manifest *manifest_load(const char *dir) {
     char path[LPM_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    int written;
+    if (!dir || !*dir) return NULL;
+
+    written = snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    if (written < 0 || (size_t)written >= sizeof(path)) return NULL;
+
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
 
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
     long len = ftell(f);
-    rewind(f);
-    if (len < 0) { fclose(f); return NULL; }
-    char *buf = malloc(len + 1);
+    if (len <= 0 || (unsigned long)len > LPM_MANIFEST_MAX_BYTES) {
+        fclose(f);
+        return NULL;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return NULL; }
+
+    char *buf = malloc((size_t)len + 1);
     if (!buf) { fclose(f); return NULL; }
-    if (fread(buf, 1, len, f) != (size_t)len) {
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
         free(buf); fclose(f); return NULL;
     }
     buf[len] = '\0';
@@ -527,6 +570,8 @@ manifest *manifest_load(const char *dir) {
 /* Package name validation: [a-zA-Z0-9][a-zA-Z0-9._-]* */
 bool lpm_valid_pkgname(const char *name) {
     if (!name || !*name) return false;
+    size_t name_len = strlen(name);
+    if (name_len == 0 || name_len > LPM_MAX_PACKAGE_NAME) return false;
     if (!((name[0] >= 'a' && name[0] <= 'z') ||
           (name[0] >= 'A' && name[0] <= 'Z') ||
           (name[0] >= '0' && name[0] <= '9')))
@@ -605,51 +650,84 @@ bool lpm_is_lpkg_file(const char *path) {
     return false;
 }
 
-int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename, char **out_sha256) {
-    if (out_version) *out_version = NULL;
-    if (out_filename) *out_filename = NULL;
-    if (out_sha256) *out_sha256 = NULL;
+static json_value *repo_cache_root = NULL;
+static json_value *repo_cache_packages = NULL;
+static int repo_cache_loaded = 0;
+
+static void free_repo_cache(void) {
+    json_free(repo_cache_root);
+    repo_cache_root = NULL;
+    repo_cache_packages = NULL;
+}
+
+static int load_repo_cache(void) {
+    if (repo_cache_loaded) return repo_cache_packages ? 0 : -1;
+    repo_cache_loaded = 1;
 
     FILE *f = fopen(LPM_REPO_JSON, "rb");
     if (!f) return -1;
 
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
     long len = ftell(f);
-    rewind(f);
-    if (len < 0) { fclose(f); return -1; }
-    char *buf = malloc(len + 1);
+    if (len <= 0 || (unsigned long)len > LPM_REPO_MAX_BYTES) {
+        fclose(f);
+        return -1;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return -1; }
+
+    char *buf = malloc((size_t)len + 1);
     if (!buf) { fclose(f); return -1; }
-    if (fread(buf, 1, len, f) != (size_t)len) {
-        free(buf); fclose(f); return -1;
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
+        free(buf);
+        fclose(f);
+        return -1;
     }
     buf[len] = '\0';
     fclose(f);
 
-    json_value *root = json_parse(buf);
+    repo_cache_root = json_parse(buf);
     free(buf);
-    if (!root) return -1;
+    if (!repo_cache_root) return -1;
 
-    json_value *packages = json_get(root, "packages");
-    if (!packages || packages->type != JSON_OBJECT) {
-        json_free(root);
+    repo_cache_packages = json_get(repo_cache_root, "packages");
+    if (!repo_cache_packages || repo_cache_packages->type != JSON_OBJECT) {
+        free_repo_cache();
         return -1;
     }
 
-    json_value *pkg_obj = json_get(packages, pkgname);
-    if (!pkg_obj || pkg_obj->type != JSON_OBJECT) {
-        json_free(root);
-        return -1;
-    }
+    (void)atexit(free_repo_cache);
+    return 0;
+}
+
+int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename, char **out_sha256) {
+    if (out_version) *out_version = NULL;
+    if (out_filename) *out_filename = NULL;
+    if (out_sha256) *out_sha256 = NULL;
+    if (!lpm_valid_pkgname(pkgname) || load_repo_cache() != 0) return -1;
+
+    json_value *pkg_obj = json_get(repo_cache_packages, pkgname);
+    if (!pkg_obj || pkg_obj->type != JSON_OBJECT) return -1;
 
     const char *ver = json_string(json_get(pkg_obj, "version"));
     const char *fn = json_string(json_get(pkg_obj, "filename"));
     const char *sha = json_string(json_get(pkg_obj, "sha256"));
+    if (!ver || !*ver || !fn || !*fn || !sha || strlen(sha) != 64) return -1;
 
-    if (out_version) *out_version = ver ? strdup(ver) : strdup("0.0");
-    if (out_filename) *out_filename = fn ? strdup(fn) : strdup("");
-    if (out_sha256) *out_sha256 = sha ? strdup(sha) : strdup("");
+    char *version_copy = out_version ? strdup(ver) : NULL;
+    char *filename_copy = out_filename ? strdup(fn) : NULL;
+    char *sha_copy = out_sha256 ? strdup(sha) : NULL;
 
-    json_free(root);
+    if ((out_version && !version_copy) || (out_filename && !filename_copy) ||
+        (out_sha256 && !sha_copy)) {
+        free(version_copy);
+        free(filename_copy);
+        free(sha_copy);
+        return -1;
+    }
+
+    if (out_version) *out_version = version_copy;
+    if (out_filename) *out_filename = filename_copy;
+    if (out_sha256) *out_sha256 = sha_copy;
     return 0;
 }
 
@@ -669,7 +747,8 @@ static const char *get_lock_file(char *buf, size_t buf_sz) {
     if (env && *env) return env;
     const char *db = getenv("LPM_DB_DIR");
     if (db && *db) {
-        snprintf(buf, buf_sz, "%s/lock", db);
+        int written = snprintf(buf, buf_sz, "%s/lock", db);
+        if (written < 0 || (size_t)written >= buf_sz) return NULL;
         return buf;
     }
     return LPM_LOCK_FILE;
@@ -679,16 +758,28 @@ int lpm_lock(void) {
 #ifndef _WIN32
     char lock_path_buf[LPM_PATH_MAX];
     const char *lock_file = get_lock_file(lock_path_buf, sizeof(lock_path_buf));
+    if (!lock_file || !*lock_file) {
+        fprintf(stderr, "lpm: error: transaction lock path is invalid or too long\n");
+        return -1;
+    }
 
     char dir_buf[LPM_PATH_MAX];
-    snprintf(dir_buf, sizeof(dir_buf), "%s", lock_file);
+    int written = snprintf(dir_buf, sizeof(dir_buf), "%s", lock_file);
+    if (written < 0 || (size_t)written >= sizeof(dir_buf)) {
+        fprintf(stderr, "lpm: error: transaction lock path is too long\n");
+        return -1;
+    }
     char *slash = strrchr(dir_buf, '/');
     if (slash) {
         *slash = '\0';
-        mkdir_p(dir_buf);
+        if (*dir_buf && mkdir_p(dir_buf) != 0 && errno != EEXIST) {
+            fprintf(stderr, "lpm: error: cannot create transaction lock directory %s: %s\n",
+                    dir_buf, strerror(errno));
+            return -1;
+        }
     }
 
-    for (int attempt = 0; attempt < 30; attempt++) {
+    for (int attempt = 0; attempt < 300; attempt++) {
         lock_fd = open(lock_file, O_RDWR | O_CREAT, 0600);
         if (lock_fd < 0) {
             fprintf(stderr, "lpm: error: cannot create or open transaction lock %s: %s\n",
@@ -716,15 +807,6 @@ int lpm_lock(void) {
             holder_pid = (pid_t)atoi(pid_buf);
         }
 
-        if (holder_pid > 0 && kill(holder_pid, 0) == -1 && errno == ESRCH) {
-            fprintf(stderr, "lpm: notice: reclaiming stale lock from defunct process PID %d\n", (int)holder_pid);
-            unlink(lock_file);
-            close(lock_fd);
-            lock_fd = -1;
-            usleep(50000);
-            continue;
-        }
-
         close(lock_fd);
         lock_fd = -1;
         if (attempt == 0 && holder_pid > 0) {
@@ -733,7 +815,7 @@ int lpm_lock(void) {
         usleep(100000); /* 100ms */
     }
 
-    fprintf(stderr, "lpm: error: another package manager transaction is currently running.\n");
+    fprintf(stderr, "lpm: error: timed out after 30 seconds waiting for another package manager transaction.\n");
     return -1;
 #else
     return 0;
