@@ -51,7 +51,11 @@ int main(int argc, char **argv) {
 
     const char *staging = argv[1];
     char manifest_path[LPM_PATH_MAX];
-    snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.json", staging);
+    int manifest_written = snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.json", staging);
+    if (manifest_written < 0 || (size_t)manifest_written >= sizeof(manifest_path)) {
+        fprintf(stderr, "lpm-build: staging path is too long\n");
+        return 1;
+    }
 
     manifest *m = manifest_load(staging);
     if (!m || !m->name || !*m->name) {
@@ -61,10 +65,16 @@ int main(int argc, char **argv) {
     }
 
     char out_lpkg[LPM_PATH_MAX];
+    int output_written;
     if (argc >= 3) {
-        snprintf(out_lpkg, sizeof(out_lpkg), "%s", argv[2]);
+        output_written = snprintf(out_lpkg, sizeof(out_lpkg), "%s", argv[2]);
     } else {
-        snprintf(out_lpkg, sizeof(out_lpkg), "%s-%s.lpkg", m->name, m->version);
+        output_written = snprintf(out_lpkg, sizeof(out_lpkg), "%s-%s.lpkg", m->name, m->version);
+    }
+    if (output_written < 0 || (size_t)output_written >= sizeof(out_lpkg)) {
+        fprintf(stderr, "lpm-build: output package path is too long\n");
+        manifest_free(m);
+        return 1;
     }
 
     printf("lpm-build: packaging %s-%s into %s...\n", m->name, m->version, out_lpkg);
