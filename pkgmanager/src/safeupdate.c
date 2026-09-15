@@ -72,8 +72,12 @@ static int set_status(const char *id, const char *state) {
 
     file = fopen(temporary, "w");
     if (!file) return -1;
-    if (fprintf(file, "%s\n", state) < 0 || fflush(file) != 0 ||
-        fsync(fileno(file)) != 0 || fclose(file) != 0) {
+    int failed = 0;
+    if (fprintf(file, "%s\n", state) < 0) failed = 1;
+    if (!failed && fflush(file) != 0) failed = 1;
+    if (!failed && fsync(fileno(file)) != 0) failed = 1;
+    if (fclose(file) != 0) failed = 1;
+    if (failed) {
         unlink(temporary);
         return -1;
     }
