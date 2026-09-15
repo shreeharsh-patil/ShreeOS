@@ -185,7 +185,7 @@ echo "==> Target desktop graphics readiness"
 if bash "$SCRIPT_DIR/graphics-readiness.sh"; then
   :
 else
-  warn "Unable to determine target graphical SDK readiness"
+  warn "Target graphical stack is incomplete; desktop certification remains deferred"
 fi
 
 echo
