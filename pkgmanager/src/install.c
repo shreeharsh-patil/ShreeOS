@@ -487,8 +487,12 @@ int cmd_install(int argc, char **argv) {
             return 1;
         }
     } else {
-        strncpy(lpkg_path, pkg_arg, sizeof(lpkg_path) - 1);
-        lpkg_path[sizeof(lpkg_path) - 1] = '\0';
+        int path_written = snprintf(lpkg_path, sizeof(lpkg_path), "%s", pkg_arg);
+        if (path_written < 0 || (size_t)path_written >= sizeof(lpkg_path)) {
+            fprintf(stderr, "lpm: package archive path is too long\n");
+            lpm_unlock();
+            return 1;
+        }
     }
 
     /* 1. Fail closed on archive checksum if expected SHA is defined */
@@ -550,16 +554,23 @@ int cmd_install(int argc, char **argv) {
     /* 4. Check dependencies */
     char **missing_deps = NULL;
     int nmissing = 0;
-    if (manifest_check_deps(m, &missing_deps, &nmissing) > 0) {
+    int dependency_result = manifest_check_deps(m, &missing_deps, &nmissing);
+    if (dependency_result < 0) {
+        fprintf(stderr, "lpm: error: dependency validation failed internally; refusing installation\n");
+        ret = 1;
+        goto cleanup;
+    }
+    if (dependency_result > 0) {
         fprintf(stderr, "lpm: error: missing dependencies for %s:\n", m->name);
         for (int i = 0; i < nmissing; i++) {
-            fprintf(stderr, "  - %s\n", missing_deps[i]);
+            fprintf(stderr, "  - %s\n", missing_deps[i] ? missing_deps[i] : "(invalid dependency)");
             free(missing_deps[i]);
         }
         free(missing_deps);
         ret = 1;
         goto cleanup;
     }
+    free(missing_deps);
 
     /* 5. Validate file paths in manifest */
     for (int i = 0; i < m->nfiles; i++) {
@@ -645,7 +656,13 @@ int cmd_install(int argc, char **argv) {
         int checksum_mismatches = 0;
         for (int i = 0; i < m->nchecksums; i++) {
             char file_in_stage[LPM_PATH_MAX];
-            snprintf(file_in_stage, sizeof(file_in_stage), "%s/root%s", tmpdir, m->checksums[i].path);
+            int checksum_path_written = snprintf(file_in_stage, sizeof(file_in_stage),
+                                                 "%s/root%s", tmpdir, m->checksums[i].path);
+            if (checksum_path_written < 0 || (size_t)checksum_path_written >= sizeof(file_in_stage)) {
+                fprintf(stderr, "lpm: staged checksum path is too long: %s\n", m->checksums[i].path);
+                checksum_mismatches++;
+                continue;
+            }
             char file_sha[65] = {0};
             if (lpm_sha256_file(file_in_stage, file_sha) != 0 ||
                 strcmp(file_sha, m->checksums[i].sha256) != 0) {
@@ -663,11 +680,16 @@ int cmd_install(int argc, char **argv) {
 
     /* 9. Prepare Rollback Backups for existing files */
     char backup_dir[LPM_PATH_MAX + 64];
-    snprintf(transaction_dir, sizeof(transaction_dir), "%s/%ld-%ld", LPM_TRANSACTIONS,
-             (long)time(NULL), (long)getpid());
-    snprintf(transaction_status, sizeof(transaction_status), "%s/status", transaction_dir);
-    snprintf(rollback_ledger, sizeof(rollback_ledger), "%s/rollback/ledger", transaction_dir);
-    snprintf(backup_dir, sizeof(backup_dir), "%s/rollback/files", transaction_dir);
+    int tx_written = snprintf(transaction_dir, sizeof(transaction_dir), "%s/%ld-%ld",
+                              LPM_TRANSACTIONS, (long)time(NULL), (long)getpid());
+    if (tx_written < 0 || (size_t)tx_written >= sizeof(transaction_dir) ||
+        snprintf(transaction_status, sizeof(transaction_status), "%s/status", transaction_dir) >= (int)sizeof(transaction_status) ||
+        snprintf(rollback_ledger, sizeof(rollback_ledger), "%s/rollback/ledger", transaction_dir) >= (int)sizeof(rollback_ledger) ||
+        snprintf(backup_dir, sizeof(backup_dir), "%s/rollback/files", transaction_dir) >= (int)sizeof(backup_dir)) {
+        fprintf(stderr, "lpm: transaction path is too long\n");
+        ret = 1;
+        goto cleanup;
+    }
     if (mkdir_p(backup_dir) != 0 && errno != EEXIST) { ret = 1; goto cleanup; }
     {
         FILE *status = fopen(transaction_status, "w");
@@ -690,7 +712,13 @@ int cmd_install(int argc, char **argv) {
         if (access(m->files[i], F_OK) == 0) {
             file_existed[i] = 1;
             char backup_file[LPM_PATH_MAX * 2];
-            snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
+            int backup_written = snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
+            if (backup_written < 0 || (size_t)backup_written >= sizeof(backup_file)) {
+                fclose(ledger);
+                fprintf(stderr, "lpm: rollback backup path is too long: %s\n", m->files[i]);
+                ret = 1;
+                goto cleanup;
+            }
             char *last_slash = strrchr(backup_file, '/');
             if (last_slash) {
                 *last_slash = '\0';
