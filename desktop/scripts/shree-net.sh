@@ -98,7 +98,9 @@ interactive_menu() {
     *)
       if command -v wpa_supplicant >/dev/null 2>&1; then
         local pw conf_tmp wlan_dev ssid_bytes ssid_hex
-        pw=$(printf "\n" | dmenu -p "Password for ${choice} (leave empty for open network):" -c || true)
+        if ! pw=$(printf "\n" | dmenu -p "Password for ${choice} (leave empty for open network):" -c); then
+          return 0
+        fi
 
         ssid_bytes=$(printf '%s' "$choice" | wc -c | tr -d '[:space:]')
         if ! [[ "$ssid_bytes" =~ ^[0-9]+$ ]] || [ "$ssid_bytes" -lt 1 ] || [ "$ssid_bytes" -gt 32 ]; then
