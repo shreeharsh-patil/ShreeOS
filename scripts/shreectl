@@ -220,7 +220,7 @@ cmd_backup_db() {
       [ -d "$source" ] || shreeos_die "Package database is missing: $source"
       mkdir -p "$snap_dir" || shreeos_die "Cannot create backup directory: $snap_dir"
 
-      id="db_$(date +%Y%m%d_%H%M%S)_$"
+      id="db_$(date +%Y%m%d_%H%M%S)_$$"
       dest="${snap_dir}/${id}"
 
       if ! cp -a "$source" "$dest"; then
@@ -236,7 +236,7 @@ cmd_backup_db() {
       local source current rollback
       source="${snap_dir}/${id}"
       current="/var/lib/lpm/installed"
-      rollback="/var/lib/lpm/.installed.pre-restore.$"
+      rollback="/var/lib/lpm/.installed.pre-restore.$$"
 
       if [ -z "$id" ] || ! [[ "$id" =~ ^db_[0-9]{8}_[0-9]{6}_[0-9]+$ ]] || [ ! -d "$source" ]; then
         shreeos_die "Usage: shreectl backup-db restore <backup_id>"
