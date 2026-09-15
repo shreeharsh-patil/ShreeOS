@@ -114,8 +114,8 @@ shreeos_step "Executing automated installation to virtual disk (install-to-disk.
 INSTALL_LOG="${LOG_DIR}/qemu-e2e-install.log"
 INSTALL_PREFIX=()
 if [ "$(id -u)" -ne 0 ]; then
-  if command -v sudo >/dev/null 2>&1; then
-    INSTALL_PREFIX=(sudo -E)
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    INSTALL_PREFIX=(sudo -n -E)
   elif [ "$REQUIRE_ARTIFACTS" = "1" ]; then
     shreeos_die "sudo/root privileges are required for strict installation testing"
   else
