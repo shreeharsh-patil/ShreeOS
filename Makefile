@@ -183,9 +183,10 @@ packages: $(MARKER_DIR)/.packages
 	bash scripts/verify-stage.sh packages
 
 $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(PKG_DEPS) | check-toolchain-cache check-base-cache check-packages-cache
-	$(MAKE) -C pkgmanager/src
-	$(MAKE) -C init/src
-	$(MAKE) -C hardware
+	bash -c 'source build.conf; export PATH="$SHREEOS_TOOLS/bin:$PATH"; export CROSS_COMPILE="$SHREEOS_TARGET_TRIPLET-"; \
+	  $(MAKE) -C pkgmanager/src clean all CROSS_COMPILE="$CROSS_COMPILE"; \
+	  $(MAKE) -C init/src clean all CROSS_COMPILE="$CROSS_COMPILE"; \
+	  $(MAKE) -C hardware clean all CROSS_COMPILE="$CROSS_COMPILE"'
 	bash scripts/verify-stage.sh packages
 	@touch $@
 
