@@ -27,7 +27,12 @@ for arg in "$@"; do
 done
 
 lumen_require_cmd qemu-img sfdisk mkfs.ext4 losetup "$QEMU_BIN"
-command -v sudo >/dev/null 2>&1 || lumen_die "sudo is required for loop-device installer testing"
+SUDO=()
+if [ "$(id -u)" -ne 0 ]; then
+  command -v sudo >/dev/null 2>&1 || lumen_die "sudo is required for loop-device installer testing"
+  sudo -n true >/dev/null 2>&1 || lumen_die "passwordless sudo is required for non-interactive loop-device installer testing"
+  SUDO=(sudo -n)
+fi
 if ! command -v mkfs.vfat >/dev/null 2>&1 && ! command -v mkfs.fat >/dev/null 2>&1; then
   lumen_die "mkfs.vfat or mkfs.fat is required for the default UEFI installer path"
 fi
@@ -36,6 +41,7 @@ LOOP=""
 LOG_FILE=""
 CREDS_FILE=""
 QEMU_PID=""
+TEST_SUCCEEDED=false
 
 cleanup() {
   if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
@@ -43,15 +49,19 @@ cleanup() {
     wait "$QEMU_PID" 2>/dev/null || true
   fi
   if [ -n "$LOOP" ]; then
-    sudo losetup -d "$LOOP" 2>/dev/null || true
+    "${SUDO[@]}" losetup -d "$LOOP" 2>/dev/null || true
   fi
   [ -n "$CREDS_FILE" ] && rm -f "$CREDS_FILE"
   if [ "$KEEP" = false ]; then
-    [ -n "$LOG_FILE" ] && rm -f "$LOG_FILE"
+    if [ "$TEST_SUCCEEDED" = true ]; then
+      [ -n "$LOG_FILE" ] && rm -f "$LOG_FILE"
+    fi
     rm -f "$DISK_IMAGE"
   fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 lumen_step "Installer test: install to isolated virtual disk"
 
@@ -59,7 +69,7 @@ rm -f "$DISK_IMAGE"
 qemu-img create -f raw "$DISK_IMAGE" "$DISK_SIZE" >/dev/null
 lumen_ok "Disk image created: ${DISK_IMAGE}"
 
-LOOP=$(sudo losetup --find --show --partscan "$DISK_IMAGE")
+LOOP=$("${SUDO[@]}" losetup --find --show --partscan "$DISK_IMAGE")
 [ -n "$LOOP" ] || lumen_die "Unable to allocate a loop device for installer test"
 lumen_log "Loop device: ${LOOP}"
 
@@ -67,7 +77,7 @@ CREDS_FILE=$(mktemp /tmp/shreeos-install-creds-XXXXXX)
 chmod 600 "$CREDS_FILE"
 printf '%s\n' "test-root-password" > "$CREDS_FILE"
 
-sudo bash "${LUMEN_ROOT_DIR}/installer/scripts/install-to-disk.sh" "$LOOP" --yes \
+"${SUDO[@]}" bash "${LUMEN_ROOT_DIR}/installer/scripts/install-to-disk.sh" "$LOOP" --yes \
   --hostname="shreeos-test" \
   --timezone="UTC" \
   --credentials-file="$CREDS_FILE"
@@ -76,7 +86,7 @@ rm -f "$CREDS_FILE"
 CREDS_FILE=""
 
 sync
-sudo losetup -d "$LOOP"
+"${SUDO[@]}" losetup -d "$LOOP"
 LOOP=""
 
 lumen_step "Booting installed disk in QEMU"
@@ -118,6 +128,7 @@ echo "--- End of output ---"
 if [ "$FOUND" = true ]; then
   lumen_ok "Installer test PASSED — booted from disk to init"
   echo "  Time: ${WAITED}s"
+  TEST_SUCCEEDED=true
   exit 0
 fi
 
