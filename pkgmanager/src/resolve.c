@@ -270,16 +270,34 @@ int cmd_verify(int argc, char **argv) {
 }
 
 static int is_local_development_url(const char *url) {
-    const char *suffix = NULL;
-    if (!url) return 0;
-    if (strncmp(url, "http://localhost", 16) == 0) {
-        suffix = url + 16;
-    } else if (strncmp(url, "http://127.0.0.1", 16) == 0) {
-        suffix = url + 16;
+    const char *authority;
+    const char *suffix;
+    const char *p;
+    unsigned long port = 0;
+
+    if (!url || strncmp(url, "http://", 7) != 0) return 0;
+    authority = url + 7;
+
+    if (strncmp(authority, "localhost", 9) == 0) {
+        suffix = authority + 9;
+    } else if (strncmp(authority, "127.0.0.1", 9) == 0) {
+        suffix = authority + 9;
     } else {
         return 0;
     }
-    return *suffix == '\0' || *suffix == ':' || *suffix == '/';
+
+    if (*suffix == '\0' || *suffix == '/') return 1;
+    if (*suffix != ':') return 0;
+
+    p = suffix + 1;
+    if (!isdigit((unsigned char)*p)) return 0;
+    while (isdigit((unsigned char)*p)) {
+        port = port * 10UL + (unsigned long)(*p - '0');
+        if (port > 65535UL) return 0;
+        p++;
+    }
+
+    return port > 0 && (*p == '\0' || *p == '/');
 }
 
 static int get_repo_url(char *buf, size_t maxlen) {
