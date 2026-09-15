@@ -105,9 +105,7 @@ run_listener_daemon() {
     part_file=$(mktemp "${dl_dir}/.shree-connect.XXXXXX.part")
     final_file="${dl_dir}/Received_${ts}_$$.dat"
 
-    if ! nc -l -p "$port" > "$part_file" 2>/dev/null; then
-      nc_status=$?
-    fi
+    nc -l -p "$port" > "$part_file" 2>/dev/null || nc_status=$?
 
     if [ ! -s "$part_file" ]; then
       rm -f "$part_file"
