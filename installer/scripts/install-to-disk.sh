@@ -62,6 +62,7 @@ done
 
 TARGET=""
 LOOP_DEV=""
+USER_TMP_CRED=""
 
 cleanup() {
   if [ -n "$TARGET" ] && [ -d "$TARGET" ]; then
@@ -73,6 +74,9 @@ cleanup() {
   if [ -n "$LOOP_DEV" ]; then
     shreeos_log "Detaching loop device ${LOOP_DEV}..."
     losetup -d "$LOOP_DEV" 2>/dev/null || true
+  fi
+  if [ -n "${USER_TMP_CRED:-}" ] && [ -f "${USER_TMP_CRED}" ]; then
+    rm -f "${USER_TMP_CRED}"
   fi
   if [ "${CREDS_FILE_OWNED:-false}" = true ] && [ -n "${CREDS_FILE:-}" ] && [ -f "${CREDS_FILE}" ]; then
     rm -f "${CREDS_FILE}"
@@ -99,8 +103,10 @@ if [ -n "$CREDS_FILE" ]; then
   if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
     shreeos_die "Credentials file must be a regular, non-symlink file."
   fi
-  if [ "$(stat -c '%u' "$CREDS_FILE")" != "$(id -u)" ] || [ "$(stat -c '%a' "$CREDS_FILE")" != "600" ]; then
-    shreeos_die "Credentials file must be owned by the invoking user and have mode exactly 0600."
+  CREDS_OWNER="$(stat -c '%u' "$CREDS_FILE")"
+  EXPECTED_CREDS_OWNER="${SUDO_UID:-$(id -u)}"
+  if [ "$CREDS_OWNER" != "$EXPECTED_CREDS_OWNER" ] || [ "$(stat -c '%a' "$CREDS_FILE")" != "600" ]; then
+    shreeos_die "Credentials file must be owned by the invoking user (including the original sudo user) and have mode exactly 0600."
   fi
   CREDS_LINE_COUNT=$(awk 'END { print NR }' "$CREDS_FILE")
   if [ "$CREDS_LINE_COUNT" -lt 1 ] || [ "$CREDS_LINE_COUNT" -gt 2 ]; then
@@ -125,6 +131,13 @@ if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
 fi
 
+# Partitioning, loop setup, filesystem creation, mounting and GRUB installation
+# all require real root privileges. Fail before touching the requested target
+# rather than failing half-way through an installation.
+if [ "$(id -u)" -ne 0 ]; then
+  shreeos_die "Installation requires root privileges. Re-run with sudo: sudo bash installer/scripts/install-to-disk.sh ..."
+fi
+
 # Complete every non-destructive preflight before creating a loop device,
 # partitioning, formatting, or mounting the requested disk.
 STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
@@ -139,7 +152,7 @@ elif [ ! -s "${ROOTFS_CPIO}" ]; then
 fi
 if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"; fi
 if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
-shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid cpio gzip
+shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip
 if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
     shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
@@ -189,6 +202,26 @@ PART_BIOS=$(get_partition_dev "$WORKING_DISK" 1)
 PART_ESP=$(get_partition_dev "$WORKING_DISK" 2)
 PART_ROOT=$(get_partition_dev "$WORKING_DISK" 3)
 
+# Partition nodes can appear asynchronously after sfdisk/loop partition scans.
+# Ask the kernel/udev to settle, then fail explicitly instead of racing mkfs.
+if command -v partprobe >/dev/null 2>&1; then
+  partprobe "$WORKING_DISK" >/dev/null 2>&1 || true
+fi
+if command -v udevadm >/dev/null 2>&1; then
+  udevadm settle --timeout=10 >/dev/null 2>&1 || true
+fi
+for _attempt in {1..20}; do
+  if [ -b "$PART_ROOT" ] && { [ "$BOOT_MODE" = "bios" ] || [ -b "$PART_ESP" ]; }; then
+    break
+  fi
+  sleep 0.25
+done
+
+[ -b "$PART_ROOT" ] || shreeos_die "Root partition device did not appear: ${PART_ROOT}"
+if [ "$BOOT_MODE" != "bios" ]; then
+  [ -b "$PART_ESP" ] || shreeos_die "EFI partition device did not appear: ${PART_ESP}"
+fi
+
 shreeos_log "Detected partition devices (BIOS: ${PART_BIOS}, ESP: ${PART_ESP}, Root: ${PART_ROOT})"
 
 # 2. Format ESP (FAT32) and Root (ext4)
@@ -211,9 +244,7 @@ mount "$PART_ROOT" "$TARGET"
 
 if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "uefi" ]; then
   mkdir -p "${TARGET}/boot/efi"
-  if [ -b "$PART_ESP" ]; then
-    mount "$PART_ESP" "${TARGET}/boot/efi"
-  fi
+  mount "$PART_ESP" "${TARGET}/boot/efi"
 fi
 
 # 4. Copy rootfs payload
@@ -261,7 +292,7 @@ if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
     if command -v openssl >/dev/null 2>&1; then
       HASHED_PW=$(printf "%s" "$ROOT_PW" | openssl passwd -6 -salt "$SALT" -stdin 2>/dev/null || echo "")
     elif command -v mkpasswd >/dev/null 2>&1; then
-      HASHED_PW=$(printf "%s" "$ROOT_PW" | mkpasswd -m sha-512 -S "$SALT" 2>/dev/null || echo "")
+      HASHED_PW=$(printf "%s" "$ROOT_PW" | mkpasswd -m sha-512 -S "$SALT" -s 2>/dev/null || echo "")
     fi
 
     # Wipe ROOT_PW immediately
@@ -289,7 +320,11 @@ if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
 
     bash "${SCRIPT_DIR}/configure-user.sh" "$TARGET" "$USERNAME" "$USER_TMP_CRED"
     rm -f "$USER_TMP_CRED"
+    USER_TMP_CRED=""
   fi
+
+  USER_PW=""
+  unset USER_PW
 fi
 
 # 6. Install Bootloader (UEFI & BIOS)

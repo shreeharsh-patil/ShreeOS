@@ -9,7 +9,9 @@ branding/
 ├── logo/
 │   └── shreeos-logo.svg        # Vector logo
 ├── wallpapers/
-│   └── shreeos-wallpaper.png   # Default desktop wallpaper
+│   ├── shreeos-wallpaper.svg   # Default desktop wallpaper
+│   ├── shreeos-calm-dark.svg   # Dark appearance wallpaper
+│   └── shreeos-calm-light.svg  # Light appearance wallpaper
 ├── theme/
 └── README.md
 ```

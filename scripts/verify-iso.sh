@@ -47,6 +47,7 @@ required_paths=(
   "/boot/grub/grub.cfg"
   "/boot/grub/i386-pc/eltorito.img"
   "/boot/grub/x86_64-efi/efi.img"
+  "/EFI/BOOT/BOOTX64.EFI"
 )
 for path in "${required_paths[@]}"; do
   if xorriso -indev "$ISO" -ls "$path" >/dev/null 2>&1; then

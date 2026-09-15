@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 static int safe_exec(const char *file, char *const argv[]) {
     pid_t pid = fork();
@@ -25,8 +26,12 @@ static int safe_exec(const char *file, char *const argv[]) {
         execvp(file, argv);
         _exit(127);
     }
-    int status;
-    waitpid(pid, &status, 0);
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) return -1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
@@ -264,22 +269,56 @@ int cmd_verify(int argc, char **argv) {
     return 0;
 }
 
+static int is_local_development_url(const char *url) {
+    const char *authority;
+    const char *suffix;
+    const char *p;
+    unsigned long port = 0;
+
+    if (!url || strncmp(url, "http://", 7) != 0) return 0;
+    authority = url + 7;
+
+    if (strncmp(authority, "localhost", 9) == 0) {
+        suffix = authority + 9;
+    } else if (strncmp(authority, "127.0.0.1", 9) == 0) {
+        suffix = authority + 9;
+    } else {
+        return 0;
+    }
+
+    if (*suffix == '\0' || *suffix == '/') return 1;
+    if (*suffix != ':') return 0;
+
+    p = suffix + 1;
+    if (!isdigit((unsigned char)*p)) return 0;
+    while (isdigit((unsigned char)*p)) {
+        port = port * 10UL + (unsigned long)(*p - '0');
+        if (port > 65535UL) return 0;
+        p++;
+    }
+
+    return port > 0 && (*p == '\0' || *p == '/');
+}
+
 static int get_repo_url(char *buf, size_t maxlen) {
+    int have_configured_url = 0;
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {
         if (fgets(buf, maxlen, f)) {
             size_t len = strlen(buf);
-            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' || buf[len-1] == ' ')) {
+            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' ||
+                               buf[len-1] == ' ' || buf[len-1] == '\t')) {
                 buf[--len] = '\0';
             }
-            if (len > 0) goto validate;
+            have_configured_url = (len > 0);
         }
         fclose(f);
     }
-    snprintf(buf, maxlen, "http://localhost:8080");
-validate:
-    if (strncmp(buf, "https://", 8) == 0 || strncmp(buf, "http://localhost", 16) == 0 ||
-        strncmp(buf, "http://127.0.0.1", 16) == 0) return 0;
+    if (!have_configured_url) {
+        snprintf(buf, maxlen, "http://localhost:8080");
+    }
+
+    if (strncmp(buf, "https://", 8) == 0 || is_local_development_url(buf)) return 0;
     fprintf(stderr, "lpm: refusing insecure repository URL '%s' (HTTPS is required except localhost development repositories)\n", buf);
     return -1;
 }
@@ -303,7 +342,7 @@ int cmd_update(int argc, char **argv) {
     snprintf(repo_sig_url, sizeof(repo_sig_url), "%s/repo.json.sig", url);
 
     /* Fetch repo.json using curl or wget */
-    char *curl_json_args[] = { "curl", "-sSL", repo_file_url, "-o", tmp_json, NULL };
+    char *curl_json_args[] = { "curl", "-fsSL", "--retry", "3", repo_file_url, "-o", tmp_json, NULL };
     char *wget_json_args[] = { "wget", "-q", repo_file_url, "-O", tmp_json, NULL };
 
     int res = safe_exec("curl", curl_json_args);
@@ -322,7 +361,7 @@ int cmd_update(int argc, char **argv) {
     }
 
     /* Fetch repo.json.sig */
-    char *curl_sig_args[] = { "curl", "-sSL", repo_sig_url, "-o", tmp_sig, NULL };
+    char *curl_sig_args[] = { "curl", "-fsSL", "--retry", "3", repo_sig_url, "-o", tmp_sig, NULL };
     char *wget_sig_args[] = { "wget", "-q", repo_sig_url, "-O", tmp_sig, NULL };
     int sig_res = safe_exec("curl", curl_sig_args);
     if (sig_res != 0) {
@@ -339,8 +378,33 @@ int cmd_update(int argc, char **argv) {
         }
     }
 
-    /* Verify signature if public key is configured */
-    if (pubkey_path && access(pubkey_path, F_OK) == 0) {
+    const int local_development_repo = is_local_development_url(url);
+    const int explicit_pubkey = getenv("LPM_REPO_PUBKEY") != NULL &&
+                                *getenv("LPM_REPO_PUBKEY") != '\0';
+    const int pubkey_available = pubkey_path && *pubkey_path &&
+                                 access(pubkey_path, R_OK) == 0;
+
+    if (explicit_pubkey && !pubkey_available) {
+        fprintf(stderr, "lpm: security error: configured repository public key is unreadable: %s\n",
+                pubkey_path ? pubkey_path : "(unset)");
+        unlink(tmp_json);
+        unlink(tmp_sig);
+        lpm_unlock();
+        return 1;
+    }
+
+    if (!local_development_repo && !pubkey_available) {
+        fprintf(stderr,
+                "lpm: security error: remote repositories require a configured public key "
+                "(LPM_REPO_PUBKEY or /etc/lpm/keys/shreeos-repo.pub)\n");
+        unlink(tmp_json);
+        unlink(tmp_sig);
+        lpm_unlock();
+        return 1;
+    }
+
+    /* Verify every non-local repository signature before accepting metadata. */
+    if (pubkey_available) {
         if (sig_res != 0 || access(tmp_sig, F_OK) != 0) {
             fprintf(stderr, "lpm: security error: repository signature missing at %s\n", repo_sig_url);
             fprintf(stderr, "lpm: retaining last valid repository index.\n");
@@ -364,6 +428,9 @@ int cmd_update(int argc, char **argv) {
             return 1;
         }
         printf("lpm: repository signature verified with %s\n", pubkey_path);
+    } else {
+        /* Unsigned metadata is only permitted for explicit localhost development. */
+        unlink(tmp_sig);
     }
 
     /* Validate JSON structure before replacing current index */
@@ -384,11 +451,21 @@ int cmd_update(int argc, char **argv) {
                         free(buf);
                         json_free(root);
 
-                        rename(tmp_json, LPM_REPO_JSON);
+                        if (rename(tmp_json, LPM_REPO_JSON) != 0) {
+                            fprintf(stderr, "lpm: failed to commit repository index: %s\n", strerror(errno));
+                            unlink(tmp_json);
+                            unlink(tmp_sig);
+                            lpm_unlock();
+                            return 1;
+                        }
                         if (access(tmp_sig, F_OK) == 0) {
                             char final_sig[LPM_PATH_MAX];
                             snprintf(final_sig, sizeof(final_sig), "%s.sig", LPM_REPO_JSON);
-                            rename(tmp_sig, final_sig);
+                            if (rename(tmp_sig, final_sig) != 0) {
+                                fprintf(stderr, "lpm: warning: repository index updated, but signature cache could not be stored: %s\n",
+                                        strerror(errno));
+                                unlink(tmp_sig);
+                            }
                         }
                         printf("lpm: repository index updated successfully\n");
                         lpm_unlock();

@@ -37,7 +37,7 @@ while true; do
   echo "    [4] Rebuild Initramfs Archive (/boot/initramfs.cpio.gz)"
   echo "    [5] Bootloader Repair (Regenerate GRUB Configuration)"
   echo "    [6] Hardware & System Diagnostics Report"
-  echo "    [7] Check & Repair Root Filesystem (fsck)"
+  echo "    [7] Check Root Filesystem Safely (read-only fsck)"
   echo "    [8] Reset Network Interfaces & Resolvers"
   echo "    [9] Drop to Root Maintenance Shell"
   echo "    [0] Reboot / Power Off"
@@ -51,13 +51,29 @@ while true; do
       exit 0
       ;;
     2)
-      echo "==> Running LPM package verification and repair..."
+      echo "==> Running LPM package verification and repair diagnostics..."
       if [ -d /var/lib/lpm/installed ]; then
+        VERIFY_FAILURES=0
+        VERIFY_COUNT=0
         for pkg in /var/lib/lpm/installed/*; do
           [ -d "$pkg" ] || continue
-          lpm verify "$(basename "$pkg")" || true
+          VERIFY_COUNT=$((VERIFY_COUNT + 1))
+          if ! lpm verify "$(basename "$pkg")"; then
+            VERIFY_FAILURES=$((VERIFY_FAILURES + 1))
+          fi
         done
-        lpm repair || true
+
+        if [ "$VERIFY_FAILURES" -gt 0 ]; then
+          echo "WARNING: ${VERIFY_FAILURES} of ${VERIFY_COUNT} package(s) failed integrity verification."
+        else
+          echo "Package verification passed for ${VERIFY_COUNT} package(s)."
+        fi
+
+        if lpm repair; then
+          echo "LPM repair diagnostics completed successfully."
+        else
+          echo "WARNING: LPM still reports package integrity problems; reinstall the affected packages before normal boot."
+        fi
       else
         echo "No installed packages found in /var/lib/lpm/installed."
       fi
@@ -78,27 +94,49 @@ while true; do
     4)
       echo "==> Rebuilding system initramfs archive (/boot/initramfs.cpio.gz)..."
       INITRAMFS_TARGET="/boot/initramfs.cpio.gz"
-      INITRAMFS_TMP="/boot/initramfs.cpio.gz.tmp.$$"
-      if [ -d /boot ]; then
-        echo "Packaging root filesystem into new initramfs..."
-        (
-          cd /
-          find . -mindepth 1 \
-            -not -path './proc*' \
-            -not -path './sys*' \
-            -not -path './dev*' \
-            -not -path './run*' \
-            -not -path './tmp*' \
-            -not -path './boot*' \
-            -not -path './mnt*' \
-            -not -path './media*' \
-            | cpio -H newc -o 2>/dev/null | gzip -9 > "$INITRAMFS_TMP"
-        )
-        mv "$INITRAMFS_TMP" "$INITRAMFS_TARGET"
-        chmod 0644 "$INITRAMFS_TARGET"
-        echo "Successfully rebuilt ${INITRAMFS_TARGET} ($(du -h "$INITRAMFS_TARGET" | cut -f1))"
+      if [ ! -d /boot ] || [ ! -w /boot ]; then
+        echo "ERROR: /boot is missing or not writable."
+        read -r -p "Press Enter to return to menu..." _
+        continue
+      fi
+      for required in find cpio gzip; do
+        if ! command -v "$required" >/dev/null 2>&1; then
+          echo "ERROR: required recovery command is missing: $required"
+          read -r -p "Press Enter to return to menu..." _
+          continue 2
+        fi
+      done
+
+      INITRAMFS_TMP=$(mktemp /boot/.initramfs.cpio.gz.XXXXXX)
+      echo "Packaging root filesystem into a temporary initramfs..."
+      if (
+        cd /
+        find . -mindepth 1 \
+          -not -path './proc*' \
+          -not -path './sys*' \
+          -not -path './dev*' \
+          -not -path './run*' \
+          -not -path './tmp*' \
+          -not -path './boot*' \
+          -not -path './mnt*' \
+          -not -path './media*' \
+          -print0 \
+          | cpio --null -H newc -o 2>/dev/null \
+          | gzip -9 > "$INITRAMFS_TMP"
+      ) && gzip -t "$INITRAMFS_TMP" 2>/dev/null; then
+        INIT_LIST=$(gzip -dc "$INITRAMFS_TMP" | cpio -t --quiet 2>/dev/null || true)
+        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?(init|sbin/init)$'; then
+          chmod 0644 "$INITRAMFS_TMP"
+          mv -f "$INITRAMFS_TMP" "$INITRAMFS_TARGET"
+          sync
+          echo "Successfully rebuilt ${INITRAMFS_TARGET} ($(du -h "$INITRAMFS_TARGET" | cut -f1))"
+        else
+          rm -f "$INITRAMFS_TMP"
+          echo "ERROR: rebuilt initramfs does not contain an init entry; existing archive was preserved."
+        fi
       else
-        echo "ERROR: /boot directory not found."
+        rm -f "$INITRAMFS_TMP"
+        echo "ERROR: initramfs rebuild failed; existing archive was preserved."
       fi
       read -r -p "Press Enter to return to menu..." _
       ;;
@@ -174,20 +212,58 @@ GRUBEOF
       read -r -p "Press Enter to return to menu..." _
       ;;
     7)
-      echo "Checking root filesystem..."
-      fsck -y / 2>/dev/null || echo "Root is mounted rw; reboot with 'ro single' for active root fsck."
+      echo "Checking root filesystem safely..."
+      ROOT_SOURCE=$(findmnt -n -o SOURCE / 2>/dev/null || true)
+      if [ -z "$ROOT_SOURCE" ] || [ ! -b "$ROOT_SOURCE" ]; then
+        echo "ERROR: Could not identify a block device backing the root filesystem."
+      elif ! command -v fsck >/dev/null 2>&1; then
+        echo "ERROR: fsck is not available in this recovery environment."
+      else
+        echo "Root device: $ROOT_SOURCE"
+        echo "Running a read-only filesystem check. Repairs are intentionally not attempted while / is mounted."
+        if fsck -fn "$ROOT_SOURCE"; then
+          echo "Read-only filesystem check completed without reported errors."
+        else
+          echo "WARNING: Filesystem issues were reported."
+          echo "For repair, boot from external/live recovery media so $ROOT_SOURCE is completely unmounted, then run fsck there."
+        fi
+      fi
       read -r -p "Press Enter to return to menu..." _
       ;;
     8)
-      echo "Resetting network interfaces & DNS..."
-      ip link set lo up 2>/dev/null || true
-      for iface in /sys/class/net/*; do
-        dev="${iface##*/}"
-        [ "$dev" = "lo" ] && continue
-        ip link set "$dev" up 2>/dev/null || true
-      done
-      echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || true
-      echo "Network interfaces brought UP and DNS set to 1.1.1.1."
+      echo "Resetting network interfaces & resolver..."
+      NET_FAILURES=0
+      if ! command -v ip >/dev/null 2>&1; then
+        echo "ERROR: ip command is unavailable."
+        NET_FAILURES=$((NET_FAILURES + 1))
+      else
+        if ! ip link set lo up 2>/dev/null; then
+          echo "WARNING: Could not bring loopback interface up."
+          NET_FAILURES=$((NET_FAILURES + 1))
+        fi
+        for iface in /sys/class/net/*; do
+          [ -e "$iface" ] || continue
+          dev="${iface##*/}"
+          [ "$dev" = "lo" ] && continue
+          if ! ip link set "$dev" up 2>/dev/null; then
+            echo "WARNING: Could not bring interface $dev up."
+            NET_FAILURES=$((NET_FAILURES + 1))
+          fi
+        done
+      fi
+
+      if printf '%s\n' "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null; then
+        echo "Resolver set to 1.1.1.1 for recovery networking."
+      else
+        echo "WARNING: Could not update /etc/resolv.conf."
+        NET_FAILURES=$((NET_FAILURES + 1))
+      fi
+
+      if [ "$NET_FAILURES" -eq 0 ]; then
+        echo "Recovery network reset completed successfully."
+      else
+        echo "Recovery network reset completed with ${NET_FAILURES} warning(s)."
+      fi
       read -r -p "Press Enter to return to menu..." _
       ;;
     9)

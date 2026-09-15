@@ -64,6 +64,12 @@ if [ "$EMBED_TEST_INITRAMFS" = true ] && [ "$SKIP_INIT" = false ]; then
 fi
 
 # 3. Configure the kernel
+# The toolchain header stage runs make headers in this same extracted source
+# tree, which leaves generated files behind. Clean only the source tree before
+# using an out-of-tree kernel build so Kbuild does not reject it as dirty.
+lumen_step "Preparing clean kernel source tree"
+make -C "$SRCDIR" ARCH="${LUMEN_ARCH}" mrproper >/dev/null
+
 lumen_step "Configuring kernel (defconfig + minimal overrides)"
 mkdir -p "$KERNEL_BUILDDIR"
 cd "$KERNEL_BUILDDIR"

@@ -78,7 +78,43 @@ else
   echo "  [OK] LPM correctly rejected package with unsafe path"
 fi
 
-# 4. Behavioral test: Transaction Planner (--dry-run)
+# 4. Behavioral test: Reject undeclared archive payloads before commit
+mkdir -p "${TEST_DIR}/undeclared/usr/bin" "${TEST_DIR}/undeclared/etc"
+echo "declared" > "${TEST_DIR}/undeclared/usr/bin/shreeos-lpm-declared-test"
+echo "must never be installed" > "${TEST_DIR}/undeclared/etc/shreeos-lpm-undeclared-test"
+DECLARED_SHA=$(sha256sum "${TEST_DIR}/undeclared/usr/bin/shreeos-lpm-declared-test" | awk '{print $1}')
+cat > "${TEST_DIR}/undeclared/manifest.json" <<EOF
+{
+  "name": "undeclaredpkg",
+  "version": "1.0.0",
+  "description": "Package containing an undeclared payload member",
+  "files": ["/usr/bin/shreeos-lpm-declared-test"],
+  "checksums": {
+    "/usr/bin/shreeos-lpm-declared-test": "${DECLARED_SHA}"
+  },
+  "dependencies": []
+}
+EOF
+(
+  cd "${TEST_DIR}/undeclared"
+  tar -czf "${TEST_DIR}/pkg/undeclaredpkg-1.0.0.lpkg" \
+    manifest.json usr/bin/shreeos-lpm-declared-test etc/shreeos-lpm-undeclared-test
+)
+
+UNDECLARED_OUT=$("$LPM_BIN" install "${TEST_DIR}/pkg/undeclaredpkg-1.0.0.lpkg" 2>&1 || true)
+if echo "$UNDECLARED_OUT" | grep -Eq "undeclared (payload|directory)"; then
+  echo "  [OK] LPM rejected an archive member that was absent from manifest.json"
+else
+  echo "  [FAIL] LPM did not explicitly reject the undeclared package payload" >&2
+  echo "$UNDECLARED_OUT" >&2
+  exit 1
+fi
+[ ! -e /etc/shreeos-lpm-undeclared-test ] || {
+  echo "  [FAIL] Undeclared package payload escaped into the live root filesystem" >&2
+  exit 1
+}
+
+# 5. Behavioral test: Transaction Planner (--dry-run)
 DRYRUN_OUT=$("$LPM_BIN" install --dry-run "${TEST_DIR}/pkg/testpkg-1.0.0.lpkg")
 if echo "$DRYRUN_OUT" | grep -q "Transaction Plan (dry-run)" && echo "$DRYRUN_OUT" | grep -q "Install: testpkg-1.0.0"; then
   echo "  [OK] LPM transaction planner (--dry-run) planned transaction without mutations"
@@ -88,7 +124,7 @@ else
   exit 1
 fi
 
-# 5. Behavioral test: Signed Repository Generation & Verification
+# 6. Behavioral test: Signed Repository Generation & Verification
 echo "==> Testing Signed Repository Generation and Verification"
 KEYS_DIR="${TEST_DIR}/keys"
 bash "${ROOT_DIR}/repo-tools/scripts/gen-keys.sh" "$KEYS_DIR" >/dev/null
@@ -129,6 +165,18 @@ fi
 if bash "${ROOT_DIR}/repo-tools/scripts/verify-repo.sh" "$REPO_OUT" "$PUB_KEY" >/dev/null; then
   echo "  [OK] Repository cryptographic signature and package hashes verified"
 fi
+
+# Signature-required test: an explicit verification key must never accept
+# an unsigned repository.
+cp "${REPO_OUT}/repo.json.sig" "${REPO_OUT}/repo.json.sig.saved"
+rm -f "${REPO_OUT}/repo.json.sig"
+if bash "${ROOT_DIR}/repo-tools/scripts/verify-repo.sh" "$REPO_OUT" "$PUB_KEY" >/dev/null 2>&1; then
+  echo "  [FAIL] Verification accepted an unsigned repository despite an explicit public key" >&2
+  exit 1
+else
+  echo "  [OK] Verification rejected a missing repository signature when a public key was configured"
+fi
+mv "${REPO_OUT}/repo.json.sig.saved" "${REPO_OUT}/repo.json.sig"
 
 # Tamper test: Alter repo.json and ensure verification fails
 echo " " >> "${REPO_OUT}/repo.json"

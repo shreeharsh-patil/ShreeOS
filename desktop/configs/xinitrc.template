@@ -29,8 +29,6 @@ if [ -f /usr/share/wallpapers/shreeos-wallpaper.svg ]; then
   if command -v xwallpaper >/dev/null 2>&1; then xwallpaper --zoom /usr/share/wallpapers/shreeos-wallpaper.svg & track_pid $!
   elif command -v feh >/dev/null 2>&1; then feh --bg-fill /usr/share/wallpapers/shreeos-wallpaper.svg & track_pid $!
   fi
-elif [ -f /usr/share/wallpapers/shreeos-wallpaper.png ] && command -v xwallpaper >/dev/null 2>&1; then
-  xwallpaper --zoom /usr/share/wallpapers/shreeos-wallpaper.png & track_pid $!
 fi
 
 command -v setxkbmap >/dev/null 2>&1 && setxkbmap us >/dev/null 2>&1 &

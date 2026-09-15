@@ -33,6 +33,8 @@ source "$ROOT_DIR/scripts/common.sh" 2>/dev/null || {
 TIMEOUT=60
 MEMORY="512M"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
+REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
+FAILURES=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -48,9 +50,11 @@ done
 shreeos_step "ShreeOS QEMU E2E Test Suite (Phase 7)"
 
 if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
-  shreeos_warn "QEMU (${QEMU_BIN}) is not installed on this host."
-  shreeos_warn "Skipping runtime emulation (install qemu-system-x86 to enable)."
-  exit 0
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_die "QEMU (${QEMU_BIN}) is required for strict E2E validation"
+  fi
+  shreeos_warn "QEMU (${QEMU_BIN}) is not installed; skipping E2E emulation"
+  exit 77
 fi
 
 LOG_DIR="${ROOT_DIR}/build/logs"
@@ -63,7 +67,9 @@ CREDS_FILE="${TEST_WORK_DIR}/creds.txt"
 cleanup() {
   rm -rf "$TEST_WORK_DIR"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # 1. Check build artifacts
 export SHREEOS_STAGE_ROOT="${ROOT_DIR}/build/rootfs"
@@ -88,10 +94,11 @@ if [ ! -s "$ROOTFS_CPIO" ]; then
 fi
 
 if [ "$CAN_INSTALL" = false ]; then
-  shreeos_warn "Kernel bzImage or initramfs.cpio.gz artifacts not built yet."
-  shreeos_warn "Run 'make kernel' and 'make rootfs' before running full QEMU E2E test."
-  shreeos_ok "QEMU E2E test harness validated (preflight checks passed)"
-  exit 0
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_die "Kernel bzImage or initramfs.cpio.gz is missing; strict E2E validation cannot continue"
+  fi
+  shreeos_warn "Kernel bzImage or initramfs.cpio.gz artifacts not built yet"
+  exit 77
 fi
 
 # 2. Create 2GB test disk
@@ -107,7 +114,19 @@ chmod 600 "$CREDS_FILE"
 # 3. Perform automated installation to virtual disk
 shreeos_step "Executing automated installation to virtual disk (install-to-disk.sh)"
 INSTALL_LOG="${LOG_DIR}/qemu-e2e-install.log"
-if bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" "$TEST_DISK" --yes \
+INSTALL_PREFIX=()
+if [ "$(id -u)" -ne 0 ]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    INSTALL_PREFIX=(sudo -n -E)
+  elif [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_die "sudo/root privileges are required for strict installation testing"
+  else
+    shreeos_warn "sudo/root privileges unavailable; skipping E2E installation test"
+    exit 77
+  fi
+fi
+
+if "${INSTALL_PREFIX[@]}" bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" "$TEST_DISK" --yes \
     --hostname="shreeos-e2e" \
     --timezone="UTC" \
     --username="shree" \
@@ -128,7 +147,8 @@ BIOS_SERIAL="${LOG_DIR}/qemu-bios-serial.log"
 "$QEMU_BIN" \
   -drive file="$TEST_DISK",format=raw,if=virtio \
   -m "$MEMORY" \
-  -nographic \
+  -display none \
+  -monitor none \
   -serial file:"$BIOS_SERIAL" \
   -no-reboot \
   > "$BIOS_LOG" 2>&1 &
@@ -144,7 +164,7 @@ while [ "$WAITED" -lt "$TIMEOUT" ]; do
 
   # Check serial output for boot markers
   if [ -f "$BIOS_SERIAL" ]; then
-    if grep -E -q "reached PID 1|supervisor ready|ShreeOS init|Linux version" "$BIOS_SERIAL"; then
+    if grep -Fq "ShreeOS init: critical services ready" "$BIOS_SERIAL"; then
       BIOS_SUCCESS=true
       break
     fi
@@ -163,6 +183,7 @@ if [ "$BIOS_SUCCESS" = true ]; then
 else
   shreeos_warn "BIOS boot test FAILED. Serial log saved to ${BIOS_SERIAL}"
   [ -f "$BIOS_SERIAL" ] && tail -n 25 "$BIOS_SERIAL" || true
+  FAILURES=$((FAILURES + 1))
 fi
 
 # 5. UEFI Boot Test
@@ -183,7 +204,8 @@ if [ -n "$OVMF_PATH" ]; then
     -bios "$OVMF_PATH" \
     -drive file="$TEST_DISK",format=raw,if=virtio \
     -m "$MEMORY" \
-    -nographic \
+    -display none \
+    -monitor none \
     -serial file:"$UEFI_SERIAL" \
     -no-reboot \
     > "$UEFI_LOG" 2>&1 &
@@ -198,7 +220,7 @@ if [ -n "$OVMF_PATH" ]; then
     WAITED=$((WAITED + 1))
 
     if [ -f "$UEFI_SERIAL" ]; then
-      if grep -E -q "reached PID 1|supervisor ready|ShreeOS init|Linux version" "$UEFI_SERIAL"; then
+      if grep -Fq "ShreeOS init: critical services ready" "$UEFI_SERIAL"; then
         UEFI_SUCCESS=true
         break
       fi
@@ -217,10 +239,19 @@ if [ -n "$OVMF_PATH" ]; then
   else
     shreeos_warn "UEFI boot test FAILED. Serial log saved to ${UEFI_SERIAL}"
     [ -f "$UEFI_SERIAL" ] && tail -n 25 "$UEFI_SERIAL" || true
+    FAILURES=$((FAILURES + 1))
   fi
 else
-  shreeos_warn "OVMF UEFI firmware not found on host — skipping UEFI boot emulation"
+  if [ "$REQUIRE_ARTIFACTS" = "1" ]; then
+    shreeos_warn "OVMF UEFI firmware not found on host"
+    FAILURES=$((FAILURES + 1))
+  else
+    shreeos_warn "OVMF UEFI firmware not found on host — skipping UEFI boot emulation"
+  fi
 fi
 
+if [ "$FAILURES" -gt 0 ]; then
+  shreeos_die "ShreeOS QEMU E2E validation failed (${FAILURES} boot path failure(s))"
+fi
 shreeos_ok "ShreeOS QEMU E2E test sequence completed successfully"
 exit 0

@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 # desktop/scripts/shree-storage.sh — ShreeOS Storage & Cache Manager
-#
-# Provides disk usage breakdown, package cache cleaning, and trash emptying.
-
 set -euo pipefail
+
+remove_children() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  find "$dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+}
 
 clean_cache() {
   local cache_dir="/var/cache/lpm/pkg"
   if [ -d "$cache_dir" ]; then
     local count
-    count=$(find "$cache_dir" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l || echo 0)
-    rm -rf "${cache_dir:?}"/*
-    if command -v shree-notify >/dev/null 2>&1; then
+    count=$(find "$cache_dir" -mindepth 1 -maxdepth 1 -print 2>/dev/null | wc -l)
+    remove_children "$cache_dir"
+    command -v shree-notify >/dev/null 2>&1 &&
       shree-notify "Storage" "Cleaned ${count} cached package archive(s)" --app="Storage"
-    fi
   else
-    if command -v shree-notify >/dev/null 2>&1; then
+    command -v shree-notify >/dev/null 2>&1 &&
       shree-notify "Storage" "Package cache is already empty" --app="Storage"
-    fi
   fi
 }
 
@@ -25,16 +26,15 @@ empty_trash() {
   local trash_files="${HOME}/.local/share/Trash/files"
   local trash_info="${HOME}/.local/share/Trash/info"
   local count=0
+
   if [ -d "$trash_files" ]; then
-    count=$(find "$trash_files" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l || echo 0)
-    rm -rf "${trash_files:?}"/*
+    count=$(find "$trash_files" -mindepth 1 -maxdepth 1 -print 2>/dev/null | wc -l)
+    remove_children "$trash_files"
   fi
-  if [ -d "$trash_info" ]; then
-    rm -rf "${trash_info:?}"/*
-  fi
-  if command -v shree-notify >/dev/null 2>&1; then
+  remove_children "$trash_info"
+
+  command -v shree-notify >/dev/null 2>&1 &&
     shree-notify "Trash Emptied" "Removed ${count} item(s) from Trash" --app="Files"
-  fi
 }
 
 show_storage() {

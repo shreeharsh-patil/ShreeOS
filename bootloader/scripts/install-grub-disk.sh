@@ -98,9 +98,22 @@ if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "bios" ]; then
   fi
 fi
 
-if [ "$UEFI_SUCCESS" = false ] && [ "$BIOS_SUCCESS" = false ]; then
-  shreeos_die "FATAL: Neither UEFI nor BIOS GRUB installation succeeded on ${DISK}."
-fi
+case "$BOOT_MODE" in
+  both)
+    if [ "$UEFI_SUCCESS" != true ] || [ "$BIOS_SUCCESS" != true ]; then
+      shreeos_die "FATAL: --boot-mode=both requires both UEFI and BIOS GRUB installation to succeed."
+    fi
+    ;;
+  uefi)
+    [ "$UEFI_SUCCESS" = true ] || shreeos_die "FATAL: UEFI GRUB installation did not complete."
+    ;;
+  bios)
+    [ "$BIOS_SUCCESS" = true ] || shreeos_die "FATAL: BIOS GRUB installation did not complete."
+    ;;
+  *)
+    shreeos_die "Invalid boot mode: $BOOT_MODE"
+    ;;
+esac
 
 # 3. Detect Root UUID and Generate Target grub.cfg (Fail closed if missing)
 shreeos_log "Discovering root filesystem UUID for ${TARGET}..."

@@ -2,8 +2,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include "../../pkgmanager/src/manifest.h"
+
+static int run_tar(const char *output, const char *staging) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("lpm-build: fork");
+        return -1;
+    }
+    if (pid == 0) {
+        char *const args[] = {
+            "tar", "-czf", (char *)output,
+            "-C", (char *)staging,
+            "--transform=s|^\\./||",
+            ".",
+            NULL
+        };
+        execvp(args[0], args);
+        _exit(127);
+    }
+
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno == EINTR) continue;
+        perror("lpm-build: waitpid");
+        return -1;
+    }
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
+}
 
 static void usage(void) {
     fprintf(stderr,
@@ -22,7 +51,11 @@ int main(int argc, char **argv) {
 
     const char *staging = argv[1];
     char manifest_path[LPM_PATH_MAX];
-    snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.json", staging);
+    int manifest_written = snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.json", staging);
+    if (manifest_written < 0 || (size_t)manifest_written >= sizeof(manifest_path)) {
+        fprintf(stderr, "lpm-build: staging path is too long\n");
+        return 1;
+    }
 
     manifest *m = manifest_load(staging);
     if (!m || !m->name || !*m->name) {
@@ -32,24 +65,34 @@ int main(int argc, char **argv) {
     }
 
     char out_lpkg[LPM_PATH_MAX];
+    int output_written;
     if (argc >= 3) {
-        snprintf(out_lpkg, sizeof(out_lpkg), "%s", argv[2]);
+        output_written = snprintf(out_lpkg, sizeof(out_lpkg), "%s", argv[2]);
     } else {
-        snprintf(out_lpkg, sizeof(out_lpkg), "%s-%s.lpkg", m->name, m->version);
+        output_written = snprintf(out_lpkg, sizeof(out_lpkg), "%s-%s.lpkg", m->name, m->version);
+    }
+    if (output_written < 0 || (size_t)output_written >= sizeof(out_lpkg)) {
+        fprintf(stderr, "lpm-build: output package path is too long\n");
+        manifest_free(m);
+        return 1;
     }
 
     printf("lpm-build: packaging %s-%s into %s...\n", m->name, m->version, out_lpkg);
 
-    char cmd[LPM_PATH_MAX * 3];
-#ifdef _WIN32
-    snprintf(cmd, sizeof(cmd), "tar -czf \"%s\" -C \"%s\" .", out_lpkg, staging);
-#else
-    snprintf(cmd, sizeof(cmd), "tar -czf \"%s\" -C \"%s\" --transform=\"s|^\\./||\" manifest.json .", out_lpkg, staging);
-#endif
+    struct stat staging_stat;
+    if (stat(staging, &staging_stat) != 0 || !S_ISDIR(staging_stat.st_mode)) {
+        fprintf(stderr, "lpm-build: staging path is not a directory: %s\n", staging);
+        manifest_free(m);
+        return 1;
+    }
 
-    int ret = system(cmd);
-    if (ret != 0 || access(out_lpkg, F_OK) != 0) {
+    struct stat output_stat;
+    if (run_tar(out_lpkg, staging) != 0 ||
+        stat(out_lpkg, &output_stat) != 0 ||
+        !S_ISREG(output_stat.st_mode) ||
+        output_stat.st_size <= 0) {
         fprintf(stderr, "lpm-build: failed to create package %s\n", out_lpkg);
+        unlink(out_lpkg);
         manifest_free(m);
         return 1;
     }

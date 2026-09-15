@@ -10,6 +10,19 @@ source "$REPO_ROOT/scripts/common.sh"
 
 ERRORS=0
 WARNINGS=0
+STRICT=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --strict) STRICT=true ;;
+    --help|-h)
+      echo "Usage: doctor.sh [--strict]"
+      echo "  --strict  require runtime validation and installer prerequisites"
+      exit 0
+      ;;
+    *) echo "Unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
 
 ok()   { printf "  \033[1;32m[OK]\033[0m %s\n" "$*"; }
 warn() { printf "  \033[1;33m[WARN]\033[0m %s\n" "$*"; WARNINGS=$((WARNINGS + 1)); }
@@ -63,6 +76,7 @@ echo
 echo "==> Core host build tools"
 check_cmd bash "GNU Bash" true
 check_cmd git "Git" true
+check_cmd python3 "Python 3" true
 check_cmd make "GNU Make" true
 check_cmd gcc "C Compiler (gcc)" true
 check_cmd g++ "C++ Compiler (g++)" true
@@ -89,12 +103,29 @@ check_cmd shellcheck "ShellCheck" false
 echo
 echo "==> Packaging, boot and ISO tools"
 check_cmd xorriso "ISO creation (xorriso)" true
-check_cmd mcopy "FAT manipulation (mtools)" true
+check_cmd mcopy "FAT copy (mtools)" true
+check_cmd mformat "FAT formatter (mtools)" true
+check_cmd mmd "FAT directory tool (mtools)" true
 check_cmd grub-mkimage "GRUB image builder" true
-check_cmd qemu-system-x86_64 "QEMU x86_64 emulator" false
+check_cmd envsubst "Template substitution (gettext-base)" true
+check_cmd sfdisk "Disk partitioning (sfdisk)" "$STRICT"
+check_cmd losetup "Loop device manager" "$STRICT"
+check_cmd mkfs.ext4 "ext4 formatter" "$STRICT"
+check_cmd mkfs.vfat "FAT formatter" "$STRICT"
+check_cmd mount "Filesystem mount tool" "$STRICT"
+check_cmd umount "Filesystem unmount tool" "$STRICT"
+check_cmd blkid "Filesystem ID tool" "$STRICT"
+check_cmd grub-install "GRUB disk installer" "$STRICT"
+check_cmd qemu-system-x86_64 "QEMU x86_64 emulator" "$STRICT"
 
-if [ -f /usr/share/ovmf/OVMF.fd ] || [ -f /usr/share/OVMF/OVMF_CODE.fd ] || [ -f /usr/share/OVMF/OVMF_CODE_4M.fd ]; then
+if [ "$(id -u)" -ne 0 ]; then
+  check_cmd sudo "Privilege elevation (sudo)" "$STRICT"
+fi
+
+if [ -f /usr/share/ovmf/OVMF.fd ] || [ -f /usr/share/qemu/OVMF.fd ] || [ -f /usr/share/OVMF/OVMF_CODE.fd ] || [ -f /usr/share/OVMF/OVMF_CODE_4M.fd ]; then
   ok "OVMF UEFI firmware"
+elif [ "$STRICT" = true ]; then
+  fail "OVMF UEFI firmware not found; strict UEFI boot validation cannot run"
 else
   warn "OVMF UEFI firmware not found; UEFI QEMU validation will not work"
 fi
@@ -154,7 +185,7 @@ echo "==> Target desktop graphics readiness"
 if bash "$SCRIPT_DIR/graphics-readiness.sh"; then
   :
 else
-  warn "Unable to determine target graphical SDK readiness"
+  warn "Target graphical stack is incomplete; desktop certification remains deferred"
 fi
 
 echo

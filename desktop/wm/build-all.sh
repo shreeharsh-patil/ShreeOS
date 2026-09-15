@@ -23,10 +23,17 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
 }
 
 BUILD_START=$(date +%s)
+ALLOW_DEFERRED_GRAPHICS="${ALLOW_DEFERRED_GRAPHICS:-0}"
 
 shreeos_step "Building and assembling ShreeOS desktop environment"
 
 STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}"
+
+if [ "$ALLOW_DEFERRED_GRAPHICS" != "1" ]; then
+  bash "$SHREEOS_ROOT_DIR/scripts/graphics-readiness.sh" --strict
+else
+  bash "$SHREEOS_ROOT_DIR/scripts/graphics-readiness.sh" || true
+fi
 
 # 1. Build window manager and tools.
 # The graphical target stack is still being brought into the source build, so
@@ -161,3 +168,7 @@ echo "============================================"
 echo ""
 echo "To launch desktop: startx"
 echo ""
+
+if [ "$DESKTOP_NATIVE_STATUS" != "ready" ] && [ "$ALLOW_DEFERRED_GRAPHICS" != "1" ]; then
+  shreeos_die "Desktop build is incomplete; set ALLOW_DEFERRED_GRAPHICS=1 only for explicit development/headless ISO testing."
+fi

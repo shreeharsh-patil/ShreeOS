@@ -24,8 +24,8 @@ case "$profile" in
 esac
 
 echo "==> ShreeOS reliable build: PROFILE=$profile"
-make doctor
-make verify-sources
+bash scripts/doctor.sh --strict
+bash scripts/verify-sources.sh --fetch
 
 if [ "$profile" = "desktop" ]; then
   # Fail before spending time assembling an ISO known to lack its native target SDK.

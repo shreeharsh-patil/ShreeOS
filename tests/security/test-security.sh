@@ -64,4 +64,46 @@ else
   echo "  [OK] Console service enforces authenticated login flow via shree-auth"
 fi
 
+# 8. Verify source fetching is fail-closed and self-heals a corrupted cache.
+source "${ROOT_DIR}/scripts/common.sh"
+FETCH_TEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$FETCH_TEST_DIR"' EXIT
+FETCH_SOURCE="$FETCH_TEST_DIR/upstream.tar"
+FETCH_DEST="$FETCH_TEST_DIR/cache/source.tar"
+mkdir -p "$(dirname "$FETCH_DEST")"
+printf 'shreeos-source-fixture\n' > "$FETCH_SOURCE"
+FETCH_SHA="$(sha256sum "$FETCH_SOURCE" | awk '{print $1}')"
+FETCH_URL="file://$FETCH_SOURCE"
+
+shreeos_fetch "$FETCH_URL" "$FETCH_DEST" "$FETCH_SHA" >/dev/null
+cmp -s "$FETCH_SOURCE" "$FETCH_DEST" || {
+  echo "  [FAIL] Verified source fetch did not reproduce its upstream input" >&2
+  exit 1
+}
+
+printf 'corrupt-cache\n' > "$FETCH_DEST"
+shreeos_fetch "$FETCH_URL" "$FETCH_DEST" "$FETCH_SHA" >/dev/null
+cmp -s "$FETCH_SOURCE" "$FETCH_DEST" || {
+  echo "  [FAIL] Corrupted source cache was not repaired" >&2
+  exit 1
+}
+
+rm -f "$FETCH_DEST"
+FETCH_BAD_SHA="$(printf '%064d' 0)"
+if (shreeos_fetch "$FETCH_URL" "$FETCH_DEST" "$FETCH_BAD_SHA" >/dev/null 2>&1); then
+  echo "  [FAIL] Source fetch accepted an incorrect SHA-256 pin" >&2
+  exit 1
+fi
+[ ! -e "$FETCH_DEST" ] || {
+  echo "  [FAIL] Failed source verification poisoned the cache" >&2
+  exit 1
+}
+if compgen -G "$FETCH_DEST.part.*" >/dev/null; then
+  echo "  [FAIL] Failed source verification left a partial file behind" >&2
+  exit 1
+fi
+rm -rf "$FETCH_TEST_DIR"
+trap - EXIT
+echo "  [OK] Source cache verifies before publish and recovers from corruption"
+
 echo "==> All security audit tests passed successfully!"

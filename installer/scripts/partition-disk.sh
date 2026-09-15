@@ -54,50 +54,80 @@ if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "Target '${DISK}' is not a valid block device or disk image."
 fi
 
-# Resolve canonical realpath
-CANONICAL_DISK=$(realpath "$DISK" 2>/dev/null || echo "$DISK")
-
-# Protect against writing directly to host root, boot, or live media
-if command -v findmnt >/dev/null 2>&1; then
-  HOST_ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null || echo "")
-  if [ -n "$HOST_ROOT_DEV" ]; then
-    HOST_ROOT_CANON=$(realpath "$HOST_ROOT_DEV" 2>/dev/null || echo "$HOST_ROOT_DEV")
-    if [[ "$HOST_ROOT_CANON" == "$CANONICAL_DISK"* ]] || [[ "$CANONICAL_DISK" == "$HOST_ROOT_CANON"* ]]; then
-      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains the currently running host root filesystem (/)."
-    fi
-  fi
-
-  HOST_BOOT_DEV=$(findmnt -n -o SOURCE /boot 2>/dev/null || echo "")
-  if [ -n "$HOST_BOOT_DEV" ]; then
-    HOST_BOOT_CANON=$(realpath "$HOST_BOOT_DEV" 2>/dev/null || echo "$HOST_BOOT_DEV")
-    if [[ "$HOST_BOOT_CANON" == "$CANONICAL_DISK"* ]]; then
-      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains the host /boot filesystem."
-    fi
-  fi
+# Resolve canonical path before performing any topology checks.
+if ! CANONICAL_DISK="$(realpath -- "$DISK" 2>/dev/null)"; then
+  shreeos_die "Unable to resolve target path safely: $DISK"
 fi
 
-# Protect against overwriting live media
-for live_mnt in /run/initramfs/live /cdrom /mnt/cdrom /run/media; do
-  if [ -d "$live_mnt" ]; then
-    LIVE_DEV=$(findmnt -n -o SOURCE "$live_mnt" 2>/dev/null || echo "")
-    if [ -n "$LIVE_DEV" ]; then
-      CANON_LIVE=$(realpath "$LIVE_DEV" 2>/dev/null || echo "$LIVE_DEV")
-      if [[ "$CANON_LIVE" == "$CANONICAL_DISK"* ]]; then
-        shreeos_die "CRITICAL REFUSAL: Target '${DISK}' is the active live installer media (${live_mnt})."
+# For real block devices, prove that the target is a whole disk/loop device
+# and that none of its descendants back a mounted filesystem or active swap.
+# Any failed topology query aborts the destructive operation.
+if [ -b "$CANONICAL_DISK" ]; then
+  shreeos_require_cmd lsblk findmnt mountpoint
+
+  if ! TARGET_TYPE="$(lsblk -dnro TYPE -- "$CANONICAL_DISK" 2>/dev/null)"; then
+    shreeos_die "Unable to determine block-device type for '$DISK'; refusing to partition."
+  fi
+  TARGET_TYPE="${TARGET_TYPE%%$'\n'*}"
+  case "$TARGET_TYPE" in
+    disk|loop) ;;
+    *) shreeos_die "Target '$DISK' is not a whole disk or loop device (detected type: ${TARGET_TYPE:-unknown})." ;;
+  esac
+
+  if ! TARGET_MAJMINS="$(lsblk -nr -o MAJ:MIN -- "$CANONICAL_DISK" 2>/dev/null)"; then
+    shreeos_die "Unable to inspect block-device ancestry for '$DISK'; refusing to partition."
+  fi
+  [ -n "$TARGET_MAJMINS" ] || shreeos_die "Block-device ancestry for '$DISK' is empty; refusing to partition."
+
+  target_contains_majmin() {
+    local majmin="$1"
+    [ -n "$majmin" ] || return 1
+    grep -Fxq "$majmin" <<< "$TARGET_MAJMINS"
+  }
+
+  if ! HOST_ROOT_MM="$(findmnt -n -o MAJ:MIN / 2>/dev/null)"; then
+    shreeos_die "Unable to identify the host root filesystem; refusing to partition any disk."
+  fi
+  if target_contains_majmin "$HOST_ROOT_MM"; then
+    shreeos_die "CRITICAL REFUSAL: Target '$DISK' contains the currently running host root filesystem (/)."
+  fi
+
+  for protected_mount in /boot /boot/efi /run/initramfs/live /cdrom /mnt/cdrom /run/media; do
+    [ -e "$protected_mount" ] || continue
+    if mountpoint -q "$protected_mount"; then
+      if ! PROTECTED_MM="$(findmnt -n -o MAJ:MIN "$protected_mount" 2>/dev/null)"; then
+        shreeos_die "Unable to inspect protected mount $protected_mount; refusing to partition."
+      fi
+      if target_contains_majmin "$PROTECTED_MM"; then
+        shreeos_die "CRITICAL REFUSAL: Target '$DISK' backs protected mount $protected_mount."
       fi
     fi
-  fi
-done
+  done
 
-# Reject any target device or partition that is currently mounted
-if [ -b "$CANONICAL_DISK" ]; then
-  while read -r mnt_src mnt_tgt; do
-    [ -z "$mnt_src" ] && continue
-    CANON_SRC=$(realpath "$mnt_src" 2>/dev/null || echo "$mnt_src")
-    if [[ "$CANON_SRC" == "$CANONICAL_DISK"* ]]; then
-      shreeos_die "CRITICAL REFUSAL: Device '${mnt_src}' is actively mounted at '${mnt_tgt}'. Unmount before partitioning."
+  if ! MOUNTED_FILESYSTEMS="$(findmnt -r -n -o MAJ:MIN,TARGET 2>/dev/null)"; then
+    shreeos_die "Unable to enumerate mounted filesystems; refusing to partition."
+  fi
+  while read -r mounted_mm mounted_target; do
+    [ -n "$mounted_mm" ] || continue
+    case "$mounted_mm" in
+      0:*) continue ;;
+    esac
+    if target_contains_majmin "$mounted_mm"; then
+      shreeos_die "CRITICAL REFUSAL: Target '$DISK' contains an active filesystem mounted at '$mounted_target'."
     fi
-  done < <(findmnt -r -n -o SOURCE,TARGET 2>/dev/null || grep '^/dev/' /proc/mounts | awk '{print $1, $2}')
+  done <<< "$MOUNTED_FILESYSTEMS"
+
+  if command -v swapon >/dev/null 2>&1; then
+    if ! ACTIVE_SWAP="$(swapon --show --noheadings --raw --output MAJ:MIN 2>/dev/null)"; then
+      shreeos_die "Unable to enumerate active swap; refusing to partition."
+    fi
+    while read -r swap_mm; do
+      [ -n "$swap_mm" ] || continue
+      if target_contains_majmin "$swap_mm"; then
+        shreeos_die "CRITICAL REFUSAL: Target '$DISK' contains active swap."
+      fi
+    done <<< "$ACTIVE_SWAP"
+  fi
 fi
 
 # 2. Interactive Confirmation (Unless --yes specified)
