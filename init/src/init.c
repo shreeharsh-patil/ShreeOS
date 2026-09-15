@@ -618,7 +618,7 @@ static int start_service(service_t *s) {
     }
 
     char log_buf[512];
-    snprintf(log_buf, sizeof(log_buf), "Starting service (command: %s)", s->command);
+    snprintf(log_buf, sizeof(log_buf), "Starting service (command: %.470s)", s->command);
     log_info(s->name, log_buf);
 
     s->state = SVC_STARTING;
@@ -826,13 +826,14 @@ static void init_ipc_socket(void) {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    if (strlen(g_sock_path) >= sizeof(addr.sun_path)) {
+    size_t sock_len = strlen(g_sock_path);
+    if (sock_len >= sizeof(addr.sun_path)) {
         log_warn("init", "IPC socket path is too long; initctl IPC disabled");
         close(ipc_sock_fd);
         ipc_sock_fd = -1;
         return;
     }
-    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", g_sock_path);
+    memcpy(addr.sun_path, g_sock_path, sock_len + 1);
 
     if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
         if (chmod(g_sock_path, 0666) != 0 || listen(ipc_sock_fd, 32) != 0) {
