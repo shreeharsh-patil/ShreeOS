@@ -125,7 +125,22 @@ while true; do
           | gzip -9 > "$INITRAMFS_TMP"
       ) && gzip -t "$INITRAMFS_TMP" 2>/dev/null; then
         INIT_LIST=$(gzip -dc "$INITRAMFS_TMP" | cpio -t --quiet 2>/dev/null || true)
-        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?(init|sbin/init)    5)
+        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?(init|sbin/init)$'; then
+          chmod 0644 "$INITRAMFS_TMP"
+          mv -f "$INITRAMFS_TMP" "$INITRAMFS_TARGET"
+          sync
+          echo "Successfully rebuilt ${INITRAMFS_TARGET} ($(du -h "$INITRAMFS_TARGET" | cut -f1))"
+        else
+          rm -f "$INITRAMFS_TMP"
+          echo "ERROR: rebuilt initramfs does not contain an init entry; existing archive was preserved."
+        fi
+      else
+        rm -f "$INITRAMFS_TMP"
+        echo "ERROR: initramfs rebuild failed; existing archive was preserved."
+      fi
+      read -r -p "Press Enter to return to menu..." _
+      ;;
+    5)
       echo "==> Running Bootloader Repair:"
       ROOT_UUID=$(blkid -s UUID -o value "$(findmnt -n -o SOURCE / 2>/dev/null || echo '')" 2>/dev/null || echo "")
       if [ -z "$ROOT_UUID" ]; then
@@ -249,124 +264,6 @@ GRUBEOF
       else
         echo "Recovery network reset completed with ${NET_FAILURES} warning(s)."
       fi
-      read -r -p "Press Enter to return to menu..." _
-      ;;
-    9)
-      echo "Spawning root maintenance shell (type 'exit' to return to recovery menu)..."
-      /bin/bash --login 2>/dev/null || /bin/sh
-      ;;
-    0)
-      read -r -p "Enter [r] to Reboot or [p] to Power Off: " SUB
-      if [ "$SUB" = "p" ] || [ "$SUB" = "P" ]; then
-        initctl poweroff 2>/dev/null || poweroff
-      else
-        initctl reboot 2>/dev/null || reboot
-      fi
-      ;;
-  esac
-  clear
-done
-; then
-          chmod 0644 "$INITRAMFS_TMP"
-          mv -f "$INITRAMFS_TMP" "$INITRAMFS_TARGET"
-          sync
-          echo "Successfully rebuilt ${INITRAMFS_TARGET} ($(du -h "$INITRAMFS_TARGET" | cut -f1))"
-        else
-          rm -f "$INITRAMFS_TMP"
-          echo "ERROR: rebuilt initramfs does not contain an init entry; existing archive was preserved."
-        fi
-      else
-        rm -f "$INITRAMFS_TMP"
-        echo "ERROR: initramfs rebuild failed; existing archive was preserved."
-      fi
-      read -r -p "Press Enter to return to menu..." _
-      ;;
-    5)
-      echo "==> Running Bootloader Repair:"
-      ROOT_UUID=$(blkid -s UUID -o value "$(findmnt -n -o SOURCE / 2>/dev/null || echo '')" 2>/dev/null || echo "")
-      if [ -z "$ROOT_UUID" ]; then
-        ROOT_UUID=$(blkid -s UUID -o value /dev/sda3 2>/dev/null || blkid -s UUID -o value /dev/vda3 2>/dev/null || blkid -s UUID -o value /dev/nvme0n1p3 2>/dev/null || echo "")
-      fi
-
-      if [ -n "$ROOT_UUID" ] && [ -d /boot/grub ]; then
-        echo "Detected Root UUID: ${ROOT_UUID}"
-        cat > /boot/grub/grub.cfg <<GRUBEOF
-# GRUB Configuration — Repaired by ShreeOS Emergency Recovery
-set default=0
-set timeout=5
-
-insmod all_video
-insmod font
-insmod gfxterm
-set gfxmode=auto
-terminal_output gfxterm
-
-insmod gpt
-insmod part_gpt
-insmod part_msdos
-insmod ext2
-insmod fat
-
-menuentry "ShreeOS (Repaired Boot)" {
-    search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet
-    initrd /boot/initramfs.cpio.gz
-}
-
-menuentry "ShreeOS (Recovery Mode)" {
-    search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.mode=recovery
-    initrd /boot/initramfs.cpio.gz
-}
-
-menuentry "ShreeOS Previous Working State (SafeUpdate Rollback)" {
-    search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.rollback=1
-    initrd /boot/initramfs.cpio.gz
-}
-GRUBEOF
-        chmod 0644 /boot/grub/grub.cfg
-        echo "Successfully regenerated /boot/grub/grub.cfg with Root UUID ${ROOT_UUID}"
-      else
-        echo "WARNING: Could not automatically detect Root UUID. GRUB configuration unchanged."
-      fi
-      read -r -p "Press Enter to return to menu..." _
-      ;;
-    6)
-      echo "==> Hardware & System Diagnostics Report:"
-      echo "--------------------------------------------------------"
-      echo "Kernel Version: $(uname -a)"
-      echo "System Uptime:  $(cat /proc/uptime 2>/dev/null | awk '{print $1}') seconds"
-      echo ""
-      echo "Memory Usage:"
-      free -m 2>/dev/null || grep -E 'MemTotal|MemFree|MemAvailable' /proc/meminfo 2>/dev/null || true
-      echo ""
-      echo "Block Devices & Partitions:"
-      lsblk 2>/dev/null || cat /proc/partitions
-      echo ""
-      echo "Mounted Filesystems:"
-      mount | grep -E '^/dev/' || df -h
-      echo ""
-      echo "Network Interfaces:"
-      ip link 2>/dev/null || ifconfig -a 2>/dev/null || true
-      echo "--------------------------------------------------------"
-      read -r -p "Press Enter to return to menu..." _
-      ;;
-    7)
-      echo "Checking root filesystem..."
-      fsck -y / 2>/dev/null || echo "Root is mounted rw; reboot with 'ro single' for active root fsck."
-      read -r -p "Press Enter to return to menu..." _
-      ;;
-    8)
-      echo "Resetting network interfaces & DNS..."
-      ip link set lo up 2>/dev/null || true
-      for iface in /sys/class/net/*; do
-        dev="${iface##*/}"
-        [ "$dev" = "lo" ] && continue
-        ip link set "$dev" up 2>/dev/null || true
-      done
-      echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || true
-      echo "Network interfaces brought UP and DNS set to 1.1.1.1."
       read -r -p "Press Enter to return to menu..." _
       ;;
     9)
