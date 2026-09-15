@@ -516,23 +516,38 @@ static int load_and_reconcile_services(void) {
         closedir(dir);
     }
 
+    /*
+     * A malformed .conf file must not discard unrelated valid services.
+     * Keep parser errors separate from dependency-graph errors: invalid files
+     * are skipped, while a broken dependency graph remains fatal because
+     * silently dropping dependencies could start services in an unsafe order.
+     */
+    int parse_errors = service_config_errors;
     build_and_validate_dependency_graph(new_table, new_count);
+    int graph_errors = service_config_errors - parse_errors;
 
     if (service_config_errors > 0) {
-        char msg[160];
-        snprintf(msg, sizeof(msg), "Service configuration contains %d error(s)", service_config_errors);
+        char msg[192];
+        snprintf(msg, sizeof(msg),
+                 "Service configuration contains %d error(s): %d file/entry, %d dependency",
+                 service_config_errors, parse_errors, graph_errors);
         log_warn("init", msg);
+    }
 
+    if (graph_errors > 0 || (parse_errors > 0 && new_count == 0)) {
         if (num_services > 0) {
             log_warn("init", "Reload rejected; keeping the currently running service graph");
             return -1;
         }
 
-        log_warn("init", "Initial configuration is invalid; starting the built-in safe service set");
+        log_warn("init", "Initial configuration has no safe service graph; starting the built-in safe service set");
         memset(new_table, 0, sizeof(new_table));
         new_count = 0;
+        service_config_errors = 0;
         load_builtin_safe_services(new_table, &new_count);
         build_and_validate_dependency_graph(new_table, new_count);
+    } else if (parse_errors > 0) {
+        log_warn("init", "Ignoring invalid service files and continuing with the valid service set");
     } else if (new_count == 0 && num_services == 0) {
         if (config_files_seen == 0) {
             log_warn("init", "No service configuration files found; starting the built-in safe service set");
