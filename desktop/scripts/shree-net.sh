@@ -96,20 +96,39 @@ interactive_menu() {
     "(*"|"")
       ;;
     *)
-      if command -v wpa_supplicant >/dev/null 2>&1 && command -v wpa_passphrase >/dev/null 2>&1; then
-        local pw conf_tmp wlan_dev
-        pw=$(printf "\n" | dmenu -p "Password for ${choice}:" -c || true)
-        [ -n "$pw" ] || return 0
+      if command -v wpa_supplicant >/dev/null 2>&1; then
+        local pw conf_tmp wlan_dev ssid_bytes ssid_hex
+        pw=$(printf "\n" | dmenu -p "Password for ${choice} (leave empty for open network):" -c || true)
+
+        ssid_bytes=$(printf '%s' "$choice" | wc -c | tr -d '[:space:]')
+        if ! [[ "$ssid_bytes" =~ ^[0-9]+$ ]] || [ "$ssid_bytes" -lt 1 ] || [ "$ssid_bytes" -gt 32 ]; then
+          pw=""
+          unset pw
+          shree-notify "Network" "Invalid Wi-Fi network name" --app="Network" --urgent
+          return 1
+        fi
 
         conf_tmp=$(mktemp /tmp/shreeos-wpa-XXXXXX.conf)
         chmod 600 "$conf_tmp"
 
-        if ! printf "%s\n" "$pw" | wpa_passphrase "$choice" 2>/dev/null | sed '/^[[:space:]]*#psk=/d' > "$conf_tmp"; then
-          pw=""
-          unset pw
-          rm -f "$conf_tmp"
-          shree-notify "Network" "Failed to prepare Wi-Fi credentials for ${choice}" --app="Network" --urgent
-          return 1
+        if [ -n "$pw" ]; then
+          if ! command -v wpa_passphrase >/dev/null 2>&1; then
+            pw=""
+            unset pw
+            rm -f "$conf_tmp"
+            shree-notify "Network" "wpa_passphrase is required for protected Wi-Fi networks" --app="Network" --urgent
+            return 1
+          fi
+          if ! printf "%s\n" "$pw" | wpa_passphrase "$choice" 2>/dev/null | sed '/^[[:space:]]*#psk=/d; /^[[:space:]]*ssid=/a\  scan_ssid=1' > "$conf_tmp"; then
+            pw=""
+            unset pw
+            rm -f "$conf_tmp"
+            shree-notify "Network" "Failed to prepare Wi-Fi credentials for ${choice}" --app="Network" --urgent
+            return 1
+          fi
+        else
+          ssid_hex=$(printf '%s' "$choice" | od -An -tx1 | tr -d ' \n')
+          printf 'ctrl_interface=/run/wpa_supplicant\nnetwork={\n  ssid=%s\n  key_mgmt=NONE\n  scan_ssid=1\n}\n' "$ssid_hex" > "$conf_tmp"
         fi
         pw=""
         unset pw
