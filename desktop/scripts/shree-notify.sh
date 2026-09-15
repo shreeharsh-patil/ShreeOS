@@ -77,7 +77,11 @@ CONFIG_DIR="${HOME}/.config/shreeos"
 DND_FILE="${CONFIG_DIR}/dnd.state"
 LOG_DIR="${HOME}/.local/share/shreeos"
 LOG_FILE="${LOG_DIR}/notifications.log"
+LOCK_FILE="${LOG_DIR}/notifications.lock"
+umask 077
 mkdir -p "$LOG_DIR"
+touch "$LOG_FILE" "$LOCK_FILE"
+chmod 600 "$LOG_FILE" "$LOCK_FILE"
 
 # Keep one notification on one history line and preserve the pipe-delimited
 # history format even when callers pass external text.
@@ -85,22 +89,64 @@ sanitize_log_field() {
   printf '%s' "$1" | tr '\r\n|' '   '
 }
 
-log_notification() {
+update_notification_history() {
   local status="$1"
+  local tmp
+
   printf '%s|%s|%s|%s|%s\n' \
     "$(date +%s)" \
     "$(sanitize_log_field "$APP")" \
     "$(sanitize_log_field "$TITLE")" \
     "$(sanitize_log_field "$BODY")" \
     "$status" >> "$LOG_FILE"
+  chmod 600 "$LOG_FILE"
 
-  local tmp
   tmp=$(mktemp "${LOG_DIR}/notifications.log.XXXXXX")
+  chmod 600 "$tmp"
   if tail -n 50 "$LOG_FILE" > "$tmp"; then
-    mv "$tmp" "$LOG_FILE"
+    mv -f "$tmp" "$LOG_FILE"
+    chmod 600 "$LOG_FILE"
   else
     rm -f "$tmp"
+    chmod 600 "$LOG_FILE"
+    return 1
   fi
+}
+
+log_notification() {
+  local status="$1"
+
+  if command -v flock >/dev/null 2>&1; then
+    (
+      flock -x 9
+      update_notification_history "$status"
+    ) 9>"$LOCK_FILE"
+    chmod 600 "$LOCK_FILE"
+    return
+  fi
+
+  # util-linux normally provides flock. Keep a safe atomic-directory fallback
+  # for reduced environments instead of allowing concurrent history rewrites.
+  local lock_dir="${LOCK_FILE}.d"
+  local acquired=false
+  for _attempt in {1..100}; do
+    if mkdir "$lock_dir" 2>/dev/null; then
+      acquired=true
+      break
+    fi
+    sleep 0.02
+  done
+  if [ "$acquired" != true ]; then
+    echo "shree-notify: unable to lock notification history" >&2
+    return 1
+  fi
+
+  if update_notification_history "$status"; then
+    rmdir "$lock_dir" 2>/dev/null || true
+    return 0
+  fi
+  rmdir "$lock_dir" 2>/dev/null || true
+  return 1
 }
 
 if [ -f "$DND_FILE" ] && [ "$(cat "$DND_FILE" 2>/dev/null || true)" = "on" ] && [ "$URGENT" = false ]; then
