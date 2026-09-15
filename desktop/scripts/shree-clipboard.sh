@@ -26,7 +26,7 @@ chmod 600 "$HIST_FILE"
 
 acquire_history_lock() {
   local attempt
-  for attempt in {1..100}; do
+  for _attempt in {1..100}; do
     if mkdir "$HIST_LOCK" 2>/dev/null; then
       return 0
     fi
