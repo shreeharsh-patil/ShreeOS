@@ -166,6 +166,18 @@ if bash "${ROOT_DIR}/repo-tools/scripts/verify-repo.sh" "$REPO_OUT" "$PUB_KEY" >
   echo "  [OK] Repository cryptographic signature and package hashes verified"
 fi
 
+# Signature-required test: an explicit verification key must never accept
+# an unsigned repository.
+cp "${REPO_OUT}/repo.json.sig" "${REPO_OUT}/repo.json.sig.saved"
+rm -f "${REPO_OUT}/repo.json.sig"
+if bash "${ROOT_DIR}/repo-tools/scripts/verify-repo.sh" "$REPO_OUT" "$PUB_KEY" >/dev/null 2>&1; then
+  echo "  [FAIL] Verification accepted an unsigned repository despite an explicit public key" >&2
+  exit 1
+else
+  echo "  [OK] Verification rejected a missing repository signature when a public key was configured"
+fi
+mv "${REPO_OUT}/repo.json.sig.saved" "${REPO_OUT}/repo.json.sig"
+
 # Tamper test: Alter repo.json and ensure verification fails
 echo " " >> "${REPO_OUT}/repo.json"
 if bash "${ROOT_DIR}/repo-tools/scripts/verify-repo.sh" "$REPO_OUT" "$PUB_KEY" >/dev/null 2>&1; then
