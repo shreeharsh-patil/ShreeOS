@@ -100,12 +100,15 @@ if [ ! -S "$SOCKET_PATH" ]; then
 fi
 echo "  [OK] Init supervisor booted in test mode with active IPC socket"
 
-# Verify that malformed configs did not crash init and valid ones loaded
+# Invalid initial configuration must fail closed to the built-in safe graph.
 LIST_OUTPUT=$("$INITCTL_BIN" list)
-if echo "$LIST_OUTPUT" | grep -q "first" && echo "$LIST_OUTPUT" | grep -q "second"; then
-  echo "  [OK] Valid services (first, second) loaded successfully"
+if echo "$LIST_OUTPUT" | grep -q "sysinit" && \
+   echo "$LIST_OUTPUT" | grep -q "console" && \
+   ! echo "$LIST_OUTPUT" | grep -q "first" && \
+   ! echo "$LIST_OUTPUT" | grep -q "second"; then
+  echo "  [OK] Invalid initial configuration fell back to the built-in safe service graph"
 else
-  echo "FAIL: Expected valid services not found in initctl list:"
+  echo "FAIL: Invalid initial configuration did not activate the safe service graph:"
   echo "$LIST_OUTPUT"
   exit 1
 fi
@@ -115,6 +118,32 @@ if echo "$LIST_OUTPUT" | grep -q "nocmd" || echo "$LIST_OUTPUT" | grep -q "bad;n
   exit 1
 else
   echo "  [OK] Malformed services (missing command, invalid name) correctly rejected"
+fi
+
+# Remove invalid descriptors and prove that a clean reload recovers without
+# restarting the supervisor or leaving the built-in safe graph active.
+rm -f \
+  "${SERVICES_DIR}/01-noname.conf" \
+  "${SERVICES_DIR}/02-nocmd.conf" \
+  "${SERVICES_DIR}/03-badname.conf"
+
+RELOAD_RES=$("$INITCTL_BIN" reload)
+if ! echo "$RELOAD_RES" | grep -q "^OK:"; then
+  echo "FAIL: Clean service configuration reload was rejected:"
+  echo "$RELOAD_RES"
+  exit 1
+fi
+
+sleep 0.2
+LIST_OUTPUT=$("$INITCTL_BIN" list)
+if echo "$LIST_OUTPUT" | grep -q "first" && \
+   echo "$LIST_OUTPUT" | grep -q "second" && \
+   ! echo "$LIST_OUTPUT" | grep -q "sysinit"; then
+  echo "  [OK] Valid services (first, second) loaded after recovery reload"
+else
+  echo "FAIL: Valid services were not activated after clean reload:"
+  echo "$LIST_OUTPUT"
+  exit 1
 fi
 
 # ---------------------------------------------------------
