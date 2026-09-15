@@ -67,7 +67,9 @@ CREDS_FILE="${TEST_WORK_DIR}/creds.txt"
 cleanup() {
   rm -rf "$TEST_WORK_DIR"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # 1. Check build artifacts
 export SHREEOS_STAGE_ROOT="${ROOT_DIR}/build/rootfs"
