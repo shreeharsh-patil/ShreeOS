@@ -24,12 +24,12 @@ fi
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}"
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
