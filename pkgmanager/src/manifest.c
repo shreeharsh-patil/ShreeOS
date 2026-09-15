@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <signal.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -18,7 +20,36 @@ static int mkdir_p(const char *path) {
 #ifdef _WIN32
     return _mkdir(path);
 #else
-    return mkdir(path, 0755);
+    char tmp[LPM_PATH_MAX];
+    char *p = NULL;
+    size_t len;
+    int written;
+
+    if (!path || !*path) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    written = snprintf(tmp, sizeof(tmp), "%s", path);
+    if (written < 0 || (size_t)written >= sizeof(tmp)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    len = strlen(tmp);
+    while (len > 1 && tmp[len - 1] == '/') tmp[--len] = '\0';
+
+    for (p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+                *p = '/';
+                return -1;
+            }
+            *p = '/';
+        }
+    }
+    return (mkdir(tmp, 0755) == 0 || errno == EEXIST) ? 0 : -1;
 #endif
 }
 
@@ -47,59 +78,114 @@ static int json_write_string(FILE *f, const char *value) {
     return fputc('"', f) == EOF ? -1 : 0;
 }
 
-static void fill_str_array(const json_value *arr, char ***out, int *n) {
+static int fill_str_array(const json_value *arr, char ***out, int *n) {
     *n = 0;
     *out = NULL;
-    if (!arr || arr->type != JSON_ARRAY) return;
-    *n = json_array_len(arr);
-    *out = calloc(*n + 1, sizeof(char *));
-    if (!*out) return;
-    for (int i = 0; i < *n; i++) {
-        const char *s = json_array_str(arr, i);
-        (*out)[i] = s ? strdup(s) : strdup("");
+    if (!arr) return 0;
+    if (arr->type != JSON_ARRAY) return -1;
+
+    int count = json_array_len(arr);
+    if (count < 0 || count > 65536) return -1;
+    if (count == 0) return 0;
+
+    char **values = calloc((size_t)count + 1, sizeof(char *));
+    if (!values) return -1;
+
+    for (int i = 0; i < count; i++) {
+        const char *value = json_array_str(arr, i);
+        if (!value) {
+            for (int j = 0; j < i; j++) free(values[j]);
+            free(values);
+            return -1;
+        }
+        values[i] = strdup(value);
+        if (!values[i]) {
+            for (int j = 0; j < i; j++) free(values[j]);
+            free(values);
+            return -1;
+        }
     }
+
+    *out = values;
+    *n = count;
+    return 0;
 }
 
-static void fill_checksums(const json_value *obj, checksum_entry **out, int *n) {
+static int fill_checksums(const json_value *obj, checksum_entry **out, int *n) {
     *n = 0;
     *out = NULL;
-    if (!obj || obj->type != JSON_OBJECT) return;
+    if (!obj) return 0;
+    if (obj->type != JSON_OBJECT) return -1;
 
     int count = 0;
     for (json_pair *p = obj->head; p; p = p->next) {
-        if (p->key && p->value && p->value->type == JSON_STRING) {
-            count++;
-        }
+        if (!p->key || !p->value || p->value->type != JSON_STRING) return -1;
+        if (++count > 65536) return -1;
     }
-    if (count == 0) return;
+    if (count == 0) return 0;
 
-    *out = calloc(count, sizeof(checksum_entry));
-    if (!*out) return;
+    checksum_entry *entries = calloc((size_t)count, sizeof(checksum_entry));
+    if (!entries) return -1;
 
     int idx = 0;
     for (json_pair *p = obj->head; p; p = p->next) {
-        if (p->key && p->value && p->value->type == JSON_STRING) {
-            (*out)[idx].path = strdup_safe(p->key);
-            (*out)[idx].sha256 = strdup_safe(p->value->string);
-            idx++;
+        entries[idx].path = strdup_safe(p->key);
+        entries[idx].sha256 = strdup_safe(p->value->string);
+        if (!entries[idx].path || !entries[idx].sha256) {
+            for (int j = 0; j <= idx; j++) {
+                free(entries[j].path);
+                free(entries[j].sha256);
+            }
+            free(entries);
+            return -1;
         }
+        idx++;
     }
-    *n = idx;
+
+    *out = entries;
+    *n = count;
+    return 0;
 }
 
 manifest *manifest_parse(const char *json_str) {
     json_value *root = json_parse(json_str);
-    if (!root) return NULL;
+    if (!root || root->type != JSON_OBJECT) {
+        json_free(root);
+        return NULL;
+    }
+
+    json_value *name_value = json_get(root, "name");
+    json_value *version_value = json_get(root, "version");
+    json_value *description_value = json_get(root, "description");
+    json_value *sha_value = json_get(root, "sha256");
+
+    const char *name = json_string(name_value);
+    const char *version = json_string(version_value);
+    if (!name || !*name || !version || !*version ||
+        (description_value && description_value->type != JSON_STRING) ||
+        (sha_value && sha_value->type != JSON_STRING)) {
+        json_free(root);
+        return NULL;
+    }
 
     manifest *m = calloc(1, sizeof(manifest));
     if (!m) { json_free(root); return NULL; }
-    m->name        = strdup_safe(json_string(json_get(root, "name")));
-    m->version     = strdup_safe(json_string(json_get(root, "version")));
-    m->description = strdup_safe(json_string(json_get(root, "description")));
-    m->sha256      = strdup_safe(json_string(json_get(root, "sha256")));
-    fill_str_array(json_get(root, "dependencies"), &m->deps, &m->ndeps);
-    fill_str_array(json_get(root, "files"),        &m->files, &m->nfiles);
-    fill_checksums(json_get(root, "checksums"),    &m->checksums, &m->nchecksums);
+
+    m->name = strdup(name);
+    m->version = strdup(version);
+    m->description = strdup_safe(json_string(description_value));
+    m->sha256 = strdup_safe(json_string(sha_value));
+    if (!m->name || !m->version || !m->description || !m->sha256 ||
+        fill_str_array(json_get(root, "dependencies"), &m->deps, &m->ndeps) != 0 ||
+        fill_str_array(json_get(root, "conflicts"), &m->conflicts, &m->nconflicts) != 0 ||
+        fill_str_array(json_get(root, "provides"), &m->provides, &m->nprovides) != 0 ||
+        fill_str_array(json_get(root, "replaces"), &m->replaces, &m->nreplaces) != 0 ||
+        fill_str_array(json_get(root, "files"), &m->files, &m->nfiles) != 0 ||
+        fill_checksums(json_get(root, "checksums"), &m->checksums, &m->nchecksums) != 0) {
+        json_free(root);
+        manifest_free(m);
+        return NULL;
+    }
 
     json_free(root);
     return m;
@@ -112,6 +198,9 @@ void manifest_free(manifest *m) {
     free(m->description);
     free(m->sha256);
     if (m->deps) { for (int i = 0; i < m->ndeps; i++) free(m->deps[i]); free(m->deps); }
+    if (m->conflicts) { for (int i = 0; i < m->nconflicts; i++) free(m->conflicts[i]); free(m->conflicts); }
+    if (m->provides) { for (int i = 0; i < m->nprovides; i++) free(m->provides[i]); free(m->provides); }
+    if (m->replaces) { for (int i = 0; i < m->nreplaces; i++) free(m->replaces[i]); free(m->replaces); }
     if (m->files) { for (int i = 0; i < m->nfiles; i++) free(m->files[i]); free(m->files); }
     if (m->checksums) {
         for (int i = 0; i < m->nchecksums; i++) {
@@ -135,9 +224,12 @@ const char *manifest_get_checksum(const manifest *m, const char *file_path) {
 
 int manifest_save(const manifest *m, const char *dir) {
     char path[LPM_PATH_MAX], temporary[LPM_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    int written;
+    if (!m || !dir || !*dir) { errno = EINVAL; return -1; }
+    written = snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    if (written < 0 || (size_t)written >= sizeof(path)) { errno = ENAMETOOLONG; return -1; }
     if (mkdir_p(dir) != 0 && errno != EEXIST) return -1;
-    if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) return -1;
+    if (snprintf(temporary, sizeof(temporary), "%s.tmp.%d", path, (int)getpid()) >= (int)sizeof(temporary)) return -1;
 
     FILE *f = fopen(temporary, "wb");
     if (!f) return -1;
@@ -159,6 +251,30 @@ int manifest_save(const manifest *m, const char *dir) {
         if (json_write_string(f, m->deps[i])) goto fail;
     }
     fprintf(f, "],\n");
+    if (m->nconflicts > 0) {
+        fprintf(f, "  \"conflicts\": [");
+        for (int i = 0; i < m->nconflicts; i++) {
+            if (i > 0) fprintf(f, ", ");
+            if (json_write_string(f, m->conflicts[i])) goto fail;
+        }
+        fprintf(f, "],\n");
+    }
+    if (m->nprovides > 0) {
+        fprintf(f, "  \"provides\": [");
+        for (int i = 0; i < m->nprovides; i++) {
+            if (i > 0) fprintf(f, ", ");
+            if (json_write_string(f, m->provides[i])) goto fail;
+        }
+        fprintf(f, "],\n");
+    }
+    if (m->nreplaces > 0) {
+        fprintf(f, "  \"replaces\": [");
+        for (int i = 0; i < m->nreplaces; i++) {
+            if (i > 0) fprintf(f, ", ");
+            if (json_write_string(f, m->replaces[i])) goto fail;
+        }
+        fprintf(f, "],\n");
+    }
     fprintf(f, "  \"files\": [");
     for (int i = 0; i < m->nfiles; i++) {
         if (i > 0) fprintf(f, ", ");
@@ -194,6 +310,106 @@ fail:
     return -1;
 }
 
+bool lpm_parse_dep_spec(const char *dep_spec, char *name_out, size_t name_sz,
+                        char *op_out, size_t op_sz, char *ver_out, size_t ver_sz) {
+    if (!dep_spec || !*dep_spec || !name_out || name_sz < 2 ||
+        !op_out || op_sz < 3 || !ver_out || ver_sz < 2) return false;
+
+    name_out[0] = '\0';
+    op_out[0] = '\0';
+    ver_out[0] = '\0';
+
+    const char *p = dep_spec;
+    while (*p == ' ' || *p == '\t') p++;
+
+    size_t ni = 0;
+    while (*p && (isalnum((unsigned char)*p) || *p == '.' || *p == '_' || *p == '-')) {
+        if (ni + 1 >= name_sz) return false;
+        name_out[ni++] = *p++;
+    }
+    name_out[ni] = '\0';
+    if (ni == 0 || !lpm_valid_pkgname(name_out)) return false;
+
+    while (*p == ' ' || *p == '\t') p++;
+    if (!*p) return true;
+
+    size_t oi = 0;
+    while (*p == '>' || *p == '<' || *p == '=' || *p == '!') {
+        if (oi + 1 >= op_sz) return false;
+        op_out[oi++] = *p++;
+    }
+    op_out[oi] = '\0';
+
+    if (strcmp(op_out, ">=") != 0 && strcmp(op_out, "<=") != 0 &&
+        strcmp(op_out, ">") != 0 && strcmp(op_out, "<") != 0 &&
+        strcmp(op_out, "=") != 0 && strcmp(op_out, "==") != 0 &&
+        strcmp(op_out, "!=") != 0) {
+        return false;
+    }
+
+    while (*p == ' ' || *p == '\t') p++;
+    if (!*p) return false;
+
+    size_t vi = 0;
+    while (*p && *p != ' ' && *p != '\t') {
+        if (vi + 1 >= ver_sz) return false;
+        unsigned char c = (unsigned char)*p;
+        if (iscntrl(c)) return false;
+        ver_out[vi++] = *p++;
+    }
+    ver_out[vi] = '\0';
+    if (vi == 0) return false;
+
+    while (*p == ' ' || *p == '\t') p++;
+    return *p == '\0';
+}
+
+bool lpm_version_matches(const char *installed_ver, const char *op, const char *req_ver) {
+    if (!op || !*op || !req_ver || !*req_ver) return true;
+    if (!installed_ver || !*installed_ver) return false;
+
+    int cmp = lpm_version_cmp(installed_ver, req_ver);
+    if (strcmp(op, ">=") == 0) return cmp >= 0;
+    if (strcmp(op, "<=") == 0) return cmp <= 0;
+    if (strcmp(op, ">") == 0)  return cmp > 0;
+    if (strcmp(op, "<") == 0)  return cmp < 0;
+    if (strcmp(op, "=") == 0 || strcmp(op, "==") == 0) return cmp == 0;
+    if (strcmp(op, "!=") == 0) return cmp != 0;
+    return false;
+}
+
+bool lpm_is_provided(const char *cap_name, char *provider_name_out, size_t provider_sz) {
+    if (!cap_name || !*cap_name) return false;
+    DIR *dir = opendir(LPM_INSTALLED);
+    if (!dir) return false;
+
+    struct dirent *ent;
+    bool found = false;
+    while ((ent = readdir(dir))) {
+        if (ent->d_name[0] == '.') continue;
+        char dbdir[LPM_PATH_MAX];
+        snprintf(dbdir, sizeof(dbdir), "%s/%s", LPM_INSTALLED, ent->d_name);
+        manifest *other = manifest_load(dbdir);
+        if (!other) continue;
+
+        for (int i = 0; i < other->nprovides; i++) {
+            if (strcmp(other->provides[i], cap_name) == 0) {
+                found = true;
+                if (provider_name_out && provider_sz > 0) {
+                    strncpy(provider_name_out, other->name, provider_sz - 1);
+                    provider_name_out[provider_sz - 1] = '\0';
+                }
+                manifest_free(other);
+                goto done;
+            }
+        }
+        manifest_free(other);
+    }
+done:
+    closedir(dir);
+    return found;
+}
+
 int manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_out) {
     if (!missing_out || !nmissing_out) return -1;
     *missing_out = NULL;
@@ -205,26 +421,30 @@ int manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_ou
     int count = 0;
 
     for (int i = 0; i < m->ndeps; i++) {
-        /* Dep could be "foo" or "foo >= 1.0" */
-        char dep_name[128];
-        const char *space = strchr(m->deps[i], ' ');
-        if (space) {
-            size_t n = space - m->deps[i];
-            if (n >= sizeof(dep_name)) n = sizeof(dep_name) - 1;
-            strncpy(dep_name, m->deps[i], n);
-            dep_name[n] = '\0';
-        } else {
-            strncpy(dep_name, m->deps[i], sizeof(dep_name) - 1);
-            dep_name[sizeof(dep_name) - 1] = '\0';
+        char dep_name[128] = {0};
+        char op[16] = {0};
+        char req_ver[64] = {0};
+
+        if (!lpm_parse_dep_spec(m->deps[i], dep_name, sizeof(dep_name),
+                                op, sizeof(op), req_ver, sizeof(req_ver))) {
+            missing[count++] = strdup(m->deps[i]);
+            continue;
         }
 
         char dbdir[LPM_PATH_MAX];
         snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", dep_name);
         manifest *dep_m = manifest_load(dbdir);
-        if (!dep_m) {
-            missing[count++] = strdup(m->deps[i]);
-        } else {
+
+        if (dep_m) {
+            if (!lpm_version_matches(dep_m->version, op, req_ver)) {
+                missing[count++] = strdup(m->deps[i]);
+            }
             manifest_free(dep_m);
+        } else {
+            /* Check if provided by another installed package */
+            if (!lpm_is_provided(dep_name, NULL, 0)) {
+                missing[count++] = strdup(m->deps[i]);
+            }
         }
     }
 
@@ -233,19 +453,173 @@ int manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_ou
     return count;
 }
 
+int lpm_check_conflicts(const manifest *m, char *conflict_reason, size_t reason_sz) {
+    if (!m || !m->name) return 0;
+    DIR *dir = opendir(LPM_INSTALLED);
+    if (!dir) return 0;
+
+    struct dirent *ent;
+    int conflict_found = 0;
+
+    while ((ent = readdir(dir))) {
+        if (ent->d_name[0] == '.') continue;
+        if (strcmp(ent->d_name, m->name) == 0) continue;
+
+        char dbdir[LPM_PATH_MAX];
+        snprintf(dbdir, sizeof(dbdir), "%s/%s", LPM_INSTALLED, ent->d_name);
+        manifest *other = manifest_load(dbdir);
+        if (!other) continue;
+
+        for (int i = 0; i < m->nconflicts; i++) {
+            if (strcmp(m->conflicts[i], other->name) == 0) {
+                if (conflict_reason && reason_sz > 0) {
+                    snprintf(conflict_reason, reason_sz, "package '%s' conflicts with installed package '%s'", m->name, other->name);
+                }
+                conflict_found = 1;
+                manifest_free(other);
+                goto done;
+            }
+            for (int p = 0; p < other->nprovides; p++) {
+                if (strcmp(m->conflicts[i], other->provides[p]) == 0) {
+                    if (conflict_reason && reason_sz > 0) {
+                        snprintf(conflict_reason, reason_sz, "package '%s' conflicts with capability '%s' (provided by '%s')", m->name, other->provides[p], other->name);
+                    }
+                    conflict_found = 1;
+                    manifest_free(other);
+                    goto done;
+                }
+            }
+        }
+
+        for (int i = 0; i < other->nconflicts; i++) {
+            if (strcmp(other->conflicts[i], m->name) == 0) {
+                if (conflict_reason && reason_sz > 0) {
+                    snprintf(conflict_reason, reason_sz, "installed package '%s' conflicts with '%s'", other->name, m->name);
+                }
+                conflict_found = 1;
+                manifest_free(other);
+                goto done;
+            }
+            for (int p = 0; p < m->nprovides; p++) {
+                if (strcmp(other->conflicts[i], m->provides[p]) == 0) {
+                    if (conflict_reason && reason_sz > 0) {
+                        snprintf(conflict_reason, reason_sz, "installed package '%s' conflicts with capability '%s' (provided by '%s')", other->name, m->provides[p], m->name);
+                    }
+                    conflict_found = 1;
+                    manifest_free(other);
+                    goto done;
+                }
+            }
+        }
+
+        manifest_free(other);
+    }
+done:
+    closedir(dir);
+    return conflict_found;
+}
+
+int lpm_find_dependents(const char *pkgname, char ***deps_out, int *ndeps_out) {
+    if (!deps_out || !ndeps_out || !pkgname || !*pkgname) return -1;
+    *deps_out = NULL;
+    *ndeps_out = 0;
+
+    DIR *dir = opendir(LPM_INSTALLED);
+    if (!dir) return 0;
+
+    char dbdir[LPM_PATH_MAX];
+    snprintf(dbdir, sizeof(dbdir), "%s/%s", LPM_INSTALLED, pkgname);
+    manifest *target = manifest_load(dbdir);
+
+    char **result = NULL;
+    int count = 0;
+
+    struct dirent *ent;
+    while ((ent = readdir(dir))) {
+        if (ent->d_name[0] == '.') continue;
+        if (strcmp(ent->d_name, pkgname) == 0) continue;
+
+        char other_dir[LPM_PATH_MAX];
+        snprintf(other_dir, sizeof(other_dir), "%s/%s", LPM_INSTALLED, ent->d_name);
+        manifest *other = manifest_load(other_dir);
+        if (!other) continue;
+
+        bool depends = false;
+        for (int i = 0; i < other->ndeps; i++) {
+            char dep_name[128];
+            char op[16];
+            char ver[64];
+            lpm_parse_dep_spec(other->deps[i], dep_name, sizeof(dep_name), op, sizeof(op), ver, sizeof(ver));
+
+            if (strcmp(dep_name, pkgname) == 0) {
+                depends = true;
+                break;
+            }
+            if (target) {
+                for (int p = 0; p < target->nprovides; p++) {
+                    if (strcmp(dep_name, target->provides[p]) == 0) {
+                        depends = true;
+                        break;
+                    }
+                }
+            }
+            if (depends) break;
+        }
+
+        if (depends) {
+            char **new_res = realloc(result, ((size_t)count + 1) * sizeof(char *));
+            if (!new_res) {
+                manifest_free(other);
+                for (int i = 0; i < count; i++) free(result[i]);
+                free(result);
+                closedir(dir);
+                if (target) manifest_free(target);
+                return -1;
+            }
+            result = new_res;
+            result[count] = strdup(other->name);
+            if (!result[count]) {
+                manifest_free(other);
+                for (int i = 0; i < count; i++) free(result[i]);
+                free(result);
+                closedir(dir);
+                if (target) manifest_free(target);
+                return -1;
+            }
+            count++;
+        }
+        manifest_free(other);
+    }
+    closedir(dir);
+    if (target) manifest_free(target);
+
+    *deps_out = result;
+    *ndeps_out = count;
+    return count;
+}
+
 manifest *manifest_load(const char *dir) {
     char path[LPM_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    int written;
+    if (!dir || !*dir) return NULL;
+
+    written = snprintf(path, sizeof(path), "%s/manifest.json", dir);
+    if (written < 0 || (size_t)written >= sizeof(path)) return NULL;
+
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
 
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
     long len = ftell(f);
-    rewind(f);
-    if (len < 0) { fclose(f); return NULL; }
-    char *buf = malloc(len + 1);
+    if (len <= 0 || (unsigned long)len > LPM_MANIFEST_MAX_BYTES) {
+        fclose(f);
+        return NULL;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return NULL; }
+
+    char *buf = malloc((size_t)len + 1);
     if (!buf) { fclose(f); return NULL; }
-    if (fread(buf, 1, len, f) != (size_t)len) {
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
         free(buf); fclose(f); return NULL;
     }
     buf[len] = '\0';
@@ -259,6 +633,8 @@ manifest *manifest_load(const char *dir) {
 /* Package name validation: [a-zA-Z0-9][a-zA-Z0-9._-]* */
 bool lpm_valid_pkgname(const char *name) {
     if (!name || !*name) return false;
+    size_t name_len = strlen(name);
+    if (name_len == 0 || name_len > LPM_MAX_PACKAGE_NAME) return false;
     if (!((name[0] >= 'a' && name[0] <= 'z') ||
           (name[0] >= 'A' && name[0] <= 'Z') ||
           (name[0] >= '0' && name[0] <= '9')))
@@ -337,51 +713,84 @@ bool lpm_is_lpkg_file(const char *path) {
     return false;
 }
 
-int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename, char **out_sha256) {
-    if (out_version) *out_version = NULL;
-    if (out_filename) *out_filename = NULL;
-    if (out_sha256) *out_sha256 = NULL;
+static json_value *repo_cache_root = NULL;
+static json_value *repo_cache_packages = NULL;
+static int repo_cache_loaded = 0;
+
+static void free_repo_cache(void) {
+    json_free(repo_cache_root);
+    repo_cache_root = NULL;
+    repo_cache_packages = NULL;
+}
+
+static int load_repo_cache(void) {
+    if (repo_cache_loaded) return repo_cache_packages ? 0 : -1;
+    repo_cache_loaded = 1;
 
     FILE *f = fopen(LPM_REPO_JSON, "rb");
     if (!f) return -1;
 
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
     long len = ftell(f);
-    rewind(f);
-    if (len < 0) { fclose(f); return -1; }
-    char *buf = malloc(len + 1);
+    if (len <= 0 || (unsigned long)len > LPM_REPO_MAX_BYTES) {
+        fclose(f);
+        return -1;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return -1; }
+
+    char *buf = malloc((size_t)len + 1);
     if (!buf) { fclose(f); return -1; }
-    if (fread(buf, 1, len, f) != (size_t)len) {
-        free(buf); fclose(f); return -1;
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
+        free(buf);
+        fclose(f);
+        return -1;
     }
     buf[len] = '\0';
     fclose(f);
 
-    json_value *root = json_parse(buf);
+    repo_cache_root = json_parse(buf);
     free(buf);
-    if (!root) return -1;
+    if (!repo_cache_root) return -1;
 
-    json_value *packages = json_get(root, "packages");
-    if (!packages || packages->type != JSON_OBJECT) {
-        json_free(root);
+    repo_cache_packages = json_get(repo_cache_root, "packages");
+    if (!repo_cache_packages || repo_cache_packages->type != JSON_OBJECT) {
+        free_repo_cache();
         return -1;
     }
 
-    json_value *pkg_obj = json_get(packages, pkgname);
-    if (!pkg_obj || pkg_obj->type != JSON_OBJECT) {
-        json_free(root);
-        return -1;
-    }
+    (void)atexit(free_repo_cache);
+    return 0;
+}
+
+int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename, char **out_sha256) {
+    if (out_version) *out_version = NULL;
+    if (out_filename) *out_filename = NULL;
+    if (out_sha256) *out_sha256 = NULL;
+    if (!lpm_valid_pkgname(pkgname) || load_repo_cache() != 0) return -1;
+
+    json_value *pkg_obj = json_get(repo_cache_packages, pkgname);
+    if (!pkg_obj || pkg_obj->type != JSON_OBJECT) return -1;
 
     const char *ver = json_string(json_get(pkg_obj, "version"));
     const char *fn = json_string(json_get(pkg_obj, "filename"));
     const char *sha = json_string(json_get(pkg_obj, "sha256"));
+    if (!ver || !*ver || !fn || !*fn || !sha || strlen(sha) != 64) return -1;
 
-    if (out_version) *out_version = ver ? strdup(ver) : strdup("0.0");
-    if (out_filename) *out_filename = fn ? strdup(fn) : strdup("");
-    if (out_sha256) *out_sha256 = sha ? strdup(sha) : strdup("");
+    char *version_copy = out_version ? strdup(ver) : NULL;
+    char *filename_copy = out_filename ? strdup(fn) : NULL;
+    char *sha_copy = out_sha256 ? strdup(sha) : NULL;
 
-    json_free(root);
+    if ((out_version && !version_copy) || (out_filename && !filename_copy) ||
+        (out_sha256 && !sha_copy)) {
+        free(version_copy);
+        free(filename_copy);
+        free(sha_copy);
+        return -1;
+    }
+
+    if (out_version) *out_version = version_copy;
+    if (out_filename) *out_filename = filename_copy;
+    if (out_sha256) *out_sha256 = sha_copy;
     return 0;
 }
 
@@ -396,28 +805,90 @@ int lpm_repo_lookup(const char *pkgname, char **out_version, char **out_filename
 static int lock_fd = -1;
 #endif
 
+static const char *get_lock_file(char *buf, size_t buf_sz) {
+    const char *env = getenv("LPM_LOCK_FILE");
+    if (env && *env) return env;
+    const char *db = getenv("LPM_DB_DIR");
+    if (db && *db) {
+        int written = snprintf(buf, buf_sz, "%s/lock", db);
+        if (written < 0 || (size_t)written >= buf_sz) return NULL;
+        return buf;
+    }
+    return LPM_LOCK_FILE;
+}
+
 int lpm_lock(void) {
 #ifndef _WIN32
-    mkdir_p(LPM_DB);
-    lock_fd = open(LPM_LOCK_FILE, O_RDWR | O_CREAT, 0600);
-    if (lock_fd < 0) {
-        fprintf(stderr, "lpm: error: cannot create or open transaction lock %s: %s\n",
-                LPM_LOCK_FILE, strerror(errno));
+    char lock_path_buf[LPM_PATH_MAX];
+    const char *lock_file = get_lock_file(lock_path_buf, sizeof(lock_path_buf));
+    if (!lock_file || !*lock_file) {
+        fprintf(stderr, "lpm: error: transaction lock path is invalid or too long\n");
         return -1;
     }
-    if (flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
-        fprintf(stderr, "lpm: error: another package manager transaction is currently running.\n");
+
+    char dir_buf[LPM_PATH_MAX];
+    int written = snprintf(dir_buf, sizeof(dir_buf), "%s", lock_file);
+    if (written < 0 || (size_t)written >= sizeof(dir_buf)) {
+        fprintf(stderr, "lpm: error: transaction lock path is too long\n");
+        return -1;
+    }
+    char *slash = strrchr(dir_buf, '/');
+    if (slash) {
+        *slash = '\0';
+        if (*dir_buf && mkdir_p(dir_buf) != 0 && errno != EEXIST) {
+            fprintf(stderr, "lpm: error: cannot create transaction lock directory %s: %s\n",
+                    dir_buf, strerror(errno));
+            return -1;
+        }
+    }
+
+    for (int attempt = 0; attempt < 300; attempt++) {
+        lock_fd = open(lock_file, O_RDWR | O_CREAT, 0600);
+        if (lock_fd < 0) {
+            fprintf(stderr, "lpm: error: cannot create or open transaction lock %s: %s\n",
+                    lock_file, strerror(errno));
+            return -1;
+        }
+
+        if (flock(lock_fd, LOCK_EX | LOCK_NB) == 0) {
+            /* Lock acquired: record PID */
+            if (ftruncate(lock_fd, 0) == 0) {
+                char pid_str[32];
+                snprintf(pid_str, sizeof(pid_str), "%d\n", (int)getpid());
+                ssize_t w = write(lock_fd, pid_str, strlen(pid_str));
+                (void)w;
+                fsync(lock_fd);
+            }
+            return 0;
+        }
+
+        /* Check if process holding lock is still alive */
+        char pid_buf[32] = {0};
+        pid_t holder_pid = 0;
+        ssize_t r = pread(lock_fd, pid_buf, sizeof(pid_buf) - 1, 0);
+        if (r > 0) {
+            holder_pid = (pid_t)atoi(pid_buf);
+        }
+
         close(lock_fd);
         lock_fd = -1;
-        return -1;
+        if (attempt == 0 && holder_pid > 0) {
+            fprintf(stderr, "lpm: waiting for package transaction lock held by PID %d...\n", (int)holder_pid);
+        }
+        usleep(100000); /* 100ms */
     }
-#endif
+
+    fprintf(stderr, "lpm: error: timed out after 30 seconds waiting for another package manager transaction.\n");
+    return -1;
+#else
     return 0;
+#endif
 }
 
 void lpm_unlock(void) {
 #ifndef _WIN32
     if (lock_fd >= 0) {
+        if (ftruncate(lock_fd, 0) != 0) { /* ignore */ }
         flock(lock_fd, LOCK_UN);
         close(lock_fd);
         lock_fd = -1;

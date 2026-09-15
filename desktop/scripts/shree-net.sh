@@ -28,7 +28,7 @@ scan_networks() {
       fi
     done
     if [ -n "$wlan_dev" ]; then
-      iwlist "$wlan_dev" scan 2>/dev/null | grep -oP 'ESSID:"\K[^"]+' | sort -u || echo ""
+      iwlist "$wlan_dev" scan 2>/dev/null | sed -n 's/.*ESSID:"\([^"]*\)".*/\1/p' | sort -u || echo ""
     fi
   elif command -v nmcli >/dev/null 2>&1; then
     nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u || echo ""
@@ -37,27 +37,37 @@ scan_networks() {
 
 restart_network() {
   if [ -x /sbin/initctl ] || [ -x /usr/bin/initctl ]; then
-    initctl restart network 2>/dev/null || true
-  else
-    ip link set lo up 2>/dev/null || true
+    if ! initctl restart network >/dev/null 2>&1; then
+      shree-notify "Network" "Failed to restart the network service" --app="Network" --urgent
+      return 1
+    fi
+  elif ! ip link set lo up >/dev/null 2>&1; then
+    shree-notify "Network" "Failed to refresh network interfaces" --app="Network" --urgent
+    return 1
   fi
+
   local new_ip
   new_ip=$(get_ip)
   if [ "$new_ip" != "none" ]; then
     shree-notify "Network Refreshed" "Interface active (IP: ${new_ip})" --app="Network"
   else
-    shree-notify "Network Status" "No active global IP route found." --app="Network" --urgent
+    shree-notify "Network Refreshed" "Network service restarted; no global IP is assigned yet." --app="Network"
   fi
 }
 
 disconnect_network() {
   local iface
   iface=$(ip route show default 2>/dev/null | awk '{print $5}' | head -n1 || echo "")
-  if [ -n "$iface" ]; then
-    ip link set "$iface" down 2>/dev/null || true
+  if [ -z "$iface" ]; then
+    shree-notify "Network" "No active default interface to disconnect" --app="Network"
+    return 0
+  fi
+
+  if ip link set "$iface" down >/dev/null 2>&1; then
     shree-notify "Network" "Disconnected interface ${iface}" --app="Network"
   else
-    shree-notify "Network" "No active default interface to disconnect" --app="Network"
+    shree-notify "Network" "Failed to disconnect interface ${iface}" --app="Network" --urgent
+    return 1
   fi
 }
 
@@ -73,7 +83,7 @@ interactive_menu() {
   fi
 
   local choice
-  choice=$(echo -e "$menu" | dmenu -p "Network Management" -l 6 -c || true)
+  choice=$(printf "%b\n" "$menu" | dmenu -p "Network Management" -l 6 -c || true)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in
@@ -86,40 +96,79 @@ interactive_menu() {
     "(*"|"")
       ;;
     *)
-      # Attempt to connect to chosen SSID with secure credential piping
-      if command -v wpa_supplicant >/dev/null 2>&1 && command -v wpa_passphrase >/dev/null 2>&1; then
-        local pw
-        pw=$(echo "" | dmenu -p "Password for ${choice}:" -c)
-        if [ -n "$pw" ]; then
-          local conf_tmp
-          conf_tmp=$(mktemp /tmp/wpa-XXXXXX.conf)
-          chmod 600 "$conf_tmp"
-          printf "%s\n" "$pw" | wpa_passphrase "$choice" > "$conf_tmp" 2>/dev/null || true
+      if command -v wpa_supplicant >/dev/null 2>&1; then
+        local pw conf_tmp wlan_dev ssid_bytes ssid_hex
+        if ! pw=$(printf "\n" | dmenu -p "Password for ${choice} (leave empty for open network):" -c); then
+          return 0
+        fi
+
+        ssid_bytes=$(printf '%s' "$choice" | wc -c | tr -d '[:space:]')
+        if ! [[ "$ssid_bytes" =~ ^[0-9]+$ ]] || [ "$ssid_bytes" -lt 1 ] || [ "$ssid_bytes" -gt 32 ]; then
           pw=""
           unset pw
-          
-          local wlan_dev="wlan0"
-          for dev in /sys/class/net/wl* /sys/class/net/wlan*; do
-            if [ -e "$dev" ]; then wlan_dev="$(basename "$dev")"; break; fi
-          done
+          shree-notify "Network" "Invalid Wi-Fi network name" --app="Network" --urgent
+          return 1
+        fi
 
-          wpa_supplicant -B -i "$wlan_dev" -c "$conf_tmp" >/dev/null 2>&1 || true
+        conf_tmp=$(mktemp /tmp/shreeos-wpa-XXXXXX.conf)
+        chmod 600 "$conf_tmp"
+
+        if [ -n "$pw" ]; then
+          if ! command -v wpa_passphrase >/dev/null 2>&1; then
+            pw=""
+            unset pw
+            rm -f "$conf_tmp"
+            shree-notify "Network" "wpa_passphrase is required for protected Wi-Fi networks" --app="Network" --urgent
+            return 1
+          fi
+          if ! printf "%s\n" "$pw" | wpa_passphrase "$choice" 2>/dev/null | sed '/^[[:space:]]*#psk=/d; /^[[:space:]]*ssid=/a\  scan_ssid=1' > "$conf_tmp"; then
+            pw=""
+            unset pw
+            rm -f "$conf_tmp"
+            shree-notify "Network" "Failed to prepare Wi-Fi credentials for ${choice}" --app="Network" --urgent
+            return 1
+          fi
+        else
+          ssid_hex=$(printf '%s' "$choice" | od -An -tx1 | tr -d ' \n')
+          printf 'ctrl_interface=/run/wpa_supplicant\nnetwork={\n  ssid=%s\n  key_mgmt=NONE\n  scan_ssid=1\n}\n' "$ssid_hex" > "$conf_tmp"
+        fi
+        pw=""
+        unset pw
+
+        wlan_dev=""
+        for dev in /sys/class/net/wl* /sys/class/net/wlan*; do
+          if [ -e "$dev" ]; then
+            wlan_dev="$(basename "$dev")"
+            break
+          fi
+        done
+
+        if [ -z "$wlan_dev" ]; then
           rm -f "$conf_tmp"
-          shree-notify "Network" "Configured Wi-Fi for ${choice}" --app="Network"
+          shree-notify "Network" "No wireless interface is available" --app="Network" --urgent
+          return 1
+        fi
+
+        if wpa_supplicant -B -i "$wlan_dev" -c "$conf_tmp" >/dev/null 2>&1; then
+          rm -f "$conf_tmp"
+          shree-notify "Network" "Wi-Fi authentication started for ${choice}" --app="Network"
+        else
+          rm -f "$conf_tmp"
+          shree-notify "Network" "Failed to start Wi-Fi authentication for ${choice}" --app="Network" --urgent
+          return 1
         fi
       elif command -v nmcli >/dev/null 2>&1; then
-        local pw
-        pw=$(echo "" | dmenu -p "Password for ${choice}:" -c)
-        if [ -n "$pw" ]; then
-          # Connect via nmcli using stdin password prompt if supported or secure exec
-          echo "$pw" | nmcli --ask dev wifi connect "$choice" >/dev/null 2>&1 || \
-            nmcli dev wifi connect "$choice" password "$pw" >/dev/null 2>&1 || true
-          pw=""
-          unset pw
-          shree-notify "Network" "Connection request sent for ${choice}" --app="Network"
+        # Let NetworkManager request secrets through its normal secure prompt/
+        # secret-agent path. Never place the Wi-Fi password in argv.
+        if nmcli --wait 30 --ask device wifi connect "$choice"; then
+          shree-notify "Network" "Connected to ${choice}" --app="Network"
+        else
+          shree-notify "Network" "Failed to connect to ${choice}" --app="Network" --urgent
+          return 1
         fi
       else
-        shree-notify "Wi-Fi Config" "wpa_supplicant required for SSID connection" --app="Network"
+        shree-notify "Wi-Fi Config" "Neither wpa_supplicant nor NetworkManager is available" --app="Network" --urgent
+        return 1
       fi
       ;;
   esac

@@ -204,25 +204,62 @@ cmd_users() {
 cmd_backup_db() {
   local sub="${1:-list}"
   local snap_dir="/var/lib/lpm/snapshots"
-  mkdir -p "$snap_dir"
+
   case "$sub" in
     list)
       echo "LPM Package Database Backups:"
-      ls -lh "$snap_dir" 2>/dev/null || echo "No backups recorded"
+      if [ -d "$snap_dir" ]; then
+        ls -lh "$snap_dir"
+      else
+        echo "No backups recorded"
+      fi
       ;;
     create)
-      local id
-      id="db_$(date +%Y%m%d_%H%M%S)"
-      cp -r /var/lib/lpm/installed "${snap_dir}/${id}" 2>/dev/null || true
+      local id source dest
+      source="/var/lib/lpm/installed"
+      [ -d "$source" ] || shreeos_die "Package database is missing: $source"
+      mkdir -p "$snap_dir" || shreeos_die "Cannot create backup directory: $snap_dir"
+
+      id="db_$(date +%Y%m%d_%H%M%S)_$$"
+      dest="${snap_dir}/${id}"
+
+      if ! cp -a "$source" "$dest"; then
+        rm -rf -- "$dest" 2>/dev/null || true
+        shreeos_die "Failed to create package DB backup"
+      fi
+
+      [ -d "$dest" ] || shreeos_die "Backup copy did not produce a valid snapshot"
       shreeos_ok "Created package DB backup: ${id}"
       ;;
     restore)
       local id="${2:-}"
-      if [ -z "$id" ] || [ ! -d "${snap_dir}/${id}" ]; then
+      local source current rollback
+      source="${snap_dir}/${id}"
+      current="/var/lib/lpm/installed"
+      rollback="/var/lib/lpm/.installed.pre-restore.$$"
+
+      if [ -z "$id" ] || ! [[ "$id" =~ ^db_[0-9]{8}_[0-9]{6}_[0-9]+$ ]] || [ ! -d "$source" ]; then
         shreeos_die "Usage: shreectl backup-db restore <backup_id>"
       fi
-      cp -r "${snap_dir}/${id}/"* /var/lib/lpm/installed/
-      shreeos_ok "Restored package DB from: ${id}"
+
+      rm -rf -- "$rollback" 2>/dev/null || true
+      if [ -e "$current" ] && ! mv "$current" "$rollback"; then
+        shreeos_die "Unable to preserve the current package database before restore"
+      fi
+
+      if cp -a "$source" "$current"; then
+        rm -rf -- "$rollback" 2>/dev/null || true
+        shreeos_ok "Restored package DB from: ${id}"
+      else
+        rm -rf -- "$current" 2>/dev/null || true
+        if [ -e "$rollback" ]; then
+          mv "$rollback" "$current" || shreeos_die "Restore failed and rollback could not be completed"
+        fi
+        shreeos_die "Failed to restore package DB from: ${id}"
+      fi
+      ;;
+    *)
+      shreeos_die "Usage: shreectl backup-db [list|create|restore <backup_id>]"
       ;;
   esac
 }

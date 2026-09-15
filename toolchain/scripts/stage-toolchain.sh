@@ -14,6 +14,19 @@ find "${LUMEN_TOOLS}" -type f -executable 2>/dev/null | while read -r f; do
   strip --strip-unneeded "$f" 2>/dev/null || true
 done
 
+# Populate sysroot with target runtime libraries (libstdc++, libgcc_s, libatomic)
+mkdir -p "${LUMEN_SYSROOT}/usr/lib64" "${LUMEN_SYSROOT}/usr/lib"
+for libdir in "${LUMEN_TOOLS}/${LUMEN_TARGET_TRIPLET}/lib64" "${LUMEN_TOOLS}/${LUMEN_TARGET_TRIPLET}/lib"; do
+  if [ -d "$libdir" ]; then
+    cp -d -p "$libdir"/libstdc++* "${LUMEN_SYSROOT}/usr/lib64/" 2>/dev/null || true
+    cp -d -p "$libdir"/libgcc_s* "${LUMEN_SYSROOT}/usr/lib64/" 2>/dev/null || true
+    cp -d -p "$libdir"/libatomic* "${LUMEN_SYSROOT}/usr/lib64/" 2>/dev/null || true
+    cp -d -p "$libdir"/libstdc++* "${LUMEN_SYSROOT}/usr/lib/" 2>/dev/null || true
+    cp -d -p "$libdir"/libgcc_s* "${LUMEN_SYSROOT}/usr/lib/" 2>/dev/null || true
+    cp -d -p "$libdir"/libatomic* "${LUMEN_SYSROOT}/usr/lib/" 2>/dev/null || true
+  fi
+done
+
 # Generate manifest
 {
   echo "ShreeOS Cross-Compilation Toolchain Manifest"

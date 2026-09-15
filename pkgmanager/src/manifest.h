@@ -12,6 +12,10 @@
 #define LPM_LOCK_FILE LPM_DB "/lock"
 #define LPM_TRANSACTIONS LPM_DB "/transactions"
 
+#define LPM_MANIFEST_MAX_BYTES (1024UL * 1024UL)
+#define LPM_REPO_MAX_BYTES (8UL * 1024UL * 1024UL)
+#define LPM_MAX_PACKAGE_NAME 128U
+
 /* Path buffer size: Linux PATH_MAX = 4096, ensure we match target */
 #ifndef LPM_PATH_MAX
 #define LPM_PATH_MAX 4096
@@ -29,6 +33,12 @@ typedef struct {
     char *sha256;
     int ndeps;
     char **deps;
+    int nconflicts;
+    char **conflicts;
+    int nprovides;
+    char **provides;
+    int nreplaces;
+    char **replaces;
     int nfiles;
     char **files;
     int nchecksums;
@@ -41,6 +51,20 @@ int        manifest_save(const manifest *m, const char *dir);
 manifest *manifest_load(const char *dir);
 int        manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_out);
 const char *manifest_get_checksum(const manifest *m, const char *file_path);
+
+/* Version constraint parsing & matching */
+bool lpm_parse_dep_spec(const char *dep_spec, char *name_out, size_t name_sz,
+                        char *op_out, size_t op_sz, char *ver_out, size_t ver_sz);
+bool lpm_version_matches(const char *installed_ver, const char *op, const char *req_ver);
+
+/* Virtual package capability check */
+bool lpm_is_provided(const char *cap_name, char *provider_name_out, size_t provider_sz);
+
+/* Package conflicts check */
+int lpm_check_conflicts(const manifest *m, char *conflict_reason, size_t reason_sz);
+
+/* Dependency-aware removal: find installed packages that depend on pkgname */
+int lpm_find_dependents(const char *pkgname, char ***deps_out, int *ndeps_out);
 
 /*
  * Validate a package name for safety.

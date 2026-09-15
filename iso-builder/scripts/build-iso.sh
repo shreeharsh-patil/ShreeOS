@@ -30,6 +30,7 @@ for arg in "$@"; do
   case "$arg" in
     --no-cleanup) NO_CLEANUP=true ;;
     --help|-h) echo "Usage: build-iso.sh [--no-cleanup]"; exit 0 ;;
+    *) lumen_die "Unknown option: $arg" ;;
   esac
 done
 
@@ -94,7 +95,10 @@ lumen_ok "ISO created: ${ISO_OUT} (${ISO_SIZE} bytes)"
 
 # 6. Generate SHA256 Checksum & Build Manifest
 if command -v sha256sum &>/dev/null; then
-  sha256sum "$ISO_OUT" > "${ISO_OUT}.sha256"
+  (
+    cd "$(dirname "$ISO_OUT")"
+    sha256sum "$(basename "$ISO_OUT")" > "$(basename "$ISO_OUT").sha256"
+  )
   lumen_ok "Generated SHA-256 checksum: ${ISO_OUT}.sha256"
 fi
 

@@ -15,27 +15,41 @@
 
 static int mkdir_p(const char *path) {
     char tmp[LPM_PATH_MAX];
-    char *p = NULL;
     size_t len;
 
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    len = strlen(tmp);
-    if (tmp[len - 1] == '/') tmp[len - 1] = 0;
-    for (p = tmp + 1; *p; p++) {
-        if (*p == '/') {
-            *p = 0;
-            mkdir(tmp, 0755);
-            *p = '/';
-        }
+    if (!path || !*path) {
+        errno = EINVAL;
+        return -1;
     }
-    return mkdir(tmp, 0755);
+
+    int written = snprintf(tmp, sizeof(tmp), "%s", path);
+    if (written < 0 || (size_t)written >= sizeof(tmp)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    len = strlen(tmp);
+    while (len > 1 && tmp[len - 1] == '/') tmp[--len] = '\0';
+
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p != '/') continue;
+        *p = '\0';
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+            *p = '/';
+            return -1;
+        }
+        *p = '/';
+    }
+
+    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
+    return 0;
 }
 
 static int safe_exec(const char *file, char *const argv[]) {
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
-        int devnull = open("/dev/null", 0666);
+        int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
             dup2(devnull, STDOUT_FILENO);
             dup2(devnull, STDERR_FILENO);
@@ -44,29 +58,92 @@ static int safe_exec(const char *file, char *const argv[]) {
         execvp(file, argv);
         _exit(127);
     }
-    int status;
-    waitpid(pid, &status, 0);
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) return -1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
+static int is_local_development_url(const char *url) {
+    const char *authority;
+    const char *suffix;
+    const char *p;
+    unsigned long port = 0;
+
+    if (!url || strncmp(url, "http://", 7) != 0) return 0;
+    authority = url + 7;
+
+    if (strncmp(authority, "localhost", 9) == 0) {
+        suffix = authority + 9;
+    } else if (strncmp(authority, "127.0.0.1", 9) == 0) {
+        suffix = authority + 9;
+    } else {
+        return 0;
+    }
+
+    if (*suffix == '\0' || *suffix == '/') return 1;
+    if (*suffix != ':') return 0;
+
+    p = suffix + 1;
+    if (!isdigit((unsigned char)*p)) return 0;
+    while (isdigit((unsigned char)*p)) {
+        port = port * 10UL + (unsigned long)(*p - '0');
+        if (port > 65535UL) return 0;
+        p++;
+    }
+
+    return port > 0 && (*p == '\0' || *p == '/');
+}
+
 static int get_repo_url(char *buf, size_t maxlen) {
+    int have_configured_url = 0;
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {
         if (fgets(buf, maxlen, f)) {
             size_t len = strlen(buf);
-            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' || buf[len-1] == ' ')) {
+            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' ||
+                               buf[len-1] == ' ' || buf[len-1] == '\t')) {
                 buf[--len] = '\0';
             }
-            if (len > 0) goto validate;
+            have_configured_url = (len > 0);
         }
         fclose(f);
     }
-    snprintf(buf, maxlen, "http://localhost:8080");
-validate:
-    if (strncmp(buf, "https://", 8) == 0 || strncmp(buf, "http://localhost", 16) == 0 ||
-        strncmp(buf, "http://127.0.0.1", 16) == 0) return 0;
+    if (!have_configured_url) {
+        snprintf(buf, maxlen, "http://localhost:8080");
+    }
+
+    if (strncmp(buf, "https://", 8) == 0 || is_local_development_url(buf)) return 0;
     fprintf(stderr, "lpm: refusing insecure repository URL '%s' (HTTPS is required except localhost development repositories)\n", buf);
     return -1;
+}
+
+static int valid_sha256_hex(const char *value) {
+    if (!value || strlen(value) != 64) return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; ++p) {
+        if (!isxdigit(*p)) return 0;
+    }
+    return 1;
+}
+
+static int valid_repo_package_filename(const char *filename) {
+    if (!filename || !*filename || filename[0] == '/' || strchr(filename, '\\')) return 0;
+
+    const char *segment = filename;
+    while (*segment) {
+        const char *slash = strchr(segment, '/');
+        size_t len = slash ? (size_t)(slash - segment) : strlen(segment);
+        if (len == 0 || (len == 1 && segment[0] == '.') ||
+            (len == 2 && segment[0] == '.' && segment[1] == '.')) {
+            return 0;
+        }
+        if (!slash) break;
+        segment = slash + 1;
+    }
+    return 1;
 }
 
 static int download_package(const char *pkgname, char *out_path, size_t maxlen, char *expected_sha, size_t sha_len) {
@@ -76,14 +153,25 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
         return -1;
     }
 
-    if (!sha256 || !*sha256) {
-        fprintf(stderr, "lpm: security error: missing expected SHA256 checksum in repository metadata for '%s'\n", pkgname);
+    if (!valid_sha256_hex(sha256)) {
+        fprintf(stderr, "lpm: security error: repository metadata contains an invalid SHA256 for '%s'\n",
+                pkgname);
         free(version); free(filename); free(sha256);
         return -1;
     }
-
-    strncpy(expected_sha, sha256, sha_len - 1);
-    expected_sha[sha_len - 1] = '\0';
+    if (!valid_repo_package_filename(filename)) {
+        fprintf(stderr, "lpm: security error: repository metadata contains an unsafe package path for '%s'\n",
+                pkgname);
+        free(version); free(filename); free(sha256);
+        return -1;
+    }
+    if (sha_len < 65) {
+        fprintf(stderr, "lpm: internal error: SHA256 output buffer is too small\n");
+        free(version); free(filename); free(sha256);
+        errno = ENOBUFS;
+        return -1;
+    }
+    memcpy(expected_sha, sha256, 65);
 
     char repo_url[LPM_PATH_MAX];
     if (get_repo_url(repo_url, sizeof(repo_url)) != 0) {
@@ -91,21 +179,51 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
         return -1;
     }
 
-    mkdir_p(LPM_CACHE_DIR);
+    if (mkdir_p(LPM_CACHE_DIR) != 0 && errno != EEXIST) {
+        fprintf(stderr, "lpm: failed to create package cache directory '%s': %s\n",
+                LPM_CACHE_DIR, strerror(errno));
+        free(version); free(filename); free(sha256);
+        return -1;
+    }
+
     const char *basename_fn = strrchr(filename, '/');
     basename_fn = basename_fn ? basename_fn + 1 : filename;
-    snprintf(out_path, maxlen, "%s/%s", LPM_CACHE_DIR, basename_fn);
+
+    int written = snprintf(out_path, maxlen, "%s/%s", LPM_CACHE_DIR, basename_fn);
+    if (written < 0 || (size_t)written >= maxlen) {
+        fprintf(stderr, "lpm: cache path is too long for package '%s'\n", pkgname);
+        free(version); free(filename); free(sha256);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
 
     char pkg_download_url[LPM_PATH_MAX * 2];
-    snprintf(pkg_download_url, sizeof(pkg_download_url), "%s/%s", repo_url, filename);
+    written = snprintf(pkg_download_url, sizeof(pkg_download_url), "%s/%s", repo_url, filename);
+    if (written < 0 || (size_t)written >= sizeof(pkg_download_url)) {
+        fprintf(stderr, "lpm: download URL is too long for package '%s'\n", pkgname);
+        free(version); free(filename); free(sha256);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
 
     printf("lpm: downloading %s from %s...\n", pkgname, pkg_download_url);
 
-    char *curl_args[] = { "curl", "-sSL", pkg_download_url, "-o", out_path, NULL };
-    char *wget_args[] = { "wget", "-q", pkg_download_url, "-O", out_path, NULL };
+    char tmp_path[LPM_PATH_MAX + 64];
+    written = snprintf(tmp_path, sizeof(tmp_path), "%s.part.%ld", out_path, (long)getpid());
+    if (written < 0 || (size_t)written >= sizeof(tmp_path)) {
+        fprintf(stderr, "lpm: temporary cache path is too long for package '%s'\n", pkgname);
+        free(version); free(filename); free(sha256);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    unlink(tmp_path);
+
+    char *curl_args[] = { "curl", "-fsSL", "--retry", "3", pkg_download_url, "-o", tmp_path, NULL };
+    char *wget_args[] = { "wget", "-q", pkg_download_url, "-O", tmp_path, NULL };
 
     int res = safe_exec("curl", curl_args);
     if (res != 0) {
+        unlink(tmp_path);
         res = safe_exec("wget", wget_args);
     }
 
@@ -113,9 +231,41 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
     free(filename);
     free(sha256);
 
-    if (res != 0 || access(out_path, F_OK) != 0) {
+    if (res != 0 || access(tmp_path, F_OK) != 0) {
+        unlink(tmp_path);
         fprintf(stderr, "lpm: failed to download package '%s'\n", pkgname);
         return -1;
+    }
+
+    char actual_sha[65] = {0};
+    if (lpm_sha256_file(tmp_path, actual_sha) != 0 || strcmp(expected_sha, actual_sha) != 0) {
+        fprintf(stderr,
+                "lpm: FATAL: SHA256 mismatch for downloaded package '%s'\n"
+                "  expected: %s\n  got:      %s\n",
+                pkgname, expected_sha, actual_sha);
+        unlink(tmp_path);
+        return -1;
+    }
+
+    if (rename(tmp_path, out_path) != 0) {
+        fprintf(stderr, "lpm: failed to commit verified package '%s' to cache: %s\n",
+                pkgname, strerror(errno));
+        unlink(tmp_path);
+        return -1;
+    }
+    return 0;
+}
+
+static int archive_path_has_parent_component(const char *path) {
+    const char *segment = path;
+    while (*segment) {
+        while (*segment == '/') segment++;
+        if (!*segment) break;
+        const char *slash = strchr(segment, '/');
+        size_t len = slash ? (size_t)(slash - segment) : strlen(segment);
+        if (len == 2 && segment[0] == '.' && segment[1] == '.') return 1;
+        if (!slash) break;
+        segment = slash + 1;
     }
     return 0;
 }
@@ -134,7 +284,7 @@ static int validate_archive_members(const char *lpkg_path) {
     if (pid == 0) {
         close(pipefd[0]);
         dup2(pipefd[1], STDOUT_FILENO);
-        int devnull = open("/dev/null", 0666);
+        int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) dup2(devnull, STDERR_FILENO);
         close(pipefd[1]);
         execlp("tar", "tar", "-ztf", lpkg_path, (char *)NULL);
@@ -154,18 +304,22 @@ static int validate_archive_members(const char *lpkg_path) {
 
     while (fgets(line, sizeof(line), stream)) {
         size_t len = strlen(line);
-        if (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
+        bool has_newline = len > 0 && line[len - 1] == '\n';
+        if (!has_newline && !feof(stream)) {
+            fprintf(stderr, "lpm: security error: archive member path exceeds supported length\n");
+            valid = 0;
+            break;
+        }
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
         if (len == 0) continue;
 
-        /* Reject absolute paths */
+        /* Reject absolute paths and parent-directory components. */
         if (line[0] == '/') {
             fprintf(stderr, "lpm: security error: archive member has absolute path '%s'\n", line);
             valid = 0;
             break;
         }
-
-        /* Reject directory traversal */
-        if (strstr(line, "..") != NULL) {
+        if (archive_path_has_parent_component(line)) {
             fprintf(stderr, "lpm: security error: archive member contains directory traversal '%s'\n", line);
             valid = 0;
             break;
@@ -173,14 +327,191 @@ static int validate_archive_members(const char *lpkg_path) {
     }
 
     fclose(stream);
-    int status;
-    waitpid(pid, &status, 0);
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) return -1;
     return (valid && WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+}
+
+static int manifest_declares_path(const manifest *m, const char *path) {
+    for (int i = 0; i < m->nfiles; i++) {
+        if (strcmp(m->files[i], path) == 0) return 1;
+    }
+    return 0;
+}
+
+static int manifest_allows_directory(const manifest *m, const char *path) {
+    size_t len = strlen(path);
+    if (strcmp(path, "/") == 0) return 1;
+
+    for (int i = 0; i < m->nfiles; i++) {
+        if (strcmp(m->files[i], path) == 0) return 1;
+        if (strncmp(m->files[i], path, len) == 0 && m->files[i][len] == '/') return 1;
+    }
+    return 0;
+}
+
+static int validate_staged_payload_tree(const char *stage_root, const char *relative,
+                                        const manifest *m) {
+    char dir_path[LPM_PATH_MAX];
+    int written = relative[0]
+        ? snprintf(dir_path, sizeof(dir_path), "%s/%s", stage_root, relative)
+        : snprintf(dir_path, sizeof(dir_path), "%s", stage_root);
+    if (written < 0 || (size_t)written >= sizeof(dir_path)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    DIR *dir = opendir(dir_path);
+    if (!dir) return -1;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        char child_rel[LPM_PATH_MAX];
+        char child_path[LPM_PATH_MAX];
+        if (relative[0]) {
+            written = snprintf(child_rel, sizeof(child_rel), "%s/%s", relative, entry->d_name);
+        } else {
+            written = snprintf(child_rel, sizeof(child_rel), "%s", entry->d_name);
+        }
+        if (written < 0 || (size_t)written >= sizeof(child_rel)) {
+            fprintf(stderr, "lpm: staged payload path is too long\n");
+            closedir(dir);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        written = snprintf(child_path, sizeof(child_path), "%s/%s", stage_root, child_rel);
+        if (written < 0 || (size_t)written >= sizeof(child_path)) {
+            fprintf(stderr, "lpm: staged payload path is too long\n");
+            closedir(dir);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        struct stat st;
+        if (lstat(child_path, &st) != 0) {
+            fprintf(stderr, "lpm: cannot inspect staged payload member '%s': %s\n",
+                    child_rel, strerror(errno));
+            closedir(dir);
+            return -1;
+        }
+
+        char manifest_path[LPM_PATH_MAX];
+        written = snprintf(manifest_path, sizeof(manifest_path), "/%s", child_rel);
+        if (written < 0 || (size_t)written >= sizeof(manifest_path)) {
+            fprintf(stderr, "lpm: staged manifest path is too long\n");
+            closedir(dir);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            if (!manifest_allows_directory(m, manifest_path)) {
+                fprintf(stderr, "lpm: security error: archive contains undeclared directory '%s'\n",
+                        manifest_path);
+                closedir(dir);
+                return -1;
+            }
+            if (validate_staged_payload_tree(stage_root, child_rel, m) != 0) {
+                closedir(dir);
+                return -1;
+            }
+        } else {
+            if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) {
+                fprintf(stderr,
+                        "lpm: security error: unsupported special file in package payload '%s'\n",
+                        manifest_path);
+                closedir(dir);
+                return -1;
+            }
+            if (!manifest_declares_path(m, manifest_path)) {
+                fprintf(stderr, "lpm: security error: archive contains undeclared payload '%s'\n",
+                        manifest_path);
+                closedir(dir);
+                return -1;
+            }
+        }
+    }
+
+    closedir(dir);
+    return 0;
 }
 
 static int copy_file(const char *src, const char *dst) {
     char *args[] = { "cp", "-a", (char *)src, (char *)dst, NULL };
     return safe_exec("cp", args);
+}
+
+static int write_transaction_status(const char *status_path, const char *state) {
+    char tmp[LPM_PATH_MAX + 96];
+    int written = snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", status_path, (long)getpid());
+    if (written < 0 || (size_t)written >= sizeof(tmp)) return -1;
+
+    FILE *f = fopen(tmp, "w");
+    if (!f) return -1;
+
+    int failed = 0;
+    if (fprintf(f, "%s\n", state) < 0) failed = 1;
+    if (!failed && fflush(f) != 0) failed = 1;
+    if (!failed && fsync(fileno(f)) != 0) failed = 1;
+    if (fclose(f) != 0) failed = 1;
+
+    if (failed) {
+        unlink(tmp);
+        return -1;
+    }
+    if (rename(tmp, status_path) != 0) {
+        unlink(tmp);
+        return -1;
+    }
+    return 0;
+}
+
+static int rollback_transaction_ledger(const char *ledger_path, const char *backup_dir) {
+    FILE *ledger = fopen(ledger_path, "r");
+    if (!ledger) return -1;
+
+    char line[LPM_PATH_MAX + 512];
+    int failures = 0;
+    while (fgets(line, sizeof(line), ledger)) {
+        if (!strchr(line, '\n') && !feof(ledger)) {
+            failures++;
+            break;
+        }
+        if (line[0] == '#') continue;
+        if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ') {
+            failures++;
+            break;
+        }
+
+        char *managed_path = line + 2;
+        managed_path[strcspn(managed_path, "\r\n")] = '\0';
+        if (!lpm_safe_path(managed_path)) {
+            failures++;
+            continue;
+        }
+
+        if (line[0] == 'N') {
+            if (unlink(managed_path) != 0 && errno != ENOENT) failures++;
+            continue;
+        }
+
+        char source[LPM_PATH_MAX * 2];
+        int written = snprintf(source, sizeof(source), "%s%s", backup_dir, managed_path);
+        if (written < 0 || (size_t)written >= sizeof(source) ||
+            access(source, R_OK) != 0 || copy_file(source, managed_path) != 0) {
+            failures++;
+        }
+    }
+
+    fclose(ledger);
+    return failures == 0 ? 0 : -1;
 }
 
 static int remove_tree(const char *path) {
@@ -189,25 +520,45 @@ static int remove_tree(const char *path) {
 }
 
 int cmd_install(int argc, char **argv) {
-    if (argc < 1) { fprintf(stderr, "Usage: lpm install <package-name | file.lpkg>\n"); return 1; }
+    if (argc < 1) { fprintf(stderr, "Usage: lpm install [--dry-run] <package-name | file.lpkg>\n"); return 1; }
+
+    bool dry_run = false;
+    const char *pkg_arg = NULL;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--dry-run") == 0) {
+            dry_run = true;
+        } else if (!pkg_arg) {
+            pkg_arg = argv[i];
+        }
+    }
+
+    if (!pkg_arg) {
+        fprintf(stderr, "Usage: lpm install [--dry-run] <package-name | file.lpkg>\n");
+        return 1;
+    }
+
     if (lpm_lock() != 0) return 1;
 
     char lpkg_path[LPM_PATH_MAX];
     char expected_sha[65] = {0};
 
-    if (!lpm_is_lpkg_file(argv[0])) {
-        if (!lpm_valid_pkgname(argv[0])) {
-            fprintf(stderr, "lpm: invalid package name '%s'\n", argv[0]);
+    if (!lpm_is_lpkg_file(pkg_arg)) {
+        if (!lpm_valid_pkgname(pkg_arg)) {
+            fprintf(stderr, "lpm: invalid package name '%s'\n", pkg_arg);
             lpm_unlock();
             return 1;
         }
-        if (download_package(argv[0], lpkg_path, sizeof(lpkg_path), expected_sha, sizeof(expected_sha)) != 0) {
+        if (download_package(pkg_arg, lpkg_path, sizeof(lpkg_path), expected_sha, sizeof(expected_sha)) != 0) {
             lpm_unlock();
             return 1;
         }
     } else {
-        strncpy(lpkg_path, argv[0], sizeof(lpkg_path) - 1);
-        lpkg_path[sizeof(lpkg_path) - 1] = '\0';
+        int path_written = snprintf(lpkg_path, sizeof(lpkg_path), "%s", pkg_arg);
+        if (path_written < 0 || (size_t)path_written >= sizeof(lpkg_path)) {
+            fprintf(stderr, "lpm: package archive path is too long\n");
+            lpm_unlock();
+            return 1;
+        }
     }
 
     /* 1. Fail closed on archive checksum if expected SHA is defined */
@@ -216,6 +567,9 @@ int cmd_install(int argc, char **argv) {
         if (lpm_sha256_file(lpkg_path, actual_sha) != 0 || strcmp(expected_sha, actual_sha) != 0) {
             fprintf(stderr, "lpm: FATAL: SHA256 mismatch for %s\n  expected: %s\n  got:      %s\n",
                     lpkg_path, expected_sha, actual_sha);
+            /* expected_sha is populated only for repository downloads. Never
+             * retain a corrupted cache entry after a failed integrity check. */
+            unlink(lpkg_path);
             lpm_unlock();
             return 1;
         }
@@ -236,9 +590,12 @@ int cmd_install(int argc, char **argv) {
     manifest *m = NULL;
     manifest *old_m = NULL;
     int files_backed_up = 0;
+    bool root_mutated = false;
+    bool database_committed = false;
     char transaction_dir[LPM_PATH_MAX] = {0};
-    char transaction_status[LPM_PATH_MAX] = {0};
-    char rollback_ledger[LPM_PATH_MAX] = {0};
+    char transaction_status[LPM_PATH_MAX + 64] = {0};
+    char rollback_ledger[LPM_PATH_MAX + 64] = {0};
+    char backup_dir[LPM_PATH_MAX + 64] = {0};
 
     /* 3. Extract manifest.json */
     char manifest_extract_dir[LPM_PATH_MAX];
@@ -266,16 +623,23 @@ int cmd_install(int argc, char **argv) {
     /* 4. Check dependencies */
     char **missing_deps = NULL;
     int nmissing = 0;
-    if (manifest_check_deps(m, &missing_deps, &nmissing) > 0) {
+    int dependency_result = manifest_check_deps(m, &missing_deps, &nmissing);
+    if (dependency_result < 0) {
+        fprintf(stderr, "lpm: error: dependency validation failed internally; refusing installation\n");
+        ret = 1;
+        goto cleanup;
+    }
+    if (dependency_result > 0) {
         fprintf(stderr, "lpm: error: missing dependencies for %s:\n", m->name);
         for (int i = 0; i < nmissing; i++) {
-            fprintf(stderr, "  - %s\n", missing_deps[i]);
+            fprintf(stderr, "  - %s\n", missing_deps[i] ? missing_deps[i] : "(invalid dependency)");
             free(missing_deps[i]);
         }
         free(missing_deps);
         ret = 1;
         goto cleanup;
     }
+    free(missing_deps);
 
     /* 5. Validate file paths in manifest */
     for (int i = 0; i < m->nfiles; i++) {
@@ -286,7 +650,14 @@ int cmd_install(int argc, char **argv) {
         }
     }
 
-    /* 6. Detect file ownership conflicts */
+    /* 6. Detect package-level and file ownership conflicts */
+    char conflict_reason[256] = {0};
+    if (lpm_check_conflicts(m, conflict_reason, sizeof(conflict_reason)) != 0) {
+        fprintf(stderr, "lpm: error: %s\n", conflict_reason);
+        ret = 1;
+        goto cleanup;
+    }
+
     if (lpm_check_file_conflicts(m) != 0) {
         fprintf(stderr, "lpm: transaction aborted: file conflict with installed package\n");
         ret = 1;
@@ -297,16 +668,54 @@ int cmd_install(int argc, char **argv) {
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", m->name);
     old_m = manifest_load(dbdir);
 
+    if (dry_run) {
+        printf("Transaction Plan (dry-run):\n");
+        if (old_m) {
+            printf("  Upgrade: %s (%s -> %s)\n", m->name, old_m->version, m->version);
+        } else {
+            printf("  Install: %s-%s\n", m->name, m->version);
+        }
+        if (m->ndeps > 0) {
+            printf("  Dependencies satisfied (%d):\n", m->ndeps);
+            for (int i = 0; i < m->ndeps; i++) printf("    - %s\n", m->deps[i]);
+        }
+        if (m->nprovides > 0) {
+            printf("  Provides capabilities (%d):\n", m->nprovides);
+            for (int i = 0; i < m->nprovides; i++) printf("    - %s\n", m->provides[i]);
+        }
+        if (m->nconflicts > 0) {
+            printf("  Conflicts checked (%d, no conflicts)\n", m->nconflicts);
+        }
+        if (m->nreplaces > 0) {
+            printf("  Replaces (%d):\n", m->nreplaces);
+            for (int i = 0; i < m->nreplaces; i++) printf("    - %s\n", m->replaces[i]);
+        }
+        printf("  Files: %d file(s) to install\n", m->nfiles);
+        printf("Transaction plan verified successfully (no filesystem changes made).\n");
+        ret = 0;
+        goto cleanup;
+    }
+
     printf("lpm: preparing transaction for %s-%s\n", m->name, m->version);
 
     /* 7. Extract payload into staging area */
     char stage_root[LPM_PATH_MAX];
-    snprintf(stage_root, sizeof(stage_root), "%s/root", tmpdir);
-    mkdir_p(stage_root);
+    int stage_written = snprintf(stage_root, sizeof(stage_root), "%s/root", tmpdir);
+    if (stage_written < 0 || (size_t)stage_written >= sizeof(stage_root) || mkdir_p(stage_root) != 0) {
+        fprintf(stderr, "lpm: failed to create transaction staging directory: %s\n", strerror(errno));
+        ret = 1;
+        goto cleanup;
+    }
 
     char *tar_payload_args[] = { "tar", "-xzf", lpkg_path, "-C", stage_root, "--exclude=manifest.json", NULL };
     if (safe_exec("tar", tar_payload_args) != 0) {
         fprintf(stderr, "lpm: failed to extract payload into staging area\n");
+        ret = 1;
+        goto cleanup;
+    }
+
+    if (validate_staged_payload_tree(stage_root, "", m) != 0) {
+        fprintf(stderr, "lpm: security violation: package payload does not match its manifest\n");
         ret = 1;
         goto cleanup;
     }
@@ -316,7 +725,13 @@ int cmd_install(int argc, char **argv) {
         int checksum_mismatches = 0;
         for (int i = 0; i < m->nchecksums; i++) {
             char file_in_stage[LPM_PATH_MAX];
-            snprintf(file_in_stage, sizeof(file_in_stage), "%s/root%s", tmpdir, m->checksums[i].path);
+            int checksum_path_written = snprintf(file_in_stage, sizeof(file_in_stage),
+                                                 "%s/root%s", tmpdir, m->checksums[i].path);
+            if (checksum_path_written < 0 || (size_t)checksum_path_written >= sizeof(file_in_stage)) {
+                fprintf(stderr, "lpm: staged checksum path is too long: %s\n", m->checksums[i].path);
+                checksum_mismatches++;
+                continue;
+            }
             char file_sha[65] = {0};
             if (lpm_sha256_file(file_in_stage, file_sha) != 0 ||
                 strcmp(file_sha, m->checksums[i].sha256) != 0) {
@@ -333,39 +748,62 @@ int cmd_install(int argc, char **argv) {
     }
 
     /* 9. Prepare Rollback Backups for existing files */
-    char backup_dir[LPM_PATH_MAX];
-    snprintf(transaction_dir, sizeof(transaction_dir), "%s/%ld-%ld", LPM_TRANSACTIONS,
-             (long)time(NULL), (long)getpid());
-    snprintf(transaction_status, sizeof(transaction_status), "%s/status", transaction_dir);
-    snprintf(rollback_ledger, sizeof(rollback_ledger), "%s/rollback/ledger", transaction_dir);
-    snprintf(backup_dir, sizeof(backup_dir), "%s/rollback/files", transaction_dir);
+    int tx_written = snprintf(transaction_dir, sizeof(transaction_dir), "%s/%ld-%ld",
+                              LPM_TRANSACTIONS, (long)time(NULL), (long)getpid());
+    if (tx_written < 0 || (size_t)tx_written >= sizeof(transaction_dir) ||
+        snprintf(transaction_status, sizeof(transaction_status), "%s/status", transaction_dir) >= (int)sizeof(transaction_status) ||
+        snprintf(rollback_ledger, sizeof(rollback_ledger), "%s/rollback/ledger", transaction_dir) >= (int)sizeof(rollback_ledger) ||
+        snprintf(backup_dir, sizeof(backup_dir), "%s/rollback/files", transaction_dir) >= (int)sizeof(backup_dir)) {
+        fprintf(stderr, "lpm: transaction path is too long\n");
+        ret = 1;
+        goto cleanup;
+    }
     if (mkdir_p(backup_dir) != 0 && errno != EEXIST) { ret = 1; goto cleanup; }
     {
-        FILE *status = fopen(transaction_status, "w");
         FILE *packages = NULL;
-        if (!status) { ret = 1; goto cleanup; }
-        fprintf(status, "prepared\n"); fclose(status);
+        if (write_transaction_status(transaction_status, "prepared") != 0) {
+            fprintf(stderr, "lpm: failed to persist transaction preparation state\n");
+            ret = 1;
+            goto cleanup;
+        }
         packages = fopen(rollback_ledger, "w");
         if (!packages) { ret = 1; goto cleanup; }
-        fprintf(packages, "# transaction=%s package=%s old=%s new=%s\n", transaction_dir,
-                m->name, old_m && old_m->version ? old_m->version : "none", m->version);
-        fclose(packages);
+        int ledger_failed = 0;
+        if (fprintf(packages, "# transaction=%s package=%s old=%s new=%s\n", transaction_dir,
+                    m->name, old_m && old_m->version ? old_m->version : "none", m->version) < 0) {
+            ledger_failed = 1;
+        }
+        if (!ledger_failed && fflush(packages) != 0) ledger_failed = 1;
+        if (!ledger_failed && fsync(fileno(packages)) != 0) ledger_failed = 1;
+        if (fclose(packages) != 0) ledger_failed = 1;
+        if (ledger_failed) {
+            ret = 1;
+            goto cleanup;
+        }
     }
-
-    int *file_existed = calloc(m->nfiles, sizeof(int));
-    if (!file_existed) { ret = 1; goto cleanup; }
 
     for (int i = 0; i < m->nfiles; i++) {
         FILE *ledger = fopen(rollback_ledger, "a");
         if (!ledger) { ret = 1; goto cleanup; }
         if (access(m->files[i], F_OK) == 0) {
-            file_existed[i] = 1;
-            char backup_file[LPM_PATH_MAX];
-            snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
+            char backup_file[LPM_PATH_MAX * 2];
+            int backup_written = snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
+            if (backup_written < 0 || (size_t)backup_written >= sizeof(backup_file)) {
+                fclose(ledger);
+                fprintf(stderr, "lpm: rollback backup path is too long: %s\n", m->files[i]);
+                ret = 1;
+                goto cleanup;
+            }
             char *last_slash = strrchr(backup_file, '/');
             if (last_slash) {
                 *last_slash = '\0';
-                mkdir_p(backup_file);
+                if (mkdir_p(backup_file) != 0) {
+                    *last_slash = '/';
+                    fclose(ledger);
+                    fprintf(stderr, "lpm: failed to create rollback backup directory: %s\n", strerror(errno));
+                    ret = 1;
+                    goto cleanup;
+                }
                 *last_slash = '/';
             }
             if (copy_file(m->files[i], backup_file) != 0) { fclose(ledger); ret = 1; goto cleanup; }
@@ -377,48 +815,33 @@ int cmd_install(int argc, char **argv) {
         fclose(ledger);
     }
 
-    /* 10. Atomic Commit: Copy staged files to root */
+    /* 10. Commit staged payload to root. The rollback ledger is already durable,
+     * so even a partial cp failure can be recovered deterministically. */
     printf("lpm: committing %s-%s to system root\n", m->name, m->version);
     char stage_source[LPM_PATH_MAX];
-    snprintf(stage_source, sizeof(stage_source), "%s/root/.", tmpdir);
+    int stage_source_written = snprintf(stage_source, sizeof(stage_source), "%s/root/.", tmpdir);
+    if (stage_source_written < 0 || (size_t)stage_source_written >= sizeof(stage_source)) {
+        fprintf(stderr, "lpm: staging source path is too long\n");
+        ret = 1;
+        goto cleanup;
+    }
     char *commit_args[] = { "cp", "-a", stage_source, "/", NULL };
 
+    root_mutated = true;
     if (safe_exec("cp", commit_args) != 0) {
-        fprintf(stderr, "lpm: transaction failed during commit to rootfs. Rolling back...\n");
-        /* Rollback: restore backed up files and remove newly added files */
-        for (int i = 0; i < m->nfiles; i++) {
-            if (file_existed[i]) {
-                char backup_file[LPM_PATH_MAX];
-                snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
-                copy_file(backup_file, m->files[i]);
-            } else {
-                unlink(m->files[i]);
-            }
-        }
-        free(file_existed);
+        fprintf(stderr, "lpm: transaction failed during commit to rootfs; rollback will be attempted\n");
         ret = 1;
         goto cleanup;
     }
 
-    /* 11. Update installed database */
-    mkdir_p(LPM_INSTALLED);
-    mkdir_p(dbdir);
-    if (manifest_save(m, dbdir) != 0) {
-        fprintf(stderr, "lpm: failed to write installed database entry. Rolling back...\n");
-        for (int i = 0; i < m->nfiles; i++) {
-            if (file_existed[i]) {
-                char backup_file[LPM_PATH_MAX];
-                snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
-                copy_file(backup_file, m->files[i]);
-            } else {
-                unlink(m->files[i]);
-            }
-        }
-        free(file_existed);
+    /* 11. Prepare the installed-database directory, but do not publish the
+     * new manifest until all filesystem changes (including obsolete removal)
+     * have completed successfully. */
+    if (mkdir_p(LPM_INSTALLED) != 0 || mkdir_p(dbdir) != 0) {
+        fprintf(stderr, "lpm: failed to create installed package database directory: %s\n", strerror(errno));
         ret = 1;
         goto cleanup;
     }
-    free(file_existed);
 
     /* 12. Cleanup obsolete files from previous package version */
     if (old_m) {
@@ -431,7 +854,7 @@ int cmd_install(int argc, char **argv) {
                 }
             }
             if (!still_present) {
-                char obsolete_backup[LPM_PATH_MAX];
+                char obsolete_backup[LPM_PATH_MAX * 2];
                 FILE *ledger = NULL;
                 if (!lpm_safe_path(old_m->files[i])) {
                     fprintf(stderr, "lpm: refusing unsafe obsolete path '%s'\n", old_m->files[i]);
@@ -439,7 +862,13 @@ int cmd_install(int argc, char **argv) {
                     goto cleanup;
                 }
                 if (access(old_m->files[i], F_OK) != 0) continue;
-                snprintf(obsolete_backup, sizeof(obsolete_backup), "%s%s", backup_dir, old_m->files[i]);
+                int obsolete_written = snprintf(obsolete_backup, sizeof(obsolete_backup),
+                                                       "%s%s", backup_dir, old_m->files[i]);
+                if (obsolete_written < 0 || (size_t)obsolete_written >= sizeof(obsolete_backup)) {
+                    fprintf(stderr, "lpm: obsolete rollback path is too long: %s\n", old_m->files[i]);
+                    ret = 1;
+                    goto cleanup;
+                }
                 {
                     char *last_slash = strrchr(obsolete_backup, '/');
                     if (!last_slash) { ret = 1; goto cleanup; }
@@ -463,13 +892,33 @@ int cmd_install(int argc, char **argv) {
         }
     }
 
+    /* 13. Publish the new installed manifest only after the filesystem is
+     * internally consistent. This is the transaction's database commit point. */
+    if (manifest_save(m, dbdir) != 0) {
+        fprintf(stderr, "lpm: failed to write installed database entry; rollback will be attempted\n");
+        ret = 1;
+        goto cleanup;
+    }
+    database_committed = true;
+
     printf("lpm: successfully installed %s-%s (%d files)\n", m->name, m->version, m->nfiles);
-    {
-        FILE *status = fopen(transaction_status, "w");
-        if (status) { fprintf(status, "committed\n"); fclose(status); }
+    if (write_transaction_status(transaction_status, "committed") != 0) {
+        fprintf(stderr, "lpm: warning: package committed, but transaction history status could not be finalized\n");
     }
 
 cleanup:
+    if (ret != 0 && root_mutated && !database_committed &&
+        rollback_ledger[0] && backup_dir[0]) {
+        fprintf(stderr, "lpm: restoring filesystem from transaction rollback ledger...\n");
+        if (rollback_transaction_ledger(rollback_ledger, backup_dir) == 0) {
+            (void)write_transaction_status(transaction_status, "rolled_back");
+            fprintf(stderr, "lpm: rollback completed successfully\n");
+        } else {
+            (void)write_transaction_status(transaction_status, "rollback_failed");
+            fprintf(stderr, "lpm: rollback was incomplete; Recovery Mode can retry transaction %s\n",
+                    transaction_dir[0] ? transaction_dir : "(unknown)");
+        }
+    }
     if (old_m) manifest_free(old_m);
     if (m) manifest_free(m);
     remove_tree(tmpdir);
@@ -477,35 +926,187 @@ cleanup:
     return ret;
 }
 
-int cmd_remove(int argc, char **argv) {
-    if (argc < 1) { fprintf(stderr, "Usage: lpm remove <package>\n"); return 1; }
-    const char *name = argv[0];
+#define LPM_MAX_CASCADE_VISITED 512
+static char *cascade_visited[LPM_MAX_CASCADE_VISITED];
+static size_t cascade_visited_count = 0;
 
-    if (!lpm_valid_pkgname(name)) {
-        fprintf(stderr, "lpm: invalid package name '%s'\n", name);
+static int cascade_mark_visited(const char *name) {
+    for (size_t i = 0; i < cascade_visited_count; i++) {
+        if (strcmp(cascade_visited[i], name) == 0) return 1;
+    }
+    if (cascade_visited_count >= LPM_MAX_CASCADE_VISITED) {
+        errno = ELOOP;
+        return -1;
+    }
+    char *copy = strdup(name);
+    if (!copy) return -1;
+    cascade_visited[cascade_visited_count++] = copy;
+    return 0;
+}
+
+int cmd_remove(int argc, char **argv) {
+    if (argc < 1) {
+        fprintf(stderr, "Usage: lpm remove [--cascade] <package>\n");
         return 1;
+    }
+
+    bool cascade = false;
+    const char *name = NULL;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--cascade") == 0 || strcmp(argv[i], "-R") == 0) {
+            cascade = true;
+        } else if (!name) {
+            name = argv[i];
+        } else {
+            fprintf(stderr, "Usage: lpm remove [--cascade] <package>\n");
+            return 1;
+        }
+    }
+
+    if (!name || !lpm_valid_pkgname(name)) {
+        fprintf(stderr, "lpm: invalid package name '%s'\n", name ? name : "");
+        return 1;
+    }
+    if (cascade) {
+        int visit_state = cascade_mark_visited(name);
+        if (visit_state > 0) {
+            printf("lpm: skipping already scheduled cascade package: %s\n", name);
+            return 0;
+        }
+        if (visit_state < 0) {
+            fprintf(stderr, "lpm: cascade dependency graph is too large or could not be tracked\n");
+            return 1;
+        }
     }
     if (lpm_lock() != 0) return 1;
 
     char dbdir[LPM_PATH_MAX];
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
     manifest *m = manifest_load(dbdir);
-    if (!m) { fprintf(stderr, "lpm: '%s' not installed\n", name); lpm_unlock(); return 1; }
+    if (!m) {
+        fprintf(stderr, "lpm: '%s' not installed\n", name);
+        lpm_unlock();
+        return 1;
+    }
 
-    /* Remove package files */
+    /* Resolve dependents recursively instead of deleting only direct
+     * dependents and potentially leaving a transitive package broken. */
+    char **dependents = NULL;
+    int ndependents = 0;
+    int dependent_result = lpm_find_dependents(name, &dependents, &ndependents);
+    if (dependent_result < 0) {
+        fprintf(stderr, "lpm: error: unable to determine reverse dependencies for '%s'; refusing removal\n", name);
+        manifest_free(m);
+        lpm_unlock();
+        return 1;
+    }
+    if (dependent_result > 0) {
+        if (!cascade) {
+            fprintf(stderr, "lpm: error: cannot remove '%s': required by %d installed package(s):\n",
+                    name, ndependents);
+            for (int i = 0; i < ndependents; i++) {
+                fprintf(stderr, "  - %s\n", dependents[i]);
+                free(dependents[i]);
+            }
+            free(dependents);
+            fprintf(stderr, "Use 'lpm remove --cascade %s' to remove dependent packages automatically.\n", name);
+            manifest_free(m);
+            lpm_unlock();
+            return 1;
+        }
+
+        char **pending = calloc((size_t)ndependents, sizeof(char *));
+        if (!pending) {
+            for (int i = 0; i < ndependents; i++) free(dependents[i]);
+            free(dependents);
+            manifest_free(m);
+            lpm_unlock();
+            return 1;
+        }
+
+        for (int i = 0; i < ndependents; i++) {
+            pending[i] = strdup(dependents[i]);
+            free(dependents[i]);
+            if (!pending[i]) {
+                for (int j = 0; j < i; j++) free(pending[j]);
+                free(pending);
+                free(dependents);
+                manifest_free(m);
+                lpm_unlock();
+                return 1;
+            }
+        }
+        free(dependents);
+        manifest_free(m);
+        m = NULL;
+        lpm_unlock();
+
+        printf("lpm: cascading removal of dependent packages (%d):\n", ndependents);
+        for (int i = 0; i < ndependents; i++) {
+            char *dep_args[] = { "--cascade", pending[i] };
+            printf("  -> Removing dependent package: %s\n", pending[i]);
+            if (cmd_remove(2, dep_args) != 0) {
+                fprintf(stderr, "lpm: cascade stopped because removal of '%s' failed\n", pending[i]);
+                for (int j = i; j < ndependents; j++) free(pending[j]);
+                free(pending);
+                return 1;
+            }
+            free(pending[i]);
+        }
+        free(pending);
+
+        if (lpm_lock() != 0) return 1;
+        m = manifest_load(dbdir);
+        if (!m) {
+            fprintf(stderr, "lpm: target '%s' disappeared during cascade removal\n", name);
+            lpm_unlock();
+            return 1;
+        }
+    }
+
+    int removal_failures = 0;
+
+    /* Keep the package database entry until every managed payload path has
+     * either been removed or was already absent. If deletion fails, leaving
+     * the manifest in place lets 'lpm verify/repair' diagnose the partial
+     * state instead of falsely claiming that the package is gone. */
     for (int i = m->nfiles - 1; i >= 0; i--) {
         if (!lpm_safe_path(m->files[i])) {
-            fprintf(stderr, "lpm: warning: skipping unsafe path '%s' in %s\n", m->files[i], m->name);
+            fprintf(stderr, "lpm: refusing unsafe managed path '%s' in %s\n",
+                    m->files[i], m->name);
+            removal_failures++;
             continue;
         }
-        if (unlink(m->files[i]) != 0 && errno != ENOENT)
-            fprintf(stderr, "lpm: warning: could not remove %s\n", m->files[i]);
+        if (unlink(m->files[i]) != 0 && errno != ENOENT) {
+            fprintf(stderr, "lpm: could not remove %s: %s\n",
+                    m->files[i], strerror(errno));
+            removal_failures++;
+        }
+    }
+
+    if (removal_failures > 0) {
+        fprintf(stderr,
+                "lpm: removal of %s stopped with %d filesystem error(s); "
+                "the installed manifest was preserved for repair/retry\n",
+                m->name, removal_failures);
+        manifest_free(m);
+        lpm_unlock();
+        return 1;
     }
 
     char mp[LPM_PATH_MAX + 32];
     snprintf(mp, sizeof(mp), "%s/manifest.json", dbdir);
-    unlink(mp);
-    rmdir(dbdir);
+    if (unlink(mp) != 0 && errno != ENOENT) {
+        fprintf(stderr, "lpm: payload removed but could not remove package manifest for %s: %s\n",
+                m->name, strerror(errno));
+        manifest_free(m);
+        lpm_unlock();
+        return 1;
+    }
+    if (rmdir(dbdir) != 0 && errno != ENOENT && errno != ENOTEMPTY) {
+        fprintf(stderr, "lpm: warning: package metadata directory remains at %s: %s\n",
+                dbdir, strerror(errno));
+    }
 
     printf("lpm: removed %s-%s\n", m->name, m->version);
     manifest_free(m);
@@ -514,18 +1115,42 @@ int cmd_remove(int argc, char **argv) {
 }
 
 int cmd_upgrade(int argc, char **argv) {
+    bool dry_run = false;
+    const char *requested_name = NULL;
+
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--dry-run") == 0) {
+            dry_run = true;
+        } else if (!requested_name) {
+            requested_name = argv[i];
+        } else {
+            fprintf(stderr, "Usage: lpm upgrade [--dry-run] [package]\n");
+            return 1;
+        }
+    }
+
+    if (requested_name && !lpm_valid_pkgname(requested_name)) {
+        fprintf(stderr, "lpm: invalid package name '%s'\n", requested_name);
+        return 1;
+    }
+
     if (access(LPM_REPO_JSON, F_OK) != 0) {
         fprintf(stderr, "lpm: no repository index found. Run 'lpm update' first.\n");
         return 1;
     }
     if (lpm_lock() != 0) return 1;
 
-    if (argc >= 1) {
-        const char *name = argv[0];
+    if (requested_name) {
+        const char *name = requested_name;
         char dbdir[LPM_PATH_MAX];
         snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", name);
         manifest *cur = manifest_load(dbdir);
         if (!cur) {
+            if (dry_run) {
+                printf("lpm: %s is not installed; upgrade would install it\n", name);
+                lpm_unlock();
+                return 0;
+            }
             printf("lpm: package '%s' is not installed. Installing...\n", name);
             char *pkg_args[] = { (char *)name };
             lpm_unlock();
@@ -534,59 +1159,121 @@ int cmd_upgrade(int argc, char **argv) {
 
         char *repo_ver = NULL, *filename = NULL, *sha256 = NULL;
         if (lpm_repo_lookup(name, &repo_ver, &filename, &sha256) != 0) {
-            printf("lpm: '%s' is up to date (not in repository index)\n", name);
+            printf("lpm: '%s' is installed but not present in the repository index\n", name);
             manifest_free(cur);
             lpm_unlock();
             return 0;
         }
 
         if (lpm_version_cmp(cur->version, repo_ver) < 0) {
-            printf("lpm: upgrading %s (%s -> %s)\n", name, cur->version, repo_ver);
+            printf("lpm: upgrade available for %s: %s -> %s\n", name, cur->version, repo_ver);
             manifest_free(cur);
             free(repo_ver); free(filename); free(sha256);
+            if (dry_run) {
+                lpm_unlock();
+                return 0;
+            }
             char *pkg_args[] = { (char *)name };
             lpm_unlock();
             return cmd_install(1, pkg_args);
-        } else {
-            printf("lpm: %s-%s is already up to date\n", cur->name, cur->version);
-            manifest_free(cur);
-            free(repo_ver); free(filename); free(sha256);
-            lpm_unlock();
-            return 0;
         }
+
+        printf("lpm: %s-%s is already up to date\n", cur->name, cur->version);
+        manifest_free(cur);
+        free(repo_ver); free(filename); free(sha256);
+        lpm_unlock();
+        return 0;
     }
 
     DIR *dir = opendir(LPM_INSTALLED);
-    if (!dir) { printf("lpm: no packages installed\n"); lpm_unlock(); return 0; }
+    if (!dir) {
+        printf("lpm: no packages installed\n");
+        lpm_unlock();
+        return 0;
+    }
 
     struct dirent *ent;
+    int planned_count = 0;
     int upgraded_count = 0;
+    int failed_count = 0;
+    int lock_held = 1;
+
     while ((ent = readdir(dir))) {
         if (ent->d_name[0] == '.') continue;
         if (!lpm_valid_pkgname(ent->d_name)) continue;
 
+        char pkgname[256];
+        int pkg_written = snprintf(pkgname, sizeof(pkgname), "%s", ent->d_name);
+        if (pkg_written < 0 || (size_t)pkg_written >= sizeof(pkgname)) {
+            fprintf(stderr, "lpm: skipping overlong installed package name\n");
+            failed_count++;
+            continue;
+        }
+
         char dbdir[LPM_PATH_MAX];
-        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", ent->d_name);
+        int db_written = snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", pkgname);
+        if (db_written < 0 || (size_t)db_written >= sizeof(dbdir)) {
+            fprintf(stderr, "lpm: installed package path is too long for %s\n", pkgname);
+            failed_count++;
+            continue;
+        }
         manifest *cur = manifest_load(dbdir);
         if (!cur) continue;
 
         char *repo_ver = NULL, *filename = NULL, *sha256 = NULL;
-        if (lpm_repo_lookup(ent->d_name, &repo_ver, &filename, &sha256) == 0) {
-            if (lpm_version_cmp(cur->version, repo_ver) < 0) {
-                printf("lpm: upgrade available for %s: %s -> %s\n", ent->d_name, cur->version, repo_ver);
-                char *pkg_args[] = { ent->d_name };
-                lpm_unlock();
-                if (cmd_install(1, pkg_args) == 0) {
-                    upgraded_count++;
-                }
-                if (lpm_lock() != 0) break;
-            }
+        if (lpm_repo_lookup(pkgname, &repo_ver, &filename, &sha256) == 0 &&
+            lpm_version_cmp(cur->version, repo_ver) < 0) {
+            printf("lpm: upgrade available for %s: %s -> %s\n", pkgname, cur->version, repo_ver);
+            planned_count++;
+
             free(repo_ver); free(filename); free(sha256);
+            manifest_free(cur);
+
+            if (dry_run) {
+                continue;
+            }
+
+            char *pkg_args[] = { pkgname };
+            lpm_unlock();
+            lock_held = 0;
+
+            if (cmd_install(1, pkg_args) == 0) {
+                upgraded_count++;
+            } else {
+                fprintf(stderr, "lpm: upgrade FAILED for %s\n", pkgname);
+                failed_count++;
+            }
+
+            if (lpm_lock() != 0) {
+                fprintf(stderr, "lpm: failed to reacquire package database lock after upgrading %s\n", pkgname);
+                failed_count++;
+                break;
+            }
+            lock_held = 1;
+            continue;
         }
+
+        free(repo_ver); free(filename); free(sha256);
         manifest_free(cur);
     }
+
     closedir(dir);
-    lpm_unlock();
+    if (lock_held) lpm_unlock();
+
+    if (dry_run) {
+        if (planned_count == 0) {
+            printf("lpm: all packages are up to date\n");
+        } else {
+            printf("lpm: %d package upgrade(s) available\n", planned_count);
+        }
+        return 0;
+    }
+
+    if (failed_count > 0) {
+        fprintf(stderr, "lpm: upgrade finished with %d failure(s); %d package(s) upgraded successfully\n",
+                failed_count, upgraded_count);
+        return 1;
+    }
 
     if (upgraded_count == 0) {
         printf("lpm: all packages are up to date\n");

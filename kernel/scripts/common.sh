@@ -46,5 +46,8 @@ kernel_verify_host() {
   if [ ${#missing[@]} -gt 0 ]; then
     lumen_die "Missing host build tools for kernel: ${missing[*]}"
   fi
+  if ! echo '#include <openssl/bio.h>' | gcc -E -x c - >/dev/null 2>&1; then
+    lumen_die "Missing host kernel prerequisite: libssl-dev (openssl/bio.h)"
+  fi
   lumen_ok "All required kernel build tools found"
 }

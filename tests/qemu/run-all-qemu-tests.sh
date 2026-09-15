@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
-# tests/qemu/run-all-qemu-tests.sh — Run all automated QEMU boot tests
-#
-# Executes kernel, rootfs, ISO (BIOS & UEFI), and disk boot tests sequentially.
-#
-# Usage:
-#   bash tests/qemu/run-all-qemu-tests.sh [--timeout=60]
-#
-set -euo pipefail
+# Run the ShreeOS QEMU boot suite.
+# Default mode permits unavailable build artifacts to be skipped for local development.
+# --strict is used by make test-qemu/CI and requires QEMU plus every prerequisite.
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LUMEN_ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-source "$LUMEN_ROOT_DIR/build.conf" 2>/dev/null || true
-source "$LUMEN_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
-  lumen_step() { echo "==> $1"; }
-  lumen_ok() { echo "  [OK] $1"; }
-  lumen_warn() { echo "  [WARN] $1"; }
-}
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$ROOT_DIR/build.conf"
+source "$ROOT_DIR/scripts/common.sh"
 
 TIMEOUT=60
+STRICT=false
 for arg in "$@"; do
   case "$arg" in
     --timeout=*) TIMEOUT="${arg#*=}" ;;
-    --help|-h) echo "Usage: run-all-qemu-tests.sh [--timeout=N]"; exit 0 ;;
+    --strict) STRICT=true ;;
+    --help|-h)
+      echo "Usage: run-all-qemu-tests.sh [--timeout=N] [--strict]"
+      exit 0
+      ;;
+    *) shreeos_die "Unknown option: $arg" ;;
   esac
 done
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
-if ! command -v "$QEMU_BIN" &>/dev/null; then
-  lumen_warn "QEMU (${QEMU_BIN}) not installed on host — skipping automated hardware boot runs"
+if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
+  if [ "$STRICT" = true ]; then
+    shreeos_die "QEMU ($QEMU_BIN) is required for strict boot validation"
+  fi
+  shreeos_warn "QEMU ($QEMU_BIN) is not installed; skipping QEMU suite"
   exit 0
 fi
 
-lumen_step "Running QEMU Boot Test Suite (Timeout: ${TIMEOUT}s)"
+shreeos_step "Running QEMU Boot Test Suite (timeout: ${TIMEOUT}s, strict: ${STRICT})"
 
 TESTS=(
   "boot-kernel-only.sh"
@@ -40,6 +40,7 @@ TESTS=(
   "boot-iso-bios.sh"
   "boot-iso-uefi.sh"
   "boot-installed-disk.sh"
+  "test-e2e-install-and-boot.sh"
 )
 
 PASSED=0
@@ -47,26 +48,46 @@ FAILED=0
 SKIPPED=0
 
 for t in "${TESTS[@]}"; do
-  TEST_PATH="${SCRIPT_DIR}/${t}"
-  if [ ! -f "$TEST_PATH" ]; then
-    SKIPPED=$((SKIPPED + 1))
+  test_path="$SCRIPT_DIR/$t"
+  if [ ! -f "$test_path" ]; then
+    if [ "$STRICT" = true ]; then
+      shreeos_warn "Missing required QEMU test: $t"
+      FAILED=$((FAILED + 1))
+    else
+      SKIPPED=$((SKIPPED + 1))
+    fi
     continue
   fi
 
-  lumen_step "Executing QEMU test: ${t}"
-  if TIMEOUT="$TIMEOUT" bash "$TEST_PATH"; then
-    PASSED=$((PASSED + 1))
-  else
-    FAILED=$((FAILED + 1))
-  fi
+  shreeos_step "Executing QEMU test: $t"
+  set +e
+  REQUIRE_ARTIFACTS="$([ "$STRICT" = true ] && echo 1 || echo 0)"     TIMEOUT="$TIMEOUT" bash "$test_path"
+  rc=$?
+  set -e
+
+  case "$rc" in
+    0) PASSED=$((PASSED + 1)) ;;
+    77)
+      if [ "$STRICT" = true ]; then
+        FAILED=$((FAILED + 1))
+      else
+        SKIPPED=$((SKIPPED + 1))
+      fi
+      ;;
+    *) FAILED=$((FAILED + 1)) ;;
+  esac
 done
 
-echo ""
+echo
 echo "=== QEMU Boot Test Summary ==="
-echo "  Passed:  ${PASSED}"
-echo "  Failed:  ${FAILED}"
-echo "  Skipped: ${SKIPPED}"
+echo "  Passed:  $PASSED"
+echo "  Failed:  $FAILED"
+echo "  Skipped: $SKIPPED"
 
 if [ "$FAILED" -gt 0 ]; then
   exit 1
 fi
+if [ "$STRICT" = true ] && [ "$SKIPPED" -gt 0 ]; then
+  shreeos_die "Strict QEMU validation cannot contain skipped tests"
+fi
+shreeos_ok "QEMU boot suite completed successfully"

@@ -50,6 +50,13 @@ help:
 	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
 	@echo "  make all                  Build everything end-to-end"
 	@echo ""
+	@echo "Diagnostic & Verification Targets:"
+	@echo "  make bootstrap-wsl        Install/check supported WSL2 build dependencies"
+	@echo "  make doctor               Check environment, host tools, and build readiness"
+	@echo "  make verify-sources       Verify upstream URLs, checksum format, and downloaded tarballs"
+	@echo "  make graphics             Strictly validate target desktop graphics readiness"
+	@echo "  make verify-iso           Validate ISO structure and BIOS/UEFI boot"
+	@echo ""
 	@echo "Testing & Execution Targets:"
 	@echo "  make test-unit            Run LPM package manager C unit tests"
 	@echo "  make test-security        Run system security audits"
@@ -65,26 +72,85 @@ help:
 	@echo ""
 	@echo "Maintenance Targets:"
 	@echo "  make clean                Remove build staging and markers"
+	@echo "  make clean-toolchain      Remove toolchain/sysroot and dependent markers"
+	@echo "  make clean-base           Remove base-system state and dependent markers"
+	@echo "  make clean-kernel         Remove kernel state and dependent markers"
+	@echo "  make clean-desktop        Remove desktop state and dependent markers"
+	@echo "  make clean-iso            Remove ISO state/artifacts only"
 	@echo "  make distclean            Full reset including build/ and out/"
 	@echo ""
 	@echo "Options:"
 	@echo "  PROFILE=desktop|minimal|server  (default: desktop)"
 	@echo "  FORCE=1                         (rebuild all stages)"
 
+# Diagnostic & source verification
+.PHONY: bootstrap-wsl
+bootstrap-wsl:
+	bash scripts/bootstrap-wsl.sh
+
+.PHONY: doctor
+doctor:
+	bash scripts/doctor.sh
+
+.PHONY: verify-sources
+verify-sources:
+	bash scripts/verify-sources.sh
+
+.PHONY: graphics
+graphics: toolchain base-system
+	bash scripts/graphics-readiness.sh --strict
+
+.PHONY: verify-iso
+verify-iso:
+	bash scripts/verify-iso.sh
+
 # Marker directory creation
 $(MARKER_DIR):
 	mkdir -p $(MARKER_DIR)
 
 ifdef FORCE
-$(shell rm -f $(MARKER_DIR)/.* 2>/dev/null)
+$(shell rm -rf $(MARKER_DIR) 2>/dev/null)
 endif
+
+# Source file dependencies for accurate cache invalidation.
+# A marker is rebuilt when its own stage inputs change, so interrupted builds
+# can resume without silently reusing stale outputs.
+COMMON_BUILD_DEPS := build.conf scripts/common.sh Makefile
+TOOLCHAIN_DEPS := $(COMMON_BUILD_DEPS) $(shell find toolchain -type f 2>/dev/null)
+BASE_DEPS := $(COMMON_BUILD_DEPS) $(shell find base-system -type f 2>/dev/null)
+KERNEL_DEPS := $(COMMON_BUILD_DEPS) $(shell find kernel -type f 2>/dev/null)
+PKG_DEPS := $(COMMON_BUILD_DEPS) $(shell find pkgmanager/src init/src hardware -type f 2>/dev/null)
+DESKTOP_DEPS := $(COMMON_BUILD_DEPS) scripts/graphics-readiness.sh $(shell find desktop -type f 2>/dev/null)
+ROOTFS_DEPS := $(COMMON_BUILD_DEPS) $(shell find rootfs -type f 2>/dev/null)
+ISO_DEPS := $(COMMON_BUILD_DEPS) scripts/verify-iso.sh $(shell find iso-builder bootloader -type f 2>/dev/null)
+
+# Marker cache guards. Order-only phony prerequisites execute on every invocation
+# without making a valid marker look stale. They fail fast when a marker exists
+# but its real stage output is gone/corrupt.
+.PHONY: check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache check-iso-cache
+check-toolchain-cache:
+	@if [ -f "$(MARKER_DIR)/.toolchain" ]; then bash scripts/verify-stage.sh toolchain; fi
+check-base-cache:
+	@if [ -f "$(MARKER_DIR)/.base-system" ]; then bash scripts/verify-stage.sh base-system; fi
+check-kernel-cache:
+	@if [ -f "$(MARKER_DIR)/.kernel" ]; then bash scripts/verify-stage.sh kernel; fi
+check-packages-cache:
+	@if [ -f "$(MARKER_DIR)/.packages" ]; then bash scripts/verify-stage.sh packages; fi
+check-desktop-cache:
+	@if [ -f "$(MARKER_DIR)/.desktop-$(PROFILE)" ]; then bash scripts/verify-stage.sh desktop; fi
+check-rootfs-cache:
+	@if [ -f "$(MARKER_DIR)/.rootfs-$(PROFILE)" ]; then bash scripts/verify-stage.sh rootfs; fi
+check-iso-cache:
+	@if [ -f "$(MARKER_DIR)/.iso-$(PROFILE)" ]; then bash scripts/verify-stage.sh iso; fi
 
 # -- Phase 1: Toolchain -----------------------------------------------
 .PHONY: toolchain
 toolchain: $(MARKER_DIR)/.toolchain
+	bash scripts/verify-stage.sh toolchain
 
-$(MARKER_DIR)/.toolchain: | $(MARKER_DIR)
+$(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR) check-toolchain-cache
 	bash toolchain/scripts/build-all.sh --skip-tests
+	bash scripts/verify-stage.sh toolchain
 	@touch $@
 
 .PHONY: toolchain-test
@@ -94,53 +160,66 @@ toolchain-test:
 # -- Phase 2: Base System --------------------------------------------
 .PHONY: base-system
 base-system: $(MARKER_DIR)/.base-system
+	bash scripts/verify-stage.sh base-system
 
-$(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain
+$(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS) | check-toolchain-cache check-base-cache
 	bash base-system/scripts/build-all.sh
+	bash scripts/verify-stage.sh base-system
 	@touch $@
 
 # -- Phase 3: Kernel --------------------------------------------------
 .PHONY: kernel
 kernel: $(MARKER_DIR)/.kernel
+	bash scripts/verify-stage.sh kernel
 
-$(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain
+$(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS) | check-toolchain-cache check-kernel-cache
 	bash kernel/scripts/build-kernel.sh
+	bash scripts/verify-stage.sh kernel
 	@touch $@
 
 # -- Phase 4: Package Manager, Init & Hardware Service ----------------
 .PHONY: packages
 packages: $(MARKER_DIR)/.packages
+	bash scripts/verify-stage.sh packages
 
-$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system
-	$(MAKE) -C pkgmanager/src
-	$(MAKE) -C init/src
-	$(MAKE) -C hardware
+$(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(PKG_DEPS) | check-toolchain-cache check-base-cache check-packages-cache
+	bash -c 'source build.conf; export PATH="$SHREEOS_TOOLS/bin:$PATH"; export CROSS_COMPILE="$SHREEOS_TARGET_TRIPLET-"; \
+	  $(MAKE) -C pkgmanager/src clean all CROSS_COMPILE="$CROSS_COMPILE"; \
+	  $(MAKE) -C init/src clean all CROSS_COMPILE="$CROSS_COMPILE"; \
+	  $(MAKE) -C hardware clean all CROSS_COMPILE="$CROSS_COMPILE"'
+	bash scripts/verify-stage.sh packages
 	@touch $@
 
 # -- Phase 5: Desktop Suite (Profile-aware) ---------------------------
 .PHONY: desktop
 desktop: $(MARKER_DIR)/.desktop-$(PROFILE)
+	bash scripts/verify-stage.sh desktop
 
-$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages
+$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(DESKTOP_DEPS) | check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache
 ifeq ($(PROFILE),desktop)
 	bash desktop/wm/build-all.sh
 endif
+	bash scripts/verify-stage.sh desktop
 	@touch $@
 
 # -- Phase 6: RootFS Assembly (Profile-aware) -------------------------
 .PHONY: rootfs
 rootfs: $(MARKER_DIR)/.rootfs-$(PROFILE)
+	bash scripts/verify-stage.sh rootfs
 
-$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE)
+$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS) | check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache
 	bash rootfs/scripts/make-rootfs.sh
+	bash scripts/verify-stage.sh rootfs
 	@touch $@
 
 # -- Phase 7: ISO Creation (Profile-aware) ----------------------------
 .PHONY: iso
 iso: $(MARKER_DIR)/.iso-$(PROFILE)
+	bash scripts/verify-stage.sh iso
 
-$(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE)
+$(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS) | check-rootfs-cache check-iso-cache
 	bash iso-builder/scripts/build-iso.sh
+	bash scripts/verify-stage.sh iso
 	@touch $@
 
 .PHONY: installer
@@ -165,6 +244,10 @@ qemu-bios:
 .PHONY: test-unit
 test-unit:
 	$(MAKE) -C pkgmanager/tests test
+
+.PHONY: test-init
+test-init:
+	$(MAKE) -C init/tests test
 
 .PHONY: test-security
 test-security:
@@ -196,10 +279,10 @@ test-smoke:
 
 .PHONY: test-qemu
 test-qemu:
-	bash tests/qemu/run-all-qemu-tests.sh
+	bash tests/qemu/run-all-qemu-tests.sh --strict
 
 .PHONY: test-all
-test-all: test-unit test-security test-auth test-installer test-pkgmanager test-desktop test-hardware test-qemu
+test-all: test-unit test-init test-security test-auth test-installer test-pkgmanager test-desktop test-hardware test-qemu
 
 .PHONY: tests
 tests: test-smoke
@@ -214,6 +297,35 @@ clean:
 	$(MAKE) -C pkgmanager/src clean
 	$(MAKE) -C init/src clean
 	$(MAKE) -C hardware clean
+
+.PHONY: clean-toolchain
+clean-toolchain:
+	rm -rf $(BUILD_DIR)/tools $(BUILD_DIR)/sysroot
+	rm -f $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.packages
+	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-base
+clean-base:
+	rm -rf $(BUILD_DIR)/base-system
+	rm -f $(MARKER_DIR)/.base-system $(MARKER_DIR)/.packages
+	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-kernel
+clean-kernel:
+	rm -rf $(BUILD_DIR)/build-kernel
+	rm -rf $(BUILD_DIR)/rootfs/lib/modules
+	rm -f $(MARKER_DIR)/.kernel $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-desktop
+clean-desktop:
+	rm -rf $(BUILD_DIR)/desktop $(BUILD_DIR)/.state/graphics.status
+	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+
+.PHONY: clean-iso
+clean-iso:
+	rm -rf $(BUILD_DIR)/iso-staging
+	rm -f $(MARKER_DIR)/.iso-*
+	rm -f out/*.iso out/*.iso.sha256 out/*-manifest.json
 
 .PHONY: distclean
 distclean: clean

@@ -1,11 +1,11 @@
 # hardware/Makefile — Build the ShreeOS hardware service and client
 
-CROSS_COMPILE ?= $(or ${CROSS_COMPILE}, x86_64-shreeos-linux-gnu-)
+CROSS_COMPILE ?=
 CC := $(CROSS_COMPILE)gcc
 CFLAGS := -std=gnu11 -Wall -Wextra -Werror -Os -Iinclude
 LDFLAGS := -static
 
-DEVICE_SRCS := devices/common.c devices/cpu.c devices/gpu.c devices/memory.c devices/storage.c devices/pci.c devices/usb.c devices/network.c devices/diagnostics.c devices/hardware.c
+DEVICE_SRCS := devices/common.c devices/cpu.c devices/gpu.c devices/memory.c devices/storage.c devices/pci.c devices/usb.c devices/network.c devices/diagnostics.c devices/hardware.c devices/power.c devices/brightness.c devices/audio.c devices/display.c
 DAEMON_SRCS := daemon/shreed.c daemon/ipc.c daemon/events.c daemon/security.c $(DEVICE_SRCS)
 CLIENT_SRCS := client/shreedctl.c
 BINS := shreed shreedctl

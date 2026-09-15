@@ -10,10 +10,18 @@
 #include <unistd.h>
 
 static int run_copy(const char *source, const char *destination) {
-    pid_t child = fork(); int status;
+    pid_t child = fork();
+    int status = 0;
+    pid_t waited;
     if (child < 0) return -1;
-    if (child == 0) { execlp("cp", "cp", "-a", source, destination, (char *)NULL); _exit(127); }
-    return waitpid(child, &status, 0) == child && WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
+    if (child == 0) {
+        execlp("cp", "cp", "-a", source, destination, (char *)NULL);
+        _exit(127);
+    }
+    do {
+        waited = waitpid(child, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    return waited == child && WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
 }
 
 static bool rollback_state_allowed(const char *state) {
@@ -22,47 +30,116 @@ static bool rollback_state_allowed(const char *state) {
 }
 
 static bool valid_payload(const char *id, char *ledger, size_t size) {
-    struct stat state; char status_path[LPM_PATH_MAX], status[32] = {0}; FILE *file; char header[LPM_PATH_MAX + 4];
-    if (!lpm_valid_pkgname(id) || snprintf(ledger, size, "%s/%s/rollback/ledger", LPM_TRANSACTIONS, id) >= (int)size) return false;
-    if (snprintf(status_path, sizeof(status_path), "%s/%s/status", LPM_TRANSACTIONS, id) >= (int)sizeof(status_path) ||
-        stat(ledger, &state) != 0 || !S_ISREG(state.st_mode) || state.st_size <= 0) return false;
+    struct stat state;
+    char status_path[LPM_PATH_MAX], status[32] = {0};
+    char expected_header[LPM_PATH_MAX + 256], header[LPM_PATH_MAX + 256];
+    FILE *file;
+
+    if (!lpm_valid_pkgname(id)) return false;
+    int written = snprintf(ledger, size, "%s/%s/rollback/ledger", LPM_TRANSACTIONS, id);
+    if (written < 0 || (size_t)written >= size) return false;
+    written = snprintf(status_path, sizeof(status_path), "%s/%s/status", LPM_TRANSACTIONS, id);
+    if (written < 0 || (size_t)written >= sizeof(status_path) ||
+        stat(ledger, &state) != 0 || !S_ISREG(state.st_mode) || state.st_size <= 0 ||
+        (unsigned long)state.st_size > LPM_MANIFEST_MAX_BYTES) return false;
+
     file = fopen(status_path, "r");
     if (!file || !fgets(status, sizeof(status), file)) { if (file) fclose(file); return false; }
-    fclose(file); status[strcspn(status, "\r\n")] = 0;
+    fclose(file);
+    status[strcspn(status, "\r\n")] = 0;
     if (!rollback_state_allowed(status)) return false;
+
     file = fopen(ledger, "r");
     if (!file || !fgets(header, sizeof(header), file)) { if (file) fclose(file); return false; }
     fclose(file);
-    return strncmp(header, "# transaction=", 14) == 0 && strstr(header, id) != NULL;
+    header[strcspn(header, "\r\n")] = 0;
+
+    written = snprintf(expected_header, sizeof(expected_header), "# transaction=%s/%s", LPM_TRANSACTIONS, id);
+    if (written < 0 || (size_t)written >= sizeof(expected_header)) return false;
+    return strncmp(header, expected_header, strlen(expected_header)) == 0 &&
+           (header[strlen(expected_header)] == ' ' || header[strlen(expected_header)] == '\0');
 }
 
 static int set_status(const char *id, const char *state) {
-    char path[LPM_PATH_MAX], temporary[LPM_PATH_MAX]; FILE *file;
-    if (snprintf(path, sizeof(path), "%s/%s/status", LPM_TRANSACTIONS, id) >= (int)sizeof(path) ||
-        snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) return -1;
+    char path[LPM_PATH_MAX], temporary[LPM_PATH_MAX], dir_path[LPM_PATH_MAX];
+    FILE *file;
+    int written;
+
+    written = snprintf(path, sizeof(path), "%s/%s/status", LPM_TRANSACTIONS, id);
+    if (written < 0 || (size_t)written >= sizeof(path)) return -1;
+    written = snprintf(temporary, sizeof(temporary), "%s.tmp.%ld", path, (long)getpid());
+    if (written < 0 || (size_t)written >= sizeof(temporary)) return -1;
+
     file = fopen(temporary, "w");
     if (!file) return -1;
-    if (fprintf(file, "%s\n", state) < 0 || fflush(file) != 0 || fsync(fileno(file)) != 0 || fclose(file) != 0) {
-        unlink(temporary); return -1;
+    int failed = 0;
+    if (fprintf(file, "%s\n", state) < 0) failed = 1;
+    if (!failed && fflush(file) != 0) failed = 1;
+    if (!failed && fsync(fileno(file)) != 0) failed = 1;
+    if (fclose(file) != 0) failed = 1;
+    if (failed) {
+        unlink(temporary);
+        return -1;
     }
-    return rename(temporary, path);
+    if (rename(temporary, path) != 0) {
+        unlink(temporary);
+        return -1;
+    }
+
+    written = snprintf(dir_path, sizeof(dir_path), "%s/%s", LPM_TRANSACTIONS, id);
+    if (written < 0 || (size_t)written >= sizeof(dir_path)) return -1;
+    int dir_fd = open(dir_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dir_fd < 0) return -1;
+    int rc = fsync(dir_fd);
+    close(dir_fd);
+    return rc;
 }
 
 static int validate_ledger(const char *id, const char *ledger, const char *base) {
-    FILE *file = fopen(ledger, "r"); char line[LPM_PATH_MAX + 4]; char expected[64];
+    FILE *file = fopen(ledger, "r");
+    char line[LPM_PATH_MAX + 512];
+    char expected[LPM_PATH_MAX + 256];
     if (!file) return -1;
-    snprintf(expected, sizeof(expected), "# transaction=%s/", LPM_TRANSACTIONS);
-    if (!fgets(line, sizeof(line), file) || strncmp(line, expected, strlen(expected)) != 0 || strstr(line, id) == NULL) { fclose(file); return -1; }
+
+    int written = snprintf(expected, sizeof(expected), "# transaction=%s/%s", LPM_TRANSACTIONS, id);
+    if (written < 0 || (size_t)written >= sizeof(expected) ||
+        !fgets(line, sizeof(line), file)) {
+        fclose(file);
+        return -1;
+    }
+    if (!strchr(line, '\n') && !feof(file)) { fclose(file); return -1; }
+    line[strcspn(line, "\r\n")] = 0;
+    if (strncmp(line, expected, strlen(expected)) != 0 ||
+        (line[strlen(expected)] != ' ' && line[strlen(expected)] != '\0')) {
+        fclose(file);
+        return -1;
+    }
+
     while (fgets(line, sizeof(line), file)) {
-        char *path = line + 2; char source[LPM_PATH_MAX]; struct stat state;
+        if (!strchr(line, '\n') && !feof(file)) { fclose(file); return -1; }
+        if (line[0] == '#') continue;
+        if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ') {
+            fclose(file);
+            return -1;
+        }
+
+        char *path = line + 2;
+        char source[LPM_PATH_MAX * 2];
+        struct stat state;
         path[strcspn(path, "\r\n")] = 0;
-        if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ' || !lpm_safe_path(path)) { fclose(file); return -1; }
+        if (!lpm_safe_path(path)) { fclose(file); return -1; }
+
         if (line[0] == 'E') {
-            if (snprintf(source, sizeof(source), "%s%s", base, path) >= (int)sizeof(source) ||
-                lstat(source, &state) != 0) { fclose(file); return -1; }
+            written = snprintf(source, sizeof(source), "%s%s", base, path);
+            if (written < 0 || (size_t)written >= sizeof(source) ||
+                lstat(source, &state) != 0) {
+                fclose(file);
+                return -1;
+            }
         }
     }
-    fclose(file); return 0;
+    fclose(file);
+    return 0;
 }
 
 int cmd_history(int argc, char **argv) {
@@ -72,7 +149,11 @@ int cmd_history(int argc, char **argv) {
         char path[LPM_PATH_MAX], ledger[LPM_PATH_MAX], state[64] = "corrupt"; FILE *file;
         if (entry->d_name[0] == '.') continue;
         snprintf(path, sizeof(path), "%s/%s/status", LPM_TRANSACTIONS, entry->d_name);
-        file = fopen(path, "r"); if (file) { (void)fgets(state, sizeof(state), file); fclose(file); }
+        file = fopen(path, "r");
+        if (file) {
+            if (!fgets(state, sizeof(state), file)) state[0] = '\0';
+            fclose(file);
+        }
         state[strcspn(state, "\r\n")] = 0;
         printf("%s  %s  rollback=%s\n", entry->d_name, state,
                valid_payload(entry->d_name, ledger, sizeof(ledger)) ? "available" : "unavailable");
@@ -96,18 +177,23 @@ int cmd_rollback(int argc, char **argv) {
     }
     if (!valid_payload(argv[0], ledger, sizeof(ledger))) { fprintf(stderr, "lpm: valid rollback payload required\n"); return 1; }
     if (lpm_lock() != 0) return 1;
-    snprintf(base, sizeof(base), "%s/%s/rollback/files", LPM_TRANSACTIONS, argv[0]);
-    if (validate_ledger(argv[0], ledger, base) != 0 || set_status(argv[0], "rolling_back") != 0) {
+    int base_written = snprintf(base, sizeof(base), "%s/%s/rollback/files", LPM_TRANSACTIONS, argv[0]);
+    if (base_written < 0 || (size_t)base_written >= sizeof(base) ||
+        validate_ledger(argv[0], ledger, base) != 0 || set_status(argv[0], "rolling_back") != 0) {
         fprintf(stderr, "lpm: rollback ledger or payload is corrupt\n"); lpm_unlock(); return 1;
     }
     file = fopen(ledger, "r"); if (!file) { lpm_unlock(); return 1; }
     while (fgets(line, sizeof(line), file)) {
-        char *path = line + 2; char source[LPM_PATH_MAX];
+        char *path = line + 2; char source[LPM_PATH_MAX * 4];
         if (line[0] == '#') continue;
         path[strcspn(path, "\r\n")] = 0;
         if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ' || !lpm_safe_path(path)) { failed = 1; break; }
         if (line[0] == 'N') { if (unlink(path) != 0 && errno != ENOENT) failed = 1; }
-        else { snprintf(source, sizeof(source), "%s%s", base, path); if (access(source, R_OK) != 0 || run_copy(source, path) != 0) failed = 1; }
+        else {
+            int source_written = snprintf(source, sizeof(source), "%s%s", base, path);
+            if (source_written < 0 || (size_t)source_written >= sizeof(source) ||
+                access(source, R_OK) != 0 || run_copy(source, path) != 0) failed = 1;
+        }
         if (failed) break;
     }
     fclose(file);
