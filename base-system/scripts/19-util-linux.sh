@@ -35,6 +35,7 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --disable-nologin \
   --disable-su \
   --disable-runuser \
+  --disable-liblastlog2 \
   --disable-makeinstall-chown \
   --disable-makeinstall-setuid \
   --without-python \
