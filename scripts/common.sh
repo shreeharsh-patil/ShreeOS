@@ -42,7 +42,7 @@ shreeos_fetch() {
     rm -f -- "${dest}"
   fi
 
-  tmp="${dest}.part.$"
+  tmp="${dest}.part.${BASHPID}"
   rm -f -- "${tmp}"
 
   for attempt in 1 2; do
