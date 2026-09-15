@@ -55,7 +55,7 @@ verify_entry() {
     return 0
   }
   archive_path="$SOURCES_DIR/$filename"
-  tmp_path="$archive_path.tmp"
+  tmp_path="$archive_path.tmp.${BASHPID}"
 
   if [ ! -f "$archive_path" ] && [ "$FETCH_MISSING" = true ]; then
     printf "  [FETCH]   [%-11s] %s\n" "$comp" "$filename"
