@@ -58,25 +58,33 @@ static int safe_exec(const char *file, char *const argv[]) {
         execvp(file, argv);
         _exit(127);
     }
-    int status;
-    waitpid(pid, &status, 0);
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) return -1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 static int get_repo_url(char *buf, size_t maxlen) {
+    int have_configured_url = 0;
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {
         if (fgets(buf, maxlen, f)) {
             size_t len = strlen(buf);
-            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' || buf[len-1] == ' ')) {
+            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' ||
+                               buf[len-1] == ' ' || buf[len-1] == '\t')) {
                 buf[--len] = '\0';
             }
-            if (len > 0) goto validate;
+            have_configured_url = (len > 0);
         }
         fclose(f);
     }
-    snprintf(buf, maxlen, "http://localhost:8080");
-validate:
+    if (!have_configured_url) {
+        snprintf(buf, maxlen, "http://localhost:8080");
+    }
+
     if (strncmp(buf, "https://", 8) == 0 || strncmp(buf, "http://localhost", 16) == 0 ||
         strncmp(buf, "http://127.0.0.1", 16) == 0) return 0;
     fprintf(stderr, "lpm: refusing insecure repository URL '%s' (HTTPS is required except localhost development repositories)\n", buf);
