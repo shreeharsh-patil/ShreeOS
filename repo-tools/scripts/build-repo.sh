@@ -16,6 +16,9 @@ OUTDIR="$2"
 shreeos_require_cmd tar gzip sha256sum python3
 
 [ -d "$STAGING" ] || shreeos_die "Staging directory not found: $STAGING"
+STAGING="$(cd "$STAGING" && pwd -P)"
+mkdir -p "$OUTDIR"
+OUTDIR="$(cd "$OUTDIR" && pwd -P)"
 mkdir -p "$OUTDIR/pool"
 
 REPO_JSON="$OUTDIR/repo.json"
