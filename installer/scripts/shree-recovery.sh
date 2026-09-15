@@ -125,8 +125,7 @@ while true; do
           | gzip -9 > "$INITRAMFS_TMP"
       ) && gzip -t "$INITRAMFS_TMP" 2>/dev/null; then
         INIT_LIST=$(gzip -dc "$INITRAMFS_TMP" | cpio -t --quiet 2>/dev/null || true)
-        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?(init|sbin/init)
-    5)
+        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?(init|sbin/init)    5)
       echo "==> Running Bootloader Repair:"
       ROOT_UUID=$(blkid -s UUID -o value "$(findmnt -n -o SOURCE / 2>/dev/null || echo '')" 2>/dev/null || echo "")
       if [ -z "$ROOT_UUID" ]; then
