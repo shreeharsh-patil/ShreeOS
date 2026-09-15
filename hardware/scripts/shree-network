@@ -115,6 +115,7 @@ cmd_list() {
 
 cmd_up() {
   local target_ifaces=()
+  local failures=0
   if [ $# -ge 1 ]; then
     target_ifaces=("$1")
   else
@@ -124,22 +125,36 @@ cmd_up() {
   fi
 
   if [ ${#target_ifaces[@]} -eq 0 ]; then
-    echo "shree-network: No network interfaces detected."
+    echo "shree-network: No network interfaces detected." >&2
     return 1
   fi
 
-  ip link set lo up 2>/dev/null || true
+  if ! ip link set lo up >/dev/null 2>&1; then
+    echo "shree-network: Failed to bring loopback interface up." >&2
+    return 1
+  fi
 
   for iface in "${target_ifaces[@]}"; do
     echo "shree-network: Bringing up ${iface}..."
-    ip link set "$iface" up 2>/dev/null || ifconfig "$iface" up 2>/dev/null || true
+    if ! ip link set "$iface" up >/dev/null 2>&1; then
+      if ! command -v ifconfig >/dev/null 2>&1 || ! ifconfig "$iface" up >/dev/null 2>&1; then
+        echo "  [ERROR] Failed to bring ${iface} up" >&2
+        failures=$((failures + 1))
+        continue
+      fi
+    fi
 
-    # Request DHCP
     echo "shree-network: Requesting DHCP on ${iface}..."
     if command -v dhcpcd >/dev/null 2>&1; then
-      dhcpcd -w -t 15 "$iface" 2>/dev/null || true
+      if ! dhcpcd -w -t 15 "$iface" >/dev/null 2>&1; then
+        echo "  [WARN] DHCP client failed on ${iface}" >&2
+      fi
     elif command -v udhcpc >/dev/null 2>&1; then
-      udhcpc -n -q -T 3 -t 3 -i "$iface" 2>/dev/null || true
+      if ! udhcpc -n -q -T 3 -t 3 -i "$iface" >/dev/null 2>&1; then
+        echo "  [WARN] DHCP client failed on ${iface}" >&2
+      fi
+    else
+      echo "  [WARN] No DHCP client is installed" >&2
     fi
 
     local ip
@@ -147,13 +162,17 @@ cmd_up() {
     if [ -n "$ip" ]; then
       echo "  [OK] ${iface} is UP with IP ${ip}"
     else
-      echo "  [WARN] ${iface} is UP, but no DHCP lease acquired yet"
+      echo "  [WARN] ${iface} is UP, but no IPv4 lease is assigned" >&2
+      failures=$((failures + 1))
     fi
   done
+
+  [ "$failures" -eq 0 ]
 }
 
 cmd_down() {
   local target_ifaces=()
+  local failures=0
   if [ $# -ge 1 ]; then
     target_ifaces=("$1")
   else
@@ -165,11 +184,19 @@ cmd_down() {
   for iface in "${target_ifaces[@]}"; do
     echo "shree-network: Bringing down ${iface}..."
     if command -v dhcpcd >/dev/null 2>&1; then
-      dhcpcd -k "$iface" 2>/dev/null || true
+      dhcpcd -k "$iface" >/dev/null 2>&1 || true
     fi
-    ip link set "$iface" down 2>/dev/null || ifconfig "$iface" down 2>/dev/null || true
+    if ! ip link set "$iface" down >/dev/null 2>&1; then
+      if ! command -v ifconfig >/dev/null 2>&1 || ! ifconfig "$iface" down >/dev/null 2>&1; then
+        echo "  [ERROR] Failed to bring ${iface} down" >&2
+        failures=$((failures + 1))
+        continue
+      fi
+    fi
     echo "  [OK] ${iface} is DOWN"
   done
+
+  [ "$failures" -eq 0 ]
 }
 
 cmd_dns() {
@@ -214,7 +241,10 @@ cmd_wifi_scan() {
   fi
 
   echo "shree-network: Scanning Wi-Fi networks on ${iface}..."
-  ip link set "$iface" up 2>/dev/null || true
+  if ! ip link set "$iface" up >/dev/null 2>&1; then
+    echo "shree-network: Unable to bring wireless interface ${iface} up." >&2
+    return 1
+  fi
 
   if command -v iw >/dev/null 2>&1; then
     iw dev "$iface" scan 2>/dev/null | grep -E 'SSID:|signal:' | awk '
@@ -240,58 +270,89 @@ cmd_wifi_connect() {
   local ssid="$1"
   local pass="${2:-}"
   local iface="${3:-}"
+  local ssid_len
+
+  ssid_len=$(printf '%s' "$ssid" | wc -c | tr -d '[:space:]')
+  if ! [[ "$ssid_len" =~ ^[0-9]+$ ]] || [ "$ssid_len" -lt 1 ] || [ "$ssid_len" -gt 32 ] ||
+     [[ "$ssid" == *$'\n'* || "$ssid" == *$'\r'* ]]; then
+    echo "shree-network: Invalid SSID." >&2
+    return 1
+  fi
 
   if [ -z "$iface" ]; then
     iface=$(discover_wireless)
   fi
 
-  if [ -z "$iface" ]; then
-    echo "shree-network: No wireless network interface found." >&2
+  if [ -z "$iface" ] || [ ! -e "/sys/class/net/$iface" ]; then
+    echo "shree-network: No valid wireless network interface found." >&2
     return 1
   fi
 
   echo "shree-network: Connecting to '${ssid}' on interface ${iface}..."
-  ip link set "$iface" up 2>/dev/null || true
+  if ! ip link set "$iface" up >/dev/null 2>&1; then
+    echo "shree-network: Unable to bring ${iface} up." >&2
+    return 1
+  fi
 
-  local wpa_cfg
+  command -v wpa_supplicant >/dev/null 2>&1 || {
+    echo "shree-network: wpa_supplicant is not installed." >&2
+    return 1
+  }
+
+  local wpa_cfg ssid_hex
   wpa_cfg=$(mktemp /tmp/wpa_supplicant.XXXXXX.conf)
   chmod 0600 "$wpa_cfg"
 
   if [ -n "$pass" ]; then
-    if command -v wpa_passphrase >/dev/null 2>&1; then
-      wpa_passphrase "$ssid" "$pass" > "$wpa_cfg"
-    else
-      cat > "$wpa_cfg" <<WPAEOF
-network={
-    ssid="${ssid}"
-    psk="${pass}"
-}
-WPAEOF
+    if ! command -v wpa_passphrase >/dev/null 2>&1; then
+      pass=""
+      rm -f "$wpa_cfg"
+      echo "shree-network: wpa_passphrase is required for protected networks." >&2
+      return 1
+    fi
+    if ! printf '%s\n' "$pass" | wpa_passphrase "$ssid" 2>/dev/null |
+         sed '/^[[:space:]]*#psk=/d; /^[[:space:]]*ssid=/a\  scan_ssid=1' > "$wpa_cfg"; then
+      pass=""
+      rm -f "$wpa_cfg"
+      echo "shree-network: Failed to generate a protected Wi-Fi configuration." >&2
+      return 1
     fi
   else
-    cat > "$wpa_cfg" <<WPAEOF
-network={
-    ssid="${ssid}"
-    key_mgmt=NONE
-}
-WPAEOF
+    ssid_hex=$(printf '%s' "$ssid" | od -An -tx1 | tr -d ' \n')
+    printf 'ctrl_interface=/run/wpa_supplicant\nnetwork={\n  ssid=%s\n  key_mgmt=NONE\n  scan_ssid=1\n}\n' "$ssid_hex" > "$wpa_cfg"
+  fi
+  pass=""
+  unset pass
+
+  if command -v wpa_cli >/dev/null 2>&1; then
+    wpa_cli -i "$iface" terminate >/dev/null 2>&1 || true
   fi
 
-  # Wipe password from variable
-  pass=""
-
-  # Launch wpa_supplicant
-  killall wpa_supplicant 2>/dev/null || true
-  if command -v wpa_supplicant >/dev/null 2>&1; then
-    wpa_supplicant -B -i "$iface" -c "$wpa_cfg" 2>/dev/null || true
+  if ! wpa_supplicant -B -i "$iface" -c "$wpa_cfg" >/dev/null 2>&1; then
     rm -f "$wpa_cfg"
-    sleep 2
-    cmd_up "$iface"
-  else
-    rm -f "$wpa_cfg"
-    echo "shree-network: wpa_supplicant is not installed." >&2
+    echo "shree-network: Failed to start wpa_supplicant on ${iface}." >&2
     return 1
   fi
+  rm -f "$wpa_cfg"
+
+  if command -v wpa_cli >/dev/null 2>&1; then
+    local connected=false
+    for _attempt in {1..15}; do
+      if [ "$(wpa_cli -i "$iface" status 2>/dev/null | sed -n 's/^wpa_state=//p' | head -n1)" = "COMPLETED" ]; then
+        connected=true
+        break
+      fi
+      sleep 1
+    done
+    if [ "$connected" != true ]; then
+      echo "shree-network: Wi-Fi authentication did not complete for '${ssid}'." >&2
+      return 1
+    fi
+  else
+    sleep 2
+  fi
+
+  cmd_up "$iface"
 }
 
 # Main CLI dispatch
