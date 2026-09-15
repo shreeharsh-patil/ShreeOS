@@ -64,8 +64,21 @@ stop_recording() {
     sleep 0.25
   done
   if kill -0 "$pid" 2>/dev/null; then
-    kill -15 "$pid" 2>/dev/null || true
+    if ! kill -15 "$pid" 2>/dev/null; then
+      shree-notify "Screen Recording" "Unable to terminate the active recording process" --app="System" --urgent
+      return 1
+    fi
+    for _attempt in {1..20}; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.25
+    done
   fi
+
+  if kill -0 "$pid" 2>/dev/null; then
+    shree-notify "Screen Recording" "Recording process did not exit; state was preserved for recovery" --app="System" --urgent
+    return 1
+  fi
+
   rm -f "$STATE_FILE"
 
   if [ -s "$out_file" ]; then
