@@ -269,6 +269,19 @@ int cmd_verify(int argc, char **argv) {
     return 0;
 }
 
+static int is_local_development_url(const char *url) {
+    const char *suffix = NULL;
+    if (!url) return 0;
+    if (strncmp(url, "http://localhost", 16) == 0) {
+        suffix = url + 16;
+    } else if (strncmp(url, "http://127.0.0.1", 16) == 0) {
+        suffix = url + 16;
+    } else {
+        return 0;
+    }
+    return *suffix == '\0' || *suffix == ':' || *suffix == '/';
+}
+
 static int get_repo_url(char *buf, size_t maxlen) {
     int have_configured_url = 0;
     FILE *f = fopen(LPM_REPOS_CONF, "r");
@@ -287,8 +300,7 @@ static int get_repo_url(char *buf, size_t maxlen) {
         snprintf(buf, maxlen, "http://localhost:8080");
     }
 
-    if (strncmp(buf, "https://", 8) == 0 || strncmp(buf, "http://localhost", 16) == 0 ||
-        strncmp(buf, "http://127.0.0.1", 16) == 0) return 0;
+    if (strncmp(buf, "https://", 8) == 0 || is_local_development_url(buf)) return 0;
     fprintf(stderr, "lpm: refusing insecure repository URL '%s' (HTTPS is required except localhost development repositories)\n", buf);
     return -1;
 }
@@ -348,9 +360,7 @@ int cmd_update(int argc, char **argv) {
         }
     }
 
-    const int local_development_repo =
-        strncmp(url, "http://localhost", 16) == 0 ||
-        strncmp(url, "http://127.0.0.1", 16) == 0;
+    const int local_development_repo = is_local_development_url(url);
     const int explicit_pubkey = getenv("LPM_REPO_PUBKEY") != NULL &&
                                 *getenv("LPM_REPO_PUBKEY") != '\0';
     const int pubkey_available = pubkey_path && *pubkey_path &&
