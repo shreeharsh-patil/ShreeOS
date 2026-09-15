@@ -633,7 +633,7 @@ static int start_service(service_t *s) {
     }
 
     char log_buf[512];
-    snprintf(log_buf, sizeof(log_buf), "Starting service (command: %s)", s->command);
+    snprintf(log_buf, sizeof(log_buf), "Starting service (command: %.470s)", s->command);
     log_info(s->name, log_buf);
 
     s->state = SVC_STARTING;
@@ -1193,27 +1193,42 @@ int main(int argc, char **argv) {
             g_test_mode = true;
         } else if (strcmp(argv[i], "--strict-auth") == 0) {
             g_strict_auth = true;
-        } else if (strcmp(argv[i], "--services-dir") == 0 && i + 1 < argc) {
-            const char *value = argv[++i];
+        } else if (strcmp(argv[i], "--services-dir") == 0) {
+            if (++i >= argc) {
+                fprintf(stderr, "init: --services-dir requires a path\n");
+                return 2;
+            }
+            const char *value = argv[i];
             if (strlen(value) >= sizeof(g_service_dir)) {
                 fprintf(stderr, "init: --services-dir path is too long\n");
                 return 2;
             }
             snprintf(g_service_dir, sizeof(g_service_dir), "%s", value);
-        } else if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
-            const char *value = argv[++i];
-            if (strlen(value) >= sizeof(g_sock_path)) {
-                fprintf(stderr, "init: --socket path is too long\n");
+        } else if (strcmp(argv[i], "--socket") == 0) {
+            if (++i >= argc) {
+                fprintf(stderr, "init: --socket requires a path\n");
+                return 2;
+            }
+            const char *value = argv[i];
+            if (strlen(value) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
+                fprintf(stderr, "init: --socket path is too long for AF_UNIX\n");
                 return 2;
             }
             snprintf(g_sock_path, sizeof(g_sock_path), "%s", value);
-        } else if (strcmp(argv[i], "--log-dir") == 0 && i + 1 < argc) {
-            const char *value = argv[++i];
+        } else if (strcmp(argv[i], "--log-dir") == 0) {
+            if (++i >= argc) {
+                fprintf(stderr, "init: --log-dir requires a path\n");
+                return 2;
+            }
+            const char *value = argv[i];
             if (strlen(value) >= sizeof(g_log_dir)) {
                 fprintf(stderr, "init: --log-dir path is too long\n");
                 return 2;
             }
             snprintf(g_log_dir, sizeof(g_log_dir), "%s", value);
+        } else {
+            fprintf(stderr, "init: unknown option: %s\n", argv[i]);
+            return 2;
         }
     }
 
