@@ -43,7 +43,7 @@ run_monitor() {
     elif [ "$KEY" = "k" ] || [ "$KEY" = "K" ]; then
       local TARGET_PID=""
       read -r -p "  Enter PID to terminate: " TARGET_PID
-      if ! [[ "$TARGET_PID" =~ ^[0-9]+$ ]] || [ "$TARGET_PID" -le 1 ] || [ "$TARGET_PID" -eq "$" ]; then
+      if ! [[ "$TARGET_PID" =~ ^[0-9]+$ ]] || [ "$TARGET_PID" -le 1 ] || [ "$TARGET_PID" -eq "$$" ]; then
         echo "  Invalid or protected PID: ${TARGET_PID:-<empty>}"
         sleep 1
         continue
