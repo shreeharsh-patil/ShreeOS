@@ -93,3 +93,7 @@ echo "libraries, Xorg server, xinit and fonts are present in the target filesyst
 if [ "$STRICT" = true ]; then
   shreeos_die "Refusing to certify an incomplete desktop graphics stack."
 fi
+
+# Non-strict callers still need a truthful status so diagnostics can report
+# deferred desktop readiness instead of silently treating it as success.
+exit 1
