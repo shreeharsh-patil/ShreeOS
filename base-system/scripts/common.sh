@@ -65,6 +65,20 @@ pkg_builddir() {
   echo "${BASE_BUILDDIR}/build-${name}"
 }
 
+# Synchronize target development headers/libraries into the compiler sysroot.
+# Base packages are installed into the target rootfs via DESTDIR, while later
+# packages must link against those same target libraries through the sysroot.
+base_sync_sysroot() {
+  local subdir src dst
+  for subdir in include lib lib64; do
+    src="${LUMEN_STAGE_ROOT}/usr/${subdir}"
+    [ -d "$src" ] || continue
+    dst="${LUMEN_SYSROOT}/usr/${subdir}"
+    mkdir -p "$dst"
+    cp -a "$src/." "$dst/"
+  done
+}
+
 # Verify cross-compiler exists
 base_verify_toolchain() {
   if ! command -v "$CC" &>/dev/null; then
