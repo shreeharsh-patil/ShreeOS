@@ -36,9 +36,25 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 make -j"${LUMEN_MAKE_JOBS}"
 make install
 
-# Install headers and libraries into sysroot for cross-compiler linking
+# Install headers and libraries into sysroot for cross-compiler linking.
+# These are required target artifacts; never report success when staging them fails.
 mkdir -p "${LUMEN_SYSROOT}/usr/include" "${LUMEN_SYSROOT}/usr/lib"
-cp -a "${LUMEN_STAGE_ROOT}/usr/include/crypt.h" "${LUMEN_SYSROOT}/usr/include/" 2>/dev/null || true
-cp -a "${LUMEN_STAGE_ROOT}/usr/lib/libcrypt"* "${LUMEN_SYSROOT}/usr/lib/" 2>/dev/null || true
+CRYPT_HEADER="${LUMEN_STAGE_ROOT}/usr/include/crypt.h"
+if [ ! -f "$CRYPT_HEADER" ]; then
+  lumen_die "Missing staged libxcrypt header: $CRYPT_HEADER"
+fi
+
+shopt -s nullglob
+CRYPT_LIBS=("${LUMEN_STAGE_ROOT}"/usr/lib/libcrypt*)
+shopt -u nullglob
+if [ "${#CRYPT_LIBS[@]}" -eq 0 ]; then
+  lumen_die "No staged libxcrypt libraries found under ${LUMEN_STAGE_ROOT}/usr/lib"
+fi
+
+cp -a "$CRYPT_HEADER" "${LUMEN_SYSROOT}/usr/include/"
+cp -a "${CRYPT_LIBS[@]}" "${LUMEN_SYSROOT}/usr/lib/"
+
+[ -f "${LUMEN_SYSROOT}/usr/include/crypt.h" ] || lumen_die "libxcrypt header was not installed into the sysroot"
+ls "${LUMEN_SYSROOT}"/usr/lib/libcrypt* >/dev/null 2>&1 || lumen_die "libxcrypt libraries were not installed into the sysroot"
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
