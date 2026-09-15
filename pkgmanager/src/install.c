@@ -121,6 +121,31 @@ static int get_repo_url(char *buf, size_t maxlen) {
     return -1;
 }
 
+static int valid_sha256_hex(const char *value) {
+    if (!value || strlen(value) != 64) return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; ++p) {
+        if (!isxdigit(*p)) return 0;
+    }
+    return 1;
+}
+
+static int valid_repo_package_filename(const char *filename) {
+    if (!filename || !*filename || filename[0] == '/' || strchr(filename, '\\')) return 0;
+
+    const char *segment = filename;
+    while (*segment) {
+        const char *slash = strchr(segment, '/');
+        size_t len = slash ? (size_t)(slash - segment) : strlen(segment);
+        if (len == 0 || (len == 1 && segment[0] == '.') ||
+            (len == 2 && segment[0] == '.' && segment[1] == '.')) {
+            return 0;
+        }
+        if (!slash) break;
+        segment = slash + 1;
+    }
+    return 1;
+}
+
 static int download_package(const char *pkgname, char *out_path, size_t maxlen, char *expected_sha, size_t sha_len) {
     char *version = NULL, *filename = NULL, *sha256 = NULL;
     if (lpm_repo_lookup(pkgname, &version, &filename, &sha256) != 0) {
@@ -128,14 +153,25 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
         return -1;
     }
 
-    if (!sha256 || !*sha256) {
-        fprintf(stderr, "lpm: security error: missing expected SHA256 checksum in repository metadata for '%s'\n", pkgname);
+    if (!valid_sha256_hex(sha256)) {
+        fprintf(stderr, "lpm: security error: repository metadata contains an invalid SHA256 for '%s'\n",
+                pkgname);
         free(version); free(filename); free(sha256);
         return -1;
     }
-
-    strncpy(expected_sha, sha256, sha_len - 1);
-    expected_sha[sha_len - 1] = '\0';
+    if (!valid_repo_package_filename(filename)) {
+        fprintf(stderr, "lpm: security error: repository metadata contains an unsafe package path for '%s'\n",
+                pkgname);
+        free(version); free(filename); free(sha256);
+        return -1;
+    }
+    if (sha_len < 65) {
+        fprintf(stderr, "lpm: internal error: SHA256 output buffer is too small\n");
+        free(version); free(filename); free(sha256);
+        errno = ENOBUFS;
+        return -1;
+    }
+    memcpy(expected_sha, sha256, 65);
 
     char repo_url[LPM_PATH_MAX];
     if (get_repo_url(repo_url, sizeof(repo_url)) != 0) {
@@ -149,17 +185,37 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
         free(version); free(filename); free(sha256);
         return -1;
     }
+
     const char *basename_fn = strrchr(filename, '/');
     basename_fn = basename_fn ? basename_fn + 1 : filename;
-    snprintf(out_path, maxlen, "%s/%s", LPM_CACHE_DIR, basename_fn);
+
+    int written = snprintf(out_path, maxlen, "%s/%s", LPM_CACHE_DIR, basename_fn);
+    if (written < 0 || (size_t)written >= maxlen) {
+        fprintf(stderr, "lpm: cache path is too long for package '%s'\n", pkgname);
+        free(version); free(filename); free(sha256);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
 
     char pkg_download_url[LPM_PATH_MAX * 2];
-    snprintf(pkg_download_url, sizeof(pkg_download_url), "%s/%s", repo_url, filename);
+    written = snprintf(pkg_download_url, sizeof(pkg_download_url), "%s/%s", repo_url, filename);
+    if (written < 0 || (size_t)written >= sizeof(pkg_download_url)) {
+        fprintf(stderr, "lpm: download URL is too long for package '%s'\n", pkgname);
+        free(version); free(filename); free(sha256);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
 
     printf("lpm: downloading %s from %s...\n", pkgname, pkg_download_url);
 
     char tmp_path[LPM_PATH_MAX + 64];
-    snprintf(tmp_path, sizeof(tmp_path), "%s.part.%ld", out_path, (long)getpid());
+    written = snprintf(tmp_path, sizeof(tmp_path), "%s.part.%ld", out_path, (long)getpid());
+    if (written < 0 || (size_t)written >= sizeof(tmp_path)) {
+        fprintf(stderr, "lpm: temporary cache path is too long for package '%s'\n", pkgname);
+        free(version); free(filename); free(sha256);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
     unlink(tmp_path);
 
     char *curl_args[] = { "curl", "-fsSL", "--retry", "3", pkg_download_url, "-o", tmp_path, NULL };
@@ -181,11 +237,35 @@ static int download_package(const char *pkgname, char *out_path, size_t maxlen, 
         return -1;
     }
 
+    char actual_sha[65] = {0};
+    if (lpm_sha256_file(tmp_path, actual_sha) != 0 || strcmp(expected_sha, actual_sha) != 0) {
+        fprintf(stderr,
+                "lpm: FATAL: SHA256 mismatch for downloaded package '%s'\n"
+                "  expected: %s\n  got:      %s\n",
+                pkgname, expected_sha, actual_sha);
+        unlink(tmp_path);
+        return -1;
+    }
+
     if (rename(tmp_path, out_path) != 0) {
-        fprintf(stderr, "lpm: failed to commit downloaded package '%s' to cache: %s\n",
+        fprintf(stderr, "lpm: failed to commit verified package '%s' to cache: %s\n",
                 pkgname, strerror(errno));
         unlink(tmp_path);
         return -1;
+    }
+    return 0;
+}
+
+static int archive_path_has_parent_component(const char *path) {
+    const char *segment = path;
+    while (*segment) {
+        while (*segment == '/') segment++;
+        if (!*segment) break;
+        const char *slash = strchr(segment, '/');
+        size_t len = slash ? (size_t)(slash - segment) : strlen(segment);
+        if (len == 2 && segment[0] == '.' && segment[1] == '.') return 1;
+        if (!slash) break;
+        segment = slash + 1;
     }
     return 0;
 }
@@ -224,18 +304,22 @@ static int validate_archive_members(const char *lpkg_path) {
 
     while (fgets(line, sizeof(line), stream)) {
         size_t len = strlen(line);
-        if (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
+        bool has_newline = len > 0 && line[len - 1] == '\n';
+        if (!has_newline && !feof(stream)) {
+            fprintf(stderr, "lpm: security error: archive member path exceeds supported length\n");
+            valid = 0;
+            break;
+        }
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
         if (len == 0) continue;
 
-        /* Reject absolute paths */
+        /* Reject absolute paths and parent-directory components. */
         if (line[0] == '/') {
             fprintf(stderr, "lpm: security error: archive member has absolute path '%s'\n", line);
             valid = 0;
             break;
         }
-
-        /* Reject directory traversal */
-        if (strstr(line, "..") != NULL) {
+        if (archive_path_has_parent_component(line)) {
             fprintf(stderr, "lpm: security error: archive member contains directory traversal '%s'\n", line);
             valid = 0;
             break;
@@ -243,8 +327,12 @@ static int validate_archive_members(const char *lpkg_path) {
     }
 
     fclose(stream);
-    int status;
-    waitpid(pid, &status, 0);
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) return -1;
     return (valid && WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
 }
 
