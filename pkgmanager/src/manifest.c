@@ -9,10 +9,6 @@
 #include <dirent.h>
 #include <signal.h>
 
-#define LPM_MANIFEST_MAX_BYTES (1024UL * 1024UL)
-#define LPM_REPO_MAX_BYTES (8UL * 1024UL * 1024UL)
-#define LPM_MAX_PACKAGE_NAME 128U
-
 #ifdef _WIN32
 #include <direct.h>
 #else
