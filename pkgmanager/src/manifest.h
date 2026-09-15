@@ -12,6 +12,10 @@
 #define LPM_LOCK_FILE LPM_DB "/lock"
 #define LPM_TRANSACTIONS LPM_DB "/transactions"
 
+#define LPM_MANIFEST_MAX_BYTES (1024UL * 1024UL)
+#define LPM_REPO_MAX_BYTES (8UL * 1024UL * 1024UL)
+#define LPM_MAX_PACKAGE_NAME 128U
+
 /* Path buffer size: Linux PATH_MAX = 4096, ensure we match target */
 #ifndef LPM_PATH_MAX
 #define LPM_PATH_MAX 4096
