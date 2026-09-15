@@ -51,7 +51,9 @@ case "$stage" in
       require_file "$status" "desktop status"
       state="$(tr -d '\r\n' < "$status")"
       case "$state" in
-        ready) ;;
+        ready)
+          bash "$ROOT_DIR/scripts/graphics-readiness.sh" --strict
+          ;;
         deferred)
           if [ "${ALLOW_DEFERRED_GRAPHICS:-0}" != "1" ]; then
             shreeos_die "desktop cache is deferred; set ALLOW_DEFERRED_GRAPHICS=1 only for explicit development boot testing"
