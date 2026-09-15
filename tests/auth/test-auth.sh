@@ -11,6 +11,7 @@ echo "==> Testing ShreeOS Authentication Subsystems"
 TMP_ROOT=$(mktemp -d /tmp/shreeos-authtest-XXXXXX)
 PRIV_PREFIX=()
 CAN_PRIVILEGED_TEST=1
+CREDS_FILE=""
 
 if [ "$(id -u)" -ne 0 ]; then
   if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
@@ -21,6 +22,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 cleanup() {
+  rm -f "${CREDS_FILE:-}" >/dev/null 2>&1 || true
   if [ "${#PRIV_PREFIX[@]}" -gt 0 ]; then
     "${PRIV_PREFIX[@]}" rm -rf "$TMP_ROOT" >/dev/null 2>&1 || true
   else
