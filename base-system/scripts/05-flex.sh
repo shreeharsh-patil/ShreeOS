@@ -24,14 +24,14 @@ fi
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
-  --docdir="${LUMEN_STAGE_ROOT}/usr/share/doc/flex-${PKG_VER}"
+  --docdir="/usr/share/doc/flex-${PKG_VER}"
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 # Create lex symlink
 ln -sf flex "${LUMEN_STAGE_ROOT}/usr/bin/lex" 2>/dev/null || true
