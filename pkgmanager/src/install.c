@@ -15,20 +15,34 @@
 
 static int mkdir_p(const char *path) {
     char tmp[LPM_PATH_MAX];
-    char *p = NULL;
     size_t len;
 
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    len = strlen(tmp);
-    if (tmp[len - 1] == '/') tmp[len - 1] = 0;
-    for (p = tmp + 1; *p; p++) {
-        if (*p == '/') {
-            *p = 0;
-            mkdir(tmp, 0755);
-            *p = '/';
-        }
+    if (!path || !*path) {
+        errno = EINVAL;
+        return -1;
     }
-    return mkdir(tmp, 0755);
+
+    int written = snprintf(tmp, sizeof(tmp), "%s", path);
+    if (written < 0 || (size_t)written >= sizeof(tmp)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    len = strlen(tmp);
+    while (len > 1 && tmp[len - 1] == '/') tmp[--len] = '\0';
+
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p != '/') continue;
+        *p = '\0';
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+            *p = '/';
+            return -1;
+        }
+        *p = '/';
+    }
+
+    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
+    return 0;
 }
 
 static int safe_exec(const char *file, char *const argv[]) {
@@ -789,11 +803,21 @@ int cmd_upgrade(int argc, char **argv) {
         if (ent->d_name[0] == '.') continue;
         if (!lpm_valid_pkgname(ent->d_name)) continue;
 
-        char pkgname[LPM_PATH_MAX];
-        snprintf(pkgname, sizeof(pkgname), "%s", ent->d_name);
+        char pkgname[256];
+        int pkg_written = snprintf(pkgname, sizeof(pkgname), "%s", ent->d_name);
+        if (pkg_written < 0 || (size_t)pkg_written >= sizeof(pkgname)) {
+            fprintf(stderr, "lpm: skipping overlong installed package name\n");
+            failed_count++;
+            continue;
+        }
 
         char dbdir[LPM_PATH_MAX];
-        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", pkgname);
+        int db_written = snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", pkgname);
+        if (db_written < 0 || (size_t)db_written >= sizeof(dbdir)) {
+            fprintf(stderr, "lpm: installed package path is too long for %s\n", pkgname);
+            failed_count++;
+            continue;
+        }
         manifest *cur = manifest_load(dbdir);
         if (!cur) continue;
 
