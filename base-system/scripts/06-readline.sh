@@ -24,15 +24,15 @@ fi
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
-  --docdir="${LUMEN_STAGE_ROOT}/usr/share/doc/readline-${PKG_VER}" \
+  --docdir="/usr/share/doc/readline-${PKG_VER}" \
   --with-curses \
   --disable-static
 
 make SHLIB_LIBS="-lncursesw" -j"${LUMEN_MAKE_JOBS}"
-make SHLIB_LIBS="-lncursesw" install
+make DESTDIR="${LUMEN_STAGE_ROOT}" SHLIB_LIBS="-lncursesw" install
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
