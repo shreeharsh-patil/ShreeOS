@@ -21,7 +21,7 @@ bison	3.8.2	https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.xz	9bba0214ccf7f1079c5
 flex	2.6.4	https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz	e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995
 
 # readline 8.2.13
-readline	8.2.13	https://ftp.gnu.org/gnu/readline/readline-8.2.13.tar.gz	3feb7171f16a84ee82ca18a36d7b9be109a52c04f492a053331d7d1095007c35
+readline	8.2.13	https://ftp.gnu.org/gnu/readline/readline-8.2.13.tar.gz	0e5be4d2937e8bd9b7cd60d46721ce79f88a33415dd68c2d738fb5924638f656
 
 # bash 5.2.37
 bash	5.2.37	https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz	9599b22ecd1d5787ad7d3b7bf0c59f312b3396d1e281175dd1f8a4014da621ff
