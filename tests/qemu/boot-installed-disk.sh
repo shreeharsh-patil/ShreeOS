@@ -14,6 +14,7 @@ MEMORY="${MEMORY:-256M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
 DISK_IMAGE="${1:-}"
 TEMP_DISK=""
+SUDO=()
 
 if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
   if [ "$REQUIRE_ARTIFACTS" = "1" ]; then shreeos_die "QEMU not found: $QEMU_BIN"; fi
@@ -37,17 +38,20 @@ if [ -z "$DISK_IMAGE" ]; then
     DISK_IMAGE="$TEMP_DISK"
     CREDS_FILE="$(mktemp /tmp/shreeos-test-creds-XXXXXX)"
     cleanup_files() { rm -f "$TEMP_DISK" "$CREDS_FILE"; }
-    trap cleanup_files EXIT INT TERM
+    trap cleanup_files EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     chmod 600 "$CREDS_FILE"
     printf 'testrootpass\ntestuserpass\n' > "$CREDS_FILE"
     if [ "$(id -u)" -eq 0 ]; then
       bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
-    elif command -v sudo >/dev/null 2>&1; then
-      sudo -E bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+      SUDO=(sudo -n -E)
+      "${SUDO[@]}" bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
     elif [ "$REQUIRE_ARTIFACTS" = "1" ]; then
-      shreeos_die "sudo/root privileges are required for the installed-disk test"
+      shreeos_die "passwordless sudo/root privileges are required for the installed-disk test"
     else
-      shreeos_warn "sudo/root privileges unavailable; skipping installed-disk test"
+      shreeos_warn "non-interactive sudo/root privileges unavailable; skipping installed-disk test"
       exit 77
     fi
   fi
@@ -64,7 +68,14 @@ cleanup_qemu() {
     wait "$QEMU_PID" 2>/dev/null || true
   fi
 }
-trap 'cleanup_qemu; [ -n "$TEMP_DISK" ] && rm -f "$TEMP_DISK"; [ -n "${CREDS_FILE:-}" ] && rm -f "$CREDS_FILE"' EXIT INT TERM
+cleanup_all() {
+  cleanup_qemu
+  [ -n "$TEMP_DISK" ] && rm -f "$TEMP_DISK"
+  [ -n "${CREDS_FILE:-}" ] && rm -f "$CREDS_FILE"
+}
+trap cleanup_all EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 "$QEMU_BIN"   -drive file="$DISK_IMAGE",format=raw   -m "$MEMORY"   -nographic   -no-reboot   > "$LOG_FILE" 2>&1 &
 QEMU_PID=$!
