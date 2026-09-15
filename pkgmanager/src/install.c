@@ -210,6 +210,113 @@ static int validate_archive_members(const char *lpkg_path) {
     return (valid && WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
 }
 
+static int manifest_declares_path(const manifest *m, const char *path) {
+    for (int i = 0; i < m->nfiles; i++) {
+        if (strcmp(m->files[i], path) == 0) return 1;
+    }
+    return 0;
+}
+
+static int manifest_allows_directory(const manifest *m, const char *path) {
+    size_t len = strlen(path);
+    if (strcmp(path, "/") == 0) return 1;
+
+    for (int i = 0; i < m->nfiles; i++) {
+        if (strcmp(m->files[i], path) == 0) return 1;
+        if (strncmp(m->files[i], path, len) == 0 && m->files[i][len] == '/') return 1;
+    }
+    return 0;
+}
+
+static int validate_staged_payload_tree(const char *stage_root, const char *relative,
+                                        const manifest *m) {
+    char dir_path[LPM_PATH_MAX];
+    int written = relative[0]
+        ? snprintf(dir_path, sizeof(dir_path), "%s/%s", stage_root, relative)
+        : snprintf(dir_path, sizeof(dir_path), "%s", stage_root);
+    if (written < 0 || (size_t)written >= sizeof(dir_path)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    DIR *dir = opendir(dir_path);
+    if (!dir) return -1;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        char child_rel[LPM_PATH_MAX];
+        char child_path[LPM_PATH_MAX];
+        if (relative[0]) {
+            written = snprintf(child_rel, sizeof(child_rel), "%s/%s", relative, entry->d_name);
+        } else {
+            written = snprintf(child_rel, sizeof(child_rel), "%s", entry->d_name);
+        }
+        if (written < 0 || (size_t)written >= sizeof(child_rel)) {
+            fprintf(stderr, "lpm: staged payload path is too long\n");
+            closedir(dir);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        written = snprintf(child_path, sizeof(child_path), "%s/%s", stage_root, child_rel);
+        if (written < 0 || (size_t)written >= sizeof(child_path)) {
+            fprintf(stderr, "lpm: staged payload path is too long\n");
+            closedir(dir);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        struct stat st;
+        if (lstat(child_path, &st) != 0) {
+            fprintf(stderr, "lpm: cannot inspect staged payload member '%s': %s\n",
+                    child_rel, strerror(errno));
+            closedir(dir);
+            return -1;
+        }
+
+        char manifest_path[LPM_PATH_MAX];
+        written = snprintf(manifest_path, sizeof(manifest_path), "/%s", child_rel);
+        if (written < 0 || (size_t)written >= sizeof(manifest_path)) {
+            fprintf(stderr, "lpm: staged manifest path is too long\n");
+            closedir(dir);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            if (!manifest_allows_directory(m, manifest_path)) {
+                fprintf(stderr, "lpm: security error: archive contains undeclared directory '%s'\n",
+                        manifest_path);
+                closedir(dir);
+                return -1;
+            }
+            if (validate_staged_payload_tree(stage_root, child_rel, m) != 0) {
+                closedir(dir);
+                return -1;
+            }
+        } else {
+            if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) {
+                fprintf(stderr,
+                        "lpm: security error: unsupported special file in package payload '%s'\n",
+                        manifest_path);
+                closedir(dir);
+                return -1;
+            }
+            if (!manifest_declares_path(m, manifest_path)) {
+                fprintf(stderr, "lpm: security error: archive contains undeclared payload '%s'\n",
+                        manifest_path);
+                closedir(dir);
+                return -1;
+            }
+        }
+    }
+
+    closedir(dir);
+    return 0;
+}
+
 static int copy_file(const char *src, const char *dst) {
     char *args[] = { "cp", "-a", (char *)src, (char *)dst, NULL };
     return safe_exec("cp", args);
@@ -397,6 +504,12 @@ int cmd_install(int argc, char **argv) {
     char *tar_payload_args[] = { "tar", "-xzf", lpkg_path, "-C", stage_root, "--exclude=manifest.json", NULL };
     if (safe_exec("tar", tar_payload_args) != 0) {
         fprintf(stderr, "lpm: failed to extract payload into staging area\n");
+        ret = 1;
+        goto cleanup;
+    }
+
+    if (validate_staged_payload_tree(stage_root, "", m) != 0) {
+        fprintf(stderr, "lpm: security violation: package payload does not match its manifest\n");
         ret = 1;
         goto cleanup;
     }
