@@ -54,58 +54,79 @@ if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "Target '${DISK}' is not a valid block device or disk image."
 fi
 
-# Resolve canonical realpath
-CANONICAL_DISK=$(realpath "$DISK" 2>/dev/null || echo "$DISK")
+# Resolve canonical path before performing any topology checks.
+if ! CANONICAL_DISK="$(realpath -- "$DISK" 2>/dev/null)"; then
+  shreeos_die "Unable to resolve target path safely: $DISK"
+fi
 
 # For real block devices, prove that the target is a whole disk/loop device
 # and that none of its descendants back a mounted filesystem or active swap.
-# Comparing MAJ:MIN values avoids unsafe string-prefix assumptions and works
-# through partitions, dm-crypt, LVM, and other device-mapper stacks.
+# Any failed topology query aborts the destructive operation.
 if [ -b "$CANONICAL_DISK" ]; then
-  shreeos_require_cmd lsblk findmnt
+  shreeos_require_cmd lsblk findmnt mountpoint
 
-  TARGET_TYPE=$(lsblk -dnro TYPE "$CANONICAL_DISK" 2>/dev/null | head -n1 || true)
+  if ! TARGET_TYPE="$(lsblk -dnro TYPE -- "$CANONICAL_DISK" 2>/dev/null)"; then
+    shreeos_die "Unable to determine block-device type for '$DISK'; refusing to partition."
+  fi
+  TARGET_TYPE="${TARGET_TYPE%%$'\n'*}"
   case "$TARGET_TYPE" in
     disk|loop) ;;
-    *) shreeos_die "Target '${DISK}' is not a whole disk or loop device (detected type: ${TARGET_TYPE:-unknown})." ;;
+    *) shreeos_die "Target '$DISK' is not a whole disk or loop device (detected type: ${TARGET_TYPE:-unknown})." ;;
   esac
+
+  if ! TARGET_MAJMINS="$(lsblk -nr -o MAJ:MIN -- "$CANONICAL_DISK" 2>/dev/null)"; then
+    shreeos_die "Unable to inspect block-device ancestry for '$DISK'; refusing to partition."
+  fi
+  [ -n "$TARGET_MAJMINS" ] || shreeos_die "Block-device ancestry for '$DISK' is empty; refusing to partition."
 
   target_contains_majmin() {
     local majmin="$1"
     [ -n "$majmin" ] || return 1
-    lsblk -nr -o MAJ:MIN "$CANONICAL_DISK" 2>/dev/null | grep -Fxq "$majmin"
+    grep -Fxq "$majmin" <<< "$TARGET_MAJMINS"
   }
 
-  HOST_ROOT_MM=$(findmnt -n -o MAJ:MIN / 2>/dev/null || true)
+  if ! HOST_ROOT_MM="$(findmnt -n -o MAJ:MIN / 2>/dev/null)"; then
+    shreeos_die "Unable to identify the host root filesystem; refusing to partition any disk."
+  fi
   if target_contains_majmin "$HOST_ROOT_MM"; then
-    shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains the currently running host root filesystem (/)."
+    shreeos_die "CRITICAL REFUSAL: Target '$DISK' contains the currently running host root filesystem (/)."
   fi
 
   for protected_mount in /boot /boot/efi /run/initramfs/live /cdrom /mnt/cdrom /run/media; do
     [ -e "$protected_mount" ] || continue
-    PROTECTED_MM=$(findmnt -n -o MAJ:MIN "$protected_mount" 2>/dev/null || true)
-    if target_contains_majmin "$PROTECTED_MM"; then
-      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' backs protected mount ${protected_mount}."
+    if mountpoint -q "$protected_mount"; then
+      if ! PROTECTED_MM="$(findmnt -n -o MAJ:MIN "$protected_mount" 2>/dev/null)"; then
+        shreeos_die "Unable to inspect protected mount $protected_mount; refusing to partition."
+      fi
+      if target_contains_majmin "$PROTECTED_MM"; then
+        shreeos_die "CRITICAL REFUSAL: Target '$DISK' backs protected mount $protected_mount."
+      fi
     fi
   done
 
+  if ! MOUNTED_FILESYSTEMS="$(findmnt -r -n -o MAJ:MIN,TARGET 2>/dev/null)"; then
+    shreeos_die "Unable to enumerate mounted filesystems; refusing to partition."
+  fi
   while read -r mounted_mm mounted_target; do
     [ -n "$mounted_mm" ] || continue
     case "$mounted_mm" in
       0:*) continue ;;
     esac
     if target_contains_majmin "$mounted_mm"; then
-      shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains an active filesystem mounted at '${mounted_target}'."
+      shreeos_die "CRITICAL REFUSAL: Target '$DISK' contains an active filesystem mounted at '$mounted_target'."
     fi
-  done < <(findmnt -r -n -o MAJ:MIN,TARGET 2>/dev/null || true)
+  done <<< "$MOUNTED_FILESYSTEMS"
 
   if command -v swapon >/dev/null 2>&1; then
+    if ! ACTIVE_SWAP="$(swapon --show --noheadings --raw --output MAJ:MIN 2>/dev/null)"; then
+      shreeos_die "Unable to enumerate active swap; refusing to partition."
+    fi
     while read -r swap_mm; do
       [ -n "$swap_mm" ] || continue
       if target_contains_majmin "$swap_mm"; then
-        shreeos_die "CRITICAL REFUSAL: Target '${DISK}' contains active swap."
+        shreeos_die "CRITICAL REFUSAL: Target '$DISK' contains active swap."
       fi
-    done < <(swapon --show --noheadings --raw --output MAJ:MIN 2>/dev/null || true)
+    done <<< "$ACTIVE_SWAP"
   fi
 fi
 
