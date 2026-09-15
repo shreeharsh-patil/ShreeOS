@@ -24,7 +24,7 @@ fi
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
@@ -34,7 +34,7 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --enable-shared
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 # Install headers and libraries into sysroot for cross-compiler linking.
 # These are required target artifacts; never report success when staging them fails.
