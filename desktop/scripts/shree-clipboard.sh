@@ -13,13 +13,63 @@ set -euo pipefail
 
 DATA_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/shreeos"
 CONF_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/shreeos"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache/shreeos}"
 HIST_FILE="${DATA_DIR}/clipboard.hist"
 CONF_FILE="${CONF_DIR}/clipboard.conf"
-PID_FILE="/tmp/shree-clipboard-${UID}.pid"
+INSTANCE_DIR="${RUNTIME_DIR}/clipboard-daemon.lock"
+HIST_LOCK="${RUNTIME_DIR}/clipboard-history.lock"
 
-mkdir -p "$DATA_DIR" "$CONF_DIR"
+umask 077
+mkdir -p "$DATA_DIR" "$CONF_DIR" "$RUNTIME_DIR"
 touch "$HIST_FILE"
 chmod 600 "$HIST_FILE"
+
+acquire_history_lock() {
+  local attempt
+  for attempt in {1..100}; do
+    if mkdir "$HIST_LOCK" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.02
+  done
+  echo "shree-clipboard: unable to lock clipboard history" >&2
+  return 1
+}
+
+release_history_lock() {
+  rmdir "$HIST_LOCK" 2>/dev/null || true
+}
+
+update_history() {
+  local b64="$1"
+  local tmp
+  acquire_history_lock || return 1
+  tmp=$(mktemp "${DATA_DIR}/clipboard.hist.XXXXXX")
+  chmod 600 "$tmp"
+
+  if [ -s "$HIST_FILE" ]; then
+    grep -Fvx "$b64" "$HIST_FILE" > "$tmp" 2>/dev/null || true
+  fi
+  printf '%s\n' "$b64" >> "$tmp"
+
+  if ! tail -n 30 "$tmp" > "${tmp}.tail"; then
+    rm -f "$tmp" "${tmp}.tail"
+    release_history_lock
+    return 1
+  fi
+  chmod 600 "${tmp}.tail"
+  mv -f "${tmp}.tail" "$HIST_FILE"
+  rm -f "$tmp"
+  chmod 600 "$HIST_FILE"
+  release_history_lock
+}
+
+clear_history() {
+  acquire_history_lock || return 1
+  : > "$HIST_FILE"
+  chmod 600 "$HIST_FILE"
+  release_history_lock
+}
 
 is_enabled() {
   if [ -f "$CONF_FILE" ] && grep -q "ENABLED=false" "$CONF_FILE" 2>/dev/null; then
@@ -29,13 +79,26 @@ is_enabled() {
 }
 
 run_daemon() {
-  # Enforce single instance
-  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-    echo "Clipboard daemon already running for UID ${UID}."
-    exit 0
+  # Enforce a race-free single instance per user. Recover a stale lock left
+  # behind after an unclean shutdown only when its recorded PID is gone.
+  if ! mkdir "$INSTANCE_DIR" 2>/dev/null; then
+    local existing_pid=""
+    [ -f "$INSTANCE_DIR/pid" ] && existing_pid=$(cat "$INSTANCE_DIR/pid" 2>/dev/null || true)
+    if [[ "$existing_pid" =~ ^[0-9]+$ ]] && kill -0 "$existing_pid" 2>/dev/null; then
+      echo "Clipboard daemon already running for UID ${UID}."
+      exit 0
+    fi
+    rm -rf "$INSTANCE_DIR"
+    mkdir "$INSTANCE_DIR" || {
+      echo "shree-clipboard: unable to acquire daemon lock" >&2
+      exit 1
+    }
   fi
-  echo "$$" > "$PID_FILE"
-  trap 'rm -f "$PID_FILE"' EXIT
+  printf '%s\n' "$" > "$INSTANCE_DIR/pid"
+  chmod 600 "$INSTANCE_DIR/pid"
+  trap 'rm -rf "$INSTANCE_DIR"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
   local last_raw=""
   while true; do
@@ -51,21 +114,9 @@ run_daemon() {
           local b64
           b64=$(echo -n "$cur_raw" | base64 -w 0 2>/dev/null || echo -n "$cur_raw" | base64 | tr -d '\n')
           
-          # Remove duplicate if exists
-          if [ -f "$HIST_FILE" ]; then
-            grep -Fvx "$b64" "$HIST_FILE" > "${HIST_FILE}.tmp" 2>/dev/null || true
-            mv "${HIST_FILE}.tmp" "$HIST_FILE" 2>/dev/null || true
+          if update_history "$b64"; then
+            last_raw="$cur_raw"
           fi
-          
-          echo "$b64" >> "$HIST_FILE"
-          chmod 600 "$HIST_FILE"
-          
-          # Keep last 30 entries
-          if tail -n 30 "$HIST_FILE" > "${HIST_FILE}.tmp" 2>/dev/null; then
-            mv "${HIST_FILE}.tmp" "$HIST_FILE" 2>/dev/null || true
-          fi
-          chmod 600 "$HIST_FILE"
-          last_raw="$cur_raw"
         fi
       fi
     fi
@@ -95,9 +146,11 @@ run_interactive() {
   [ -z "$selected" ] && exit 0
 
   if [ "$selected" = "[Clear Clipboard History]" ]; then
-    : > "$HIST_FILE"
-    chmod 600 "$HIST_FILE"
-    shree-notify "Clipboard" "Clipboard history cleared" --app="System"
+    if clear_history; then
+      shree-notify "Clipboard" "Clipboard history cleared" --app="System"
+    else
+      shree-notify "Clipboard" "Could not clear clipboard history" --app="System" --urgent
+    fi
   elif [ "$selected" = "[Toggle Clipboard Recording]" ]; then
     if is_enabled; then
       echo "ENABLED=false" > "$CONF_FILE"
@@ -128,8 +181,7 @@ run_interactive() {
 case "${1:-interactive}" in
   --daemon|daemon) run_daemon ;;
   clear)
-    : > "$HIST_FILE"
-    chmod 600 "$HIST_FILE"
+    clear_history
     ;;
   interactive|*) run_interactive ;;
 esac
