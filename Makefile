@@ -150,6 +150,7 @@ toolchain: $(MARKER_DIR)/.toolchain
 
 $(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR) check-toolchain-cache
 	bash toolchain/scripts/build-all.sh --skip-tests
+	bash scripts/verify-stage.sh toolchain
 	@touch $@
 
 .PHONY: toolchain-test
@@ -163,6 +164,7 @@ base-system: $(MARKER_DIR)/.base-system
 
 $(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS) | check-toolchain-cache check-base-cache
 	bash base-system/scripts/build-all.sh
+	bash scripts/verify-stage.sh base-system
 	@touch $@
 
 # -- Phase 3: Kernel --------------------------------------------------
@@ -172,6 +174,7 @@ kernel: $(MARKER_DIR)/.kernel
 
 $(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS) | check-toolchain-cache check-kernel-cache
 	bash kernel/scripts/build-kernel.sh
+	bash scripts/verify-stage.sh kernel
 	@touch $@
 
 # -- Phase 4: Package Manager, Init & Hardware Service ----------------
@@ -183,6 +186,7 @@ $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(P
 	$(MAKE) -C pkgmanager/src
 	$(MAKE) -C init/src
 	$(MAKE) -C hardware
+	bash scripts/verify-stage.sh packages
 	@touch $@
 
 # -- Phase 5: Desktop Suite (Profile-aware) ---------------------------
@@ -194,6 +198,7 @@ $(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-
 ifeq ($(PROFILE),desktop)
 	bash desktop/wm/build-all.sh
 endif
+	bash scripts/verify-stage.sh desktop
 	@touch $@
 
 # -- Phase 6: RootFS Assembly (Profile-aware) -------------------------
@@ -203,6 +208,7 @@ rootfs: $(MARKER_DIR)/.rootfs-$(PROFILE)
 
 $(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS) | check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache
 	bash rootfs/scripts/make-rootfs.sh
+	bash scripts/verify-stage.sh rootfs
 	@touch $@
 
 # -- Phase 7: ISO Creation (Profile-aware) ----------------------------
@@ -212,6 +218,7 @@ iso: $(MARKER_DIR)/.iso-$(PROFILE)
 
 $(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS) | check-rootfs-cache check-iso-cache
 	bash iso-builder/scripts/build-iso.sh
+	bash scripts/verify-stage.sh iso
 	@touch $@
 
 .PHONY: installer
