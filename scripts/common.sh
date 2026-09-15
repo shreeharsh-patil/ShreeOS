@@ -20,23 +20,56 @@ lumen_warn() { shreeos_warn "$@"; }
 lumen_die()  { shreeos_die "$@"; }
 
 # shreeos_fetch <url> <dest-file> <sha256>
-# Downloads a source tarball and verifies its checksum. Refuses to overwrite
-# a file that fails verification.
+# Downloads a source tarball and verifies it before publishing it into the
+# shared source cache. Invalid cached/downloaded files are never retained.
 shreeos_fetch() {
   local url="$1" dest="$2" expected_sha="$3"
+  local actual_sha tmp attempt
+
+  if [[ ! "${expected_sha}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    shreeos_die "Invalid SHA-256 pin for $(basename "${dest}"): ${expected_sha}"
+  fi
+
   if [[ -f "${dest}" ]]; then
-    shreeos_log "Already downloaded: $(basename "${dest}")"
-  else
-    shreeos_log "Fetching $(basename "${dest}") ..."
-    curl -fL --retry 3 -o "${dest}.part" "${url}"
-    mv "${dest}.part" "${dest}"
+    actual_sha="$(sha256sum "${dest}" | awk '{print $1}')"
+    if [[ "${actual_sha}" == "${expected_sha}" ]]; then
+      shreeos_log "Using verified cached source: $(basename "${dest}")"
+      shreeos_ok "Verified checksum for $(basename "${dest}")"
+      return 0
+    fi
+
+    shreeos_warn "Discarding invalid cached source $(basename "${dest}"): expected ${expected_sha}, got ${actual_sha}"
+    rm -f -- "${dest}"
   fi
-  local actual_sha
-  actual_sha="$(sha256sum "${dest}" | awk '{print $1}')"
-  if [[ "${actual_sha}" != "${expected_sha}" ]]; then
-    shreeos_die "Checksum mismatch for ${dest}: expected ${expected_sha}, got ${actual_sha}"
-  fi
-  shreeos_ok "Verified checksum for $(basename "${dest}")"
+
+  tmp="${dest}.part.$"
+  rm -f -- "${tmp}"
+
+  for attempt in 1 2; do
+    shreeos_log "Fetching $(basename "${dest}") (attempt ${attempt}/2) ..."
+    if ! curl -fL --retry 3 --retry-all-errors --connect-timeout 20 -o "${tmp}" "${url}"; then
+      rm -f -- "${tmp}"
+      if (( attempt < 2 )); then
+        shreeos_warn "Download failed; retrying source fetch from ${url}"
+        continue
+      fi
+      shreeos_die "Failed to download ${url}"
+    fi
+
+    actual_sha="$(sha256sum "${tmp}" | awk '{print $1}')"
+    if [[ "${actual_sha}" == "${expected_sha}" ]]; then
+      mv -f -- "${tmp}" "${dest}"
+      shreeos_ok "Verified checksum for $(basename "${dest}")"
+      return 0
+    fi
+
+    rm -f -- "${tmp}"
+    if (( attempt < 2 )); then
+      shreeos_warn "Downloaded checksum mismatch for $(basename "${dest}"); retrying"
+    fi
+  done
+
+  shreeos_die "Checksum mismatch for ${dest}: expected ${expected_sha}, got ${actual_sha}"
 }
 lumen_fetch() { shreeos_fetch "$@"; }
 
