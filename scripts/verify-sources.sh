@@ -8,18 +8,29 @@ source "$REPO_ROOT/build.conf"
 source "$REPO_ROOT/scripts/common.sh"
 
 FETCH_MISSING=false
+COMPONENT="all"
 for arg in "$@"; do
   case "$arg" in
     --fetch|--download) FETCH_MISSING=true ;;
+    --component=*) COMPONENT="${arg#*=}" ;;
     --help|-h)
-      echo "Usage: verify-sources.sh [--fetch|--download]"
-      echo "Validates pinned SHA-256 definitions and verifies every cached archive."
-      echo "With --fetch, all missing sources are downloaded and verified."
+      echo "Usage: verify-sources.sh [--fetch|--download] [--component=all|toolchain|kernel|base-system|desktop]"
+      echo "Validates pinned SHA-256 definitions and verifies cached archives."
+      echo "With --fetch, missing sources for the selected component are downloaded and verified."
       exit 0
       ;;
     *) shreeos_die "Unknown option: $arg" ;;
   esac
 done
+
+case "$COMPONENT" in
+  all|toolchain|kernel|base-system|desktop) ;;
+  *) shreeos_die "Invalid component: $COMPONENT" ;;
+esac
+
+component_enabled() {
+  [ "$COMPONENT" = "all" ] || [ "$COMPONENT" = "$1" ]
+}
 
 SOURCES_DIR="${SHREEOS_SOURCES:-$REPO_ROOT/build/sources}"
 mkdir -p "$SOURCES_DIR"
@@ -104,7 +115,7 @@ echo "========================================================"
 echo " ShreeOS Pinned Upstream Sources Verification"
 echo "========================================================"
 
-if [ -f "$REPO_ROOT/toolchain/scripts/sources.list" ]; then
+if component_enabled toolchain && [ -f "$REPO_ROOT/toolchain/scripts/sources.list" ]; then
   # shellcheck disable=SC1091
   source "$REPO_ROOT/toolchain/scripts/sources.list"
   verify_entry toolchain binutils "${VER_BINUTILS:-2.43.1}" "$BINUTILS_URL" "$BINUTILS_SHA256"
@@ -113,13 +124,13 @@ if [ -f "$REPO_ROOT/toolchain/scripts/sources.list" ]; then
   verify_entry toolchain linux-headers "${VER_LINUX_KERNEL:-6.18}" "$KERNEL_URL" "$KERNEL_SHA256"
 fi
 
-if [ -f "$REPO_ROOT/kernel/sources.list" ]; then
+if component_enabled kernel && [ -f "$REPO_ROOT/kernel/sources.list" ]; then
   # shellcheck disable=SC1091
   source "$REPO_ROOT/kernel/sources.list"
   verify_entry kernel linux "${VER_LINUX_KERNEL:-6.18}" "$KERNEL_URL" "$KERNEL_SHA256"
 fi
 
-if [ -f "$REPO_ROOT/base-system/packages.list" ]; then
+if component_enabled base-system && [ -f "$REPO_ROOT/base-system/packages.list" ]; then
   while IFS=$'\t' read -r name ver url sha _rest || [ -n "${name:-}" ]; do
     [[ "${name:-}" =~ ^[[:space:]]*# ]] && continue
     [ -z "${name:-}" ] && continue
@@ -127,7 +138,7 @@ if [ -f "$REPO_ROOT/base-system/packages.list" ]; then
   done < "$REPO_ROOT/base-system/packages.list"
 fi
 
-if [ -f "$REPO_ROOT/desktop/wm/sources.list" ]; then
+if component_enabled desktop && [ -f "$REPO_ROOT/desktop/wm/sources.list" ]; then
   # shellcheck disable=SC1091
   source "$REPO_ROOT/desktop/wm/sources.list"
   verify_entry desktop dwm 6.5 "$DWM_URL" "$DWM_SHA256"
