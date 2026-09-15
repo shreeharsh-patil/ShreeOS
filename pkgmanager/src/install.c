@@ -892,7 +892,14 @@ int cmd_remove(int argc, char **argv) {
      * dependents and potentially leaving a transitive package broken. */
     char **dependents = NULL;
     int ndependents = 0;
-    if (lpm_find_dependents(name, &dependents, &ndependents) > 0) {
+    int dependent_result = lpm_find_dependents(name, &dependents, &ndependents);
+    if (dependent_result < 0) {
+        fprintf(stderr, "lpm: error: unable to determine reverse dependencies for '%s'; refusing removal\n", name);
+        manifest_free(m);
+        lpm_unlock();
+        return 1;
+    }
+    if (dependent_result > 0) {
         if (!cascade) {
             fprintf(stderr, "lpm: error: cannot remove '%s': required by %d installed package(s):\n",
                     name, ndependents);
