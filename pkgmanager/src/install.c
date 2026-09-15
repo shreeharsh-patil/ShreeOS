@@ -455,8 +455,14 @@ static int write_transaction_status(const char *status_path, const char *state) 
 
     FILE *f = fopen(tmp, "w");
     if (!f) return -1;
-    if (fprintf(f, "%s\n", state) < 0 || fflush(f) != 0 ||
-        fsync(fileno(f)) != 0 || fclose(f) != 0) {
+
+    int failed = 0;
+    if (fprintf(f, "%s\n", state) < 0) failed = 1;
+    if (!failed && fflush(f) != 0) failed = 1;
+    if (!failed && fsync(fileno(f)) != 0) failed = 1;
+    if (fclose(f) != 0) failed = 1;
+
+    if (failed) {
         unlink(tmp);
         return -1;
     }
@@ -589,6 +595,7 @@ int cmd_install(int argc, char **argv) {
     char transaction_dir[LPM_PATH_MAX] = {0};
     char transaction_status[LPM_PATH_MAX + 64] = {0};
     char rollback_ledger[LPM_PATH_MAX + 64] = {0};
+    char backup_dir[LPM_PATH_MAX + 64] = {0};
 
     /* 3. Extract manifest.json */
     char manifest_extract_dir[LPM_PATH_MAX];
@@ -741,7 +748,6 @@ int cmd_install(int argc, char **argv) {
     }
 
     /* 9. Prepare Rollback Backups for existing files */
-    char backup_dir[LPM_PATH_MAX + 64];
     int tx_written = snprintf(transaction_dir, sizeof(transaction_dir), "%s/%ld-%ld",
                               LPM_TRANSACTIONS, (long)time(NULL), (long)getpid());
     if (tx_written < 0 || (size_t)tx_written >= sizeof(transaction_dir) ||
@@ -762,9 +768,15 @@ int cmd_install(int argc, char **argv) {
         }
         packages = fopen(rollback_ledger, "w");
         if (!packages) { ret = 1; goto cleanup; }
+        int ledger_failed = 0;
         if (fprintf(packages, "# transaction=%s package=%s old=%s new=%s\n", transaction_dir,
-                    m->name, old_m && old_m->version ? old_m->version : "none", m->version) < 0 ||
-            fflush(packages) != 0 || fsync(fileno(packages)) != 0 || fclose(packages) != 0) {
+                    m->name, old_m && old_m->version ? old_m->version : "none", m->version) < 0) {
+            ledger_failed = 1;
+        }
+        if (!ledger_failed && fflush(packages) != 0) ledger_failed = 1;
+        if (!ledger_failed && fsync(fileno(packages)) != 0) ledger_failed = 1;
+        if (fclose(packages) != 0) ledger_failed = 1;
+        if (ledger_failed) {
             ret = 1;
             goto cleanup;
         }
