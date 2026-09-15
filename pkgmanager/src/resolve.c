@@ -9,7 +9,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
-#include <sys/stat.h>\n#include <errno.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 static int safe_exec(const char *file, char *const argv[]) {
     pid_t pid = fork();
