@@ -30,7 +30,8 @@ suspend_system() {
     if printf '%s\n' mem > /sys/power/state 2>/dev/null; then
       return 0
     fi
-  elif command -v systemctl >/dev/null 2>&1; then
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
     if systemctl suspend >/dev/null 2>&1; then
       return 0
     fi
