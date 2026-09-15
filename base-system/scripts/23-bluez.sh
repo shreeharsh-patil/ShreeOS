@@ -17,14 +17,11 @@ if ! pkg-config --exists glib-2.0 dbus-1 2>/dev/null; then
   exit 0
 fi
 
-version=5.79
-archive="${LUMEN_BUILD_DIR}/sources/bluez-${version}.tar.xz"
+version="$(pkg_version bluez)"
+archive="${LUMEN_BUILD_DIR}/sources/$(pkg_archive bluez)"
 source_dir="${LUMEN_BUILD_DIR}/sources/bluez-${version}"
 
-lumen_fetch \
-  "https://www.kernel.org/pub/linux/bluetooth/bluez-${version}.tar.xz" \
-  "$archive" \
-  "4164a5303a9f71c70f48c03ff60be34231b568d93a9ad5e79928d34e6aa0ea8a"
+lumen_fetch "$(pkg_url bluez)" "$archive" "$(pkg_sha256 bluez)"
 
 [ -d "$source_dir" ] || tar -xJf "$archive" -C "${LUMEN_BUILD_DIR}/sources"
 mkdir -p "${LUMEN_BUILD_DIR}/build-bluez"
