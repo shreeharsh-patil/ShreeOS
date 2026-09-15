@@ -516,35 +516,49 @@ static int load_and_reconcile_services(void) {
         closedir(dir);
     }
 
+    /*
+     * Descriptor errors are isolated to the bad file and can be tolerated when
+     * at least one valid service remains. Dependency-graph errors are different:
+     * accepting them could silently remove ordering guarantees and start a
+     * service too early, so those still reject a live reload.
+     */
+    int descriptor_errors = service_config_errors;
     build_and_validate_dependency_graph(new_table, new_count);
+    int dependency_errors = service_config_errors - descriptor_errors;
 
-    if (service_config_errors > 0) {
+    if (dependency_errors > 0) {
         char msg[160];
-        snprintf(msg, sizeof(msg), "Service configuration contains %d error(s)", service_config_errors);
+        snprintf(msg, sizeof(msg), "Service dependency graph contains %d error(s)", dependency_errors);
         log_warn("init", msg);
 
         if (num_services > 0) {
-            /*
-             * Reloads are transactional: never replace a healthy running graph
-             * with a partially parsed configuration.
-             */
             log_warn("init", "Reload rejected; keeping the currently running service graph");
             return -1;
         }
 
+        log_warn("init", "Initial dependency graph is invalid; starting the built-in safe service set");
+        memset(new_table, 0, sizeof(new_table));
+        new_count = 0;
+        load_builtin_safe_services(new_table, &new_count);
+        build_and_validate_dependency_graph(new_table, new_count);
+    } else if (descriptor_errors > 0) {
+        char msg[160];
+        snprintf(msg, sizeof(msg), "Ignored %d invalid service descriptor error(s)", descriptor_errors);
+        log_warn("init", msg);
+
         if (new_count == 0) {
-            /*
-             * On the initial boot, fall back only when nothing usable could be
-             * loaded. A malformed descriptor must not hide otherwise valid,
-             * independent services from the same directory.
-             */
+            if (num_services > 0) {
+                log_warn("init", "Reload rejected; no valid services remain");
+                return -1;
+            }
+
             log_warn("init", "Initial configuration has no valid services; starting the built-in safe service set");
             memset(new_table, 0, sizeof(new_table));
             new_count = 0;
             load_builtin_safe_services(new_table, &new_count);
             build_and_validate_dependency_graph(new_table, new_count);
         } else {
-            log_warn("init", "Initial configuration contains invalid entries; continuing with the valid service set");
+            log_warn("init", "Continuing with valid service descriptors; invalid files were skipped");
         }
     } else if (new_count == 0 && num_services == 0) {
         if (config_files_seen == 0) {
