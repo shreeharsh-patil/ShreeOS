@@ -23,11 +23,16 @@ fi
 
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
+# Flex 2.6.4's bootstrap stage1flex is known to crash while regenerating
+# stage1scan.c on some modern/cross-build toolchains. Release tarballs already
+# contain the generated scanner, so disable the self-bootstrap and build from
+# that shipped source instead.
 "${SRCDIR}/configure" \
   --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
+  --disable-bootstrap \
   --docdir="/usr/share/doc/flex-${PKG_VER}"
 
 make -j"${LUMEN_MAKE_JOBS}"

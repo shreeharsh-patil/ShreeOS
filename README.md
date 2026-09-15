@@ -122,7 +122,7 @@ sequenceDiagram
 ### Prerequisites
 
 - **Host System:** Linux (Ubuntu 22.04 / 24.04 LTS or equivalent)
-- **Core Dependencies:** `git`, `make`, `gcc`, `g++`, `bash`, `bison`, `flex`, `gawk`, `texinfo`, `wget`, `curl`, `xorriso`, `qemu-system-x86_64`
+- **Core Dependencies:** `git`, `make`, `gcc`, `g++`, `bash`, `bison`, `flex`, `gawk`, `texinfo`, `wget`, `curl`, `file`, `xorriso`, `qemu-system-x86_64`
 - **Storage:** ~30 GB free disk space.
 
 ### Building ShreeOS
@@ -131,11 +131,12 @@ sequenceDiagram
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
 
-# Standard development build
-make PROFILE=desktop iso
-
-# Or build minimal headless profile
+# Build a complete headless/minimal ISO with the currently source-built stack
 make PROFILE=minimal iso
+
+# Desktop-development ISO: stages desktop assets but explicitly permits the
+# still-incomplete target graphics stack. This is NOT desktop-certified yet.
+ALLOW_DEFERRED_GRAPHICS=1 make PROFILE=desktop iso
 ```
 
 ### Reliable WSL2 Build
@@ -171,7 +172,7 @@ make graphics
 make PROFILE=desktop verify-iso
 ```
 
-The legacy `make PROFILE=desktop iso` target remains available for development while the full target graphics dependency chain is being completed, but `scripts/build.sh desktop` is the recommended path for builds that should be certified as ready.
+The native desktop is intentionally not certified until X11/Xft/Xinerama, Fontconfig, FreeType, Xorg, xinit and fonts are built for the ShreeOS target. Use the minimal profile for a fully supported bootable build today. Use `ALLOW_DEFERRED_GRAPHICS=1` only when testing desktop-profile boot/integration while that graphics dependency chain is incomplete.
 
 ### Testing & Validation
 
