@@ -122,7 +122,7 @@ sequenceDiagram
 ### Prerequisites
 
 - **Host System:** Linux (Ubuntu 22.04 / 24.04 LTS or equivalent)
-- **Core Dependencies:** `git`, `make`, `gcc`, `g++`, `bash`, `bison`, `flex`, `gawk`, `texinfo`, `wget`, `curl`, `xorriso`, `qemu-system-x86_64`
+- **Core Dependencies:** `git`, `make`, `gcc`, `g++`, `bash`, `bison`, `flex`, `gawk`, `texinfo`, `wget`, `curl`, `file`, `xorriso`, `qemu-system-x86_64`
 - **Storage:** ~30 GB free disk space.
 
 ### Building ShreeOS
