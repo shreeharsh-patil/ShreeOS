@@ -49,7 +49,7 @@ static int safe_exec(const char *file, char *const argv[]) {
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
-        int devnull = open("/dev/null", 0666);
+        int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
             dup2(devnull, STDOUT_FILENO);
             dup2(devnull, STDERR_FILENO);
@@ -166,7 +166,7 @@ static int validate_archive_members(const char *lpkg_path) {
     if (pid == 0) {
         close(pipefd[0]);
         dup2(pipefd[1], STDOUT_FILENO);
-        int devnull = open("/dev/null", 0666);
+        int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) dup2(devnull, STDERR_FILENO);
         close(pipefd[1]);
         execlp("tar", "tar", "-ztf", lpkg_path, (char *)NULL);
