@@ -524,15 +524,28 @@ static int load_and_reconcile_services(void) {
         log_warn("init", msg);
 
         if (num_services > 0) {
+            /*
+             * Reloads are transactional: never replace a healthy running graph
+             * with a partially parsed configuration.
+             */
             log_warn("init", "Reload rejected; keeping the currently running service graph");
             return -1;
         }
 
-        log_warn("init", "Initial configuration is invalid; starting the built-in safe service set");
-        memset(new_table, 0, sizeof(new_table));
-        new_count = 0;
-        load_builtin_safe_services(new_table, &new_count);
-        build_and_validate_dependency_graph(new_table, new_count);
+        if (new_count == 0) {
+            /*
+             * On the initial boot, fall back only when nothing usable could be
+             * loaded. A malformed descriptor must not hide otherwise valid,
+             * independent services from the same directory.
+             */
+            log_warn("init", "Initial configuration has no valid services; starting the built-in safe service set");
+            memset(new_table, 0, sizeof(new_table));
+            new_count = 0;
+            load_builtin_safe_services(new_table, &new_count);
+            build_and_validate_dependency_graph(new_table, new_count);
+        } else {
+            log_warn("init", "Initial configuration contains invalid entries; continuing with the valid service set");
+        }
     } else if (new_count == 0 && num_services == 0) {
         if (config_files_seen == 0) {
             log_warn("init", "No service configuration files found; starting the built-in safe service set");
