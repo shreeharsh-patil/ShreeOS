@@ -47,6 +47,7 @@ PACKAGES=(
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --resume)
+      [ -n "${2:-}" ] || lumen_die "--resume requires a package number (1-${#PACKAGES[@]})"
       RESUME_FROM="$2"
       shift 2
       ;;
