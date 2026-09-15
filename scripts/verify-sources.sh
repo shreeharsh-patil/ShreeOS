@@ -61,6 +61,15 @@ verify_entry() {
     printf "  [FETCH]   [%-11s] %s\n" "$comp" "$filename"
     rm -f "$tmp_path"
     if curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 -o "$tmp_path" "$url"; then
+      local fetched_sha
+      fetched_sha="$(sha256sum "$tmp_path" | awk '{print $1}')"
+      if [ "$fetched_sha" != "$expected_sha" ]; then
+        rm -f "$tmp_path"
+        printf "  [MISMATCH][%-11s] %-16s %-8s %s\n" "$comp" "$name" "$version" "$filename"
+        printf "            expected: %s\n            actual:   %s\n" "$expected_sha" "$fetched_sha"
+        FAILED=$((FAILED + 1))
+        return 0
+      fi
       mv "$tmp_path" "$archive_path"
     else
       rm -f "$tmp_path"
