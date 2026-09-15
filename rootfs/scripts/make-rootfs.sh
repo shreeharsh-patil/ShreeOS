@@ -30,6 +30,7 @@ for arg in "$@"; do
       echo "Usage: make-rootfs.sh [--skip-init] [--skip-archive]"
       exit 0
       ;;
+    *) lumen_die "Unknown option: $arg" ;;
   esac
 done
 
@@ -175,18 +176,45 @@ if ! grep -q '^shree-hardware:' "${LUMEN_STAGE_ROOT}/etc/group" 2>/dev/null; the
   printf 'shree-hardware:x:%s:\n' "$shree_hardware_gid" >> "${LUMEN_STAGE_ROOT}/etc/group"
 fi
 
-# 4. Verify base system essentials
+# 4. Stage the target C/C++ runtime from the compiler sysroot.
+# The toolchain owns glibc and compiler runtime libraries; base packages are
+# dynamically linked against them, so the bootable rootfs must contain them.
+shreeos_step "Staging target runtime libraries from sysroot"
+runtime_dirs=0
+for rel in lib lib64 usr/lib usr/lib64; do
+  src="${LUMEN_SYSROOT}/${rel}"
+  [ -d "$src" ] || continue
+  dst="${LUMEN_STAGE_ROOT}/${rel}"
+  mkdir -p "$dst"
+  cp -a "$src/." "$dst/"
+  runtime_dirs=$((runtime_dirs + 1))
+done
+[ "$runtime_dirs" -gt 0 ] || lumen_die "No target runtime library directories found in ${LUMEN_SYSROOT}"
+
+if ! compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/libc.so*" >/dev/null && \
+   ! compgen -G "${LUMEN_STAGE_ROOT}/lib/libc.so*" >/dev/null; then
+  lumen_die "Target libc runtime is missing from the assembled rootfs"
+fi
+if ! compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/ld-linux*.so*" >/dev/null && \
+   ! compgen -G "${LUMEN_STAGE_ROOT}/lib/ld-linux*.so*" >/dev/null && \
+   ! compgen -G "${LUMEN_STAGE_ROOT}/lib64/ld-linux*.so*" >/dev/null; then
+  lumen_die "Target dynamic loader is missing from the assembled rootfs"
+fi
+
+# 5. Verify base system essentials
 lumen_step "Verifying base system"
 for bin in bash ls mount; do
-  if [ ! -f "${LUMEN_STAGE_ROOT}/bin/${bin}" ]; then
-    lumen_warn "Missing base system binary: /bin/${bin}"
+  if [ ! -x "${LUMEN_STAGE_ROOT}/usr/bin/${bin}" ]; then
+    lumen_die "Missing base system binary: /usr/bin/${bin}"
   fi
 done
+[ -x "${LUMEN_STAGE_ROOT}/bin/bash" ] || lumen_die "Missing /bin/bash compatibility link"
+[ -x "${LUMEN_STAGE_ROOT}/bin/sh" ] || lumen_die "Missing /bin/sh compatibility link"
 
-# 5. Ensure device nodes
+# 6. Ensure device nodes
 bash "${SCRIPT_DIR}/populate-devices.sh" "${LUMEN_STAGE_ROOT}"
 
-# 6. Package as cpio archive for QEMU
+# 7. Package as cpio archive for QEMU
 if [ "$SKIP_ARCHIVE" = false ]; then
   lumen_step "Packaging rootfs as cpio archive"
   ROOTFS_ARCHIVE="${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
@@ -202,7 +230,7 @@ if [ "$SKIP_ARCHIVE" = false ]; then
   lumen_ok "Rootfs archive: ${ROOTFS_ARCHIVE}"
 fi
 
-# 7. Summary
+# 8. Summary
 echo ""
 echo "============================================"
 lumen_ok "Root filesystem assembly COMPLETE"
