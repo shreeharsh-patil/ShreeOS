@@ -266,19 +266,23 @@ int cmd_verify(int argc, char **argv) {
 }
 
 static int get_repo_url(char *buf, size_t maxlen) {
+    int have_configured_url = 0;
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {
         if (fgets(buf, maxlen, f)) {
             size_t len = strlen(buf);
-            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' || buf[len-1] == ' ')) {
+            while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' ||
+                               buf[len-1] == ' ' || buf[len-1] == '\t')) {
                 buf[--len] = '\0';
             }
-            if (len > 0) goto validate;
+            have_configured_url = (len > 0);
         }
         fclose(f);
     }
-    snprintf(buf, maxlen, "http://localhost:8080");
-validate:
+    if (!have_configured_url) {
+        snprintf(buf, maxlen, "http://localhost:8080");
+    }
+
     if (strncmp(buf, "https://", 8) == 0 || strncmp(buf, "http://localhost", 16) == 0 ||
         strncmp(buf, "http://127.0.0.1", 16) == 0) return 0;
     fprintf(stderr, "lpm: refusing insecure repository URL '%s' (HTTPS is required except localhost development repositories)\n", buf);
@@ -340,8 +344,35 @@ int cmd_update(int argc, char **argv) {
         }
     }
 
-    /* Verify signature if public key is configured */
-    if (pubkey_path && access(pubkey_path, F_OK) == 0) {
+    const int local_development_repo =
+        strncmp(url, "http://localhost", 16) == 0 ||
+        strncmp(url, "http://127.0.0.1", 16) == 0;
+    const int explicit_pubkey = getenv("LPM_REPO_PUBKEY") != NULL &&
+                                *getenv("LPM_REPO_PUBKEY") != '\0';
+    const int pubkey_available = pubkey_path && *pubkey_path &&
+                                 access(pubkey_path, R_OK) == 0;
+
+    if (explicit_pubkey && !pubkey_available) {
+        fprintf(stderr, "lpm: security error: configured repository public key is unreadable: %s\n",
+                pubkey_path ? pubkey_path : "(unset)");
+        unlink(tmp_json);
+        unlink(tmp_sig);
+        lpm_unlock();
+        return 1;
+    }
+
+    if (!local_development_repo && !pubkey_available) {
+        fprintf(stderr,
+                "lpm: security error: remote repositories require a configured public key "
+                "(LPM_REPO_PUBKEY or /etc/lpm/keys/shreeos-repo.pub)\n");
+        unlink(tmp_json);
+        unlink(tmp_sig);
+        lpm_unlock();
+        return 1;
+    }
+
+    /* Verify every non-local repository signature before accepting metadata. */
+    if (pubkey_available) {
         if (sig_res != 0 || access(tmp_sig, F_OK) != 0) {
             fprintf(stderr, "lpm: security error: repository signature missing at %s\n", repo_sig_url);
             fprintf(stderr, "lpm: retaining last valid repository index.\n");
@@ -365,6 +396,9 @@ int cmd_update(int argc, char **argv) {
             return 1;
         }
         printf("lpm: repository signature verified with %s\n", pubkey_path);
+    } else {
+        /* Unsigned metadata is only permitted for explicit localhost development. */
+        unlink(tmp_sig);
     }
 
     /* Validate JSON structure before replacing current index */
