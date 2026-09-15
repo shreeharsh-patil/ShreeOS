@@ -448,6 +448,66 @@ static int copy_file(const char *src, const char *dst) {
     return safe_exec("cp", args);
 }
 
+static int write_transaction_status(const char *status_path, const char *state) {
+    char tmp[LPM_PATH_MAX + 96];
+    int written = snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", status_path, (long)getpid());
+    if (written < 0 || (size_t)written >= sizeof(tmp)) return -1;
+
+    FILE *f = fopen(tmp, "w");
+    if (!f) return -1;
+    if (fprintf(f, "%s\n", state) < 0 || fflush(f) != 0 ||
+        fsync(fileno(f)) != 0 || fclose(f) != 0) {
+        unlink(tmp);
+        return -1;
+    }
+    if (rename(tmp, status_path) != 0) {
+        unlink(tmp);
+        return -1;
+    }
+    return 0;
+}
+
+static int rollback_transaction_ledger(const char *ledger_path, const char *backup_dir) {
+    FILE *ledger = fopen(ledger_path, "r");
+    if (!ledger) return -1;
+
+    char line[LPM_PATH_MAX + 512];
+    int failures = 0;
+    while (fgets(line, sizeof(line), ledger)) {
+        if (!strchr(line, '\n') && !feof(ledger)) {
+            failures++;
+            break;
+        }
+        if (line[0] == '#') continue;
+        if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ') {
+            failures++;
+            break;
+        }
+
+        char *managed_path = line + 2;
+        managed_path[strcspn(managed_path, "\r\n")] = '\0';
+        if (!lpm_safe_path(managed_path)) {
+            failures++;
+            continue;
+        }
+
+        if (line[0] == 'N') {
+            if (unlink(managed_path) != 0 && errno != ENOENT) failures++;
+            continue;
+        }
+
+        char source[LPM_PATH_MAX * 2];
+        int written = snprintf(source, sizeof(source), "%s%s", backup_dir, managed_path);
+        if (written < 0 || (size_t)written >= sizeof(source) ||
+            access(source, R_OK) != 0 || copy_file(source, managed_path) != 0) {
+            failures++;
+        }
+    }
+
+    fclose(ledger);
+    return failures == 0 ? 0 : -1;
+}
+
 static int remove_tree(const char *path) {
     char *args[] = { "rm", "-rf", (char *)path, NULL };
     return safe_exec("rm", args);
@@ -524,6 +584,8 @@ int cmd_install(int argc, char **argv) {
     manifest *m = NULL;
     manifest *old_m = NULL;
     int files_backed_up = 0;
+    bool root_mutated = false;
+    bool database_committed = false;
     char transaction_dir[LPM_PATH_MAX] = {0};
     char transaction_status[LPM_PATH_MAX + 64] = {0};
     char rollback_ledger[LPM_PATH_MAX + 64] = {0};
@@ -692,25 +754,26 @@ int cmd_install(int argc, char **argv) {
     }
     if (mkdir_p(backup_dir) != 0 && errno != EEXIST) { ret = 1; goto cleanup; }
     {
-        FILE *status = fopen(transaction_status, "w");
         FILE *packages = NULL;
-        if (!status) { ret = 1; goto cleanup; }
-        fprintf(status, "prepared\n"); fclose(status);
+        if (write_transaction_status(transaction_status, "prepared") != 0) {
+            fprintf(stderr, "lpm: failed to persist transaction preparation state\n");
+            ret = 1;
+            goto cleanup;
+        }
         packages = fopen(rollback_ledger, "w");
         if (!packages) { ret = 1; goto cleanup; }
-        fprintf(packages, "# transaction=%s package=%s old=%s new=%s\n", transaction_dir,
-                m->name, old_m && old_m->version ? old_m->version : "none", m->version);
-        fclose(packages);
+        if (fprintf(packages, "# transaction=%s package=%s old=%s new=%s\n", transaction_dir,
+                    m->name, old_m && old_m->version ? old_m->version : "none", m->version) < 0 ||
+            fflush(packages) != 0 || fsync(fileno(packages)) != 0 || fclose(packages) != 0) {
+            ret = 1;
+            goto cleanup;
+        }
     }
-
-    int *file_existed = calloc(m->nfiles, sizeof(int));
-    if (!file_existed) { ret = 1; goto cleanup; }
 
     for (int i = 0; i < m->nfiles; i++) {
         FILE *ledger = fopen(rollback_ledger, "a");
         if (!ledger) { ret = 1; goto cleanup; }
         if (access(m->files[i], F_OK) == 0) {
-            file_existed[i] = 1;
             char backup_file[LPM_PATH_MAX * 2];
             int backup_written = snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
             if (backup_written < 0 || (size_t)backup_written >= sizeof(backup_file)) {
@@ -740,61 +803,33 @@ int cmd_install(int argc, char **argv) {
         fclose(ledger);
     }
 
-    /* 10. Atomic Commit: Copy staged files to root */
+    /* 10. Commit staged payload to root. The rollback ledger is already durable,
+     * so even a partial cp failure can be recovered deterministically. */
     printf("lpm: committing %s-%s to system root\n", m->name, m->version);
     char stage_source[LPM_PATH_MAX];
-    snprintf(stage_source, sizeof(stage_source), "%s/root/.", tmpdir);
+    int stage_source_written = snprintf(stage_source, sizeof(stage_source), "%s/root/.", tmpdir);
+    if (stage_source_written < 0 || (size_t)stage_source_written >= sizeof(stage_source)) {
+        fprintf(stderr, "lpm: staging source path is too long\n");
+        ret = 1;
+        goto cleanup;
+    }
     char *commit_args[] = { "cp", "-a", stage_source, "/", NULL };
 
+    root_mutated = true;
     if (safe_exec("cp", commit_args) != 0) {
-        fprintf(stderr, "lpm: transaction failed during commit to rootfs. Rolling back...\n");
-        /* Rollback: restore backed up files and remove newly added files */
-        for (int i = 0; i < m->nfiles; i++) {
-            if (file_existed[i]) {
-                char backup_file[LPM_PATH_MAX * 2];
-                snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
-                copy_file(backup_file, m->files[i]);
-            } else {
-                unlink(m->files[i]);
-            }
-        }
-        free(file_existed);
+        fprintf(stderr, "lpm: transaction failed during commit to rootfs; rollback will be attempted\n");
         ret = 1;
         goto cleanup;
     }
 
-    /* 11. Update installed database */
+    /* 11. Prepare the installed-database directory, but do not publish the
+     * new manifest until all filesystem changes (including obsolete removal)
+     * have completed successfully. */
     if (mkdir_p(LPM_INSTALLED) != 0 || mkdir_p(dbdir) != 0) {
         fprintf(stderr, "lpm: failed to create installed package database directory: %s\n", strerror(errno));
-        for (int i = 0; i < m->nfiles; i++) {
-            if (file_existed[i]) {
-                char backup_file[LPM_PATH_MAX * 2];
-                snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
-                copy_file(backup_file, m->files[i]);
-            } else {
-                unlink(m->files[i]);
-            }
-        }
-        free(file_existed);
         ret = 1;
         goto cleanup;
     }
-    if (manifest_save(m, dbdir) != 0) {
-        fprintf(stderr, "lpm: failed to write installed database entry. Rolling back...\n");
-        for (int i = 0; i < m->nfiles; i++) {
-            if (file_existed[i]) {
-                char backup_file[LPM_PATH_MAX * 2];
-                snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
-                copy_file(backup_file, m->files[i]);
-            } else {
-                unlink(m->files[i]);
-            }
-        }
-        free(file_existed);
-        ret = 1;
-        goto cleanup;
-    }
-    free(file_existed);
 
     /* 12. Cleanup obsolete files from previous package version */
     if (old_m) {
@@ -815,7 +850,13 @@ int cmd_install(int argc, char **argv) {
                     goto cleanup;
                 }
                 if (access(old_m->files[i], F_OK) != 0) continue;
-                snprintf(obsolete_backup, sizeof(obsolete_backup), "%s%s", backup_dir, old_m->files[i]);
+                int obsolete_written = snprintf(obsolete_backup, sizeof(obsolete_backup),
+                                                       "%s%s", backup_dir, old_m->files[i]);
+                if (obsolete_written < 0 || (size_t)obsolete_written >= sizeof(obsolete_backup)) {
+                    fprintf(stderr, "lpm: obsolete rollback path is too long: %s\n", old_m->files[i]);
+                    ret = 1;
+                    goto cleanup;
+                }
                 {
                     char *last_slash = strrchr(obsolete_backup, '/');
                     if (!last_slash) { ret = 1; goto cleanup; }
@@ -839,13 +880,33 @@ int cmd_install(int argc, char **argv) {
         }
     }
 
+    /* 13. Publish the new installed manifest only after the filesystem is
+     * internally consistent. This is the transaction's database commit point. */
+    if (manifest_save(m, dbdir) != 0) {
+        fprintf(stderr, "lpm: failed to write installed database entry; rollback will be attempted\n");
+        ret = 1;
+        goto cleanup;
+    }
+    database_committed = true;
+
     printf("lpm: successfully installed %s-%s (%d files)\n", m->name, m->version, m->nfiles);
-    {
-        FILE *status = fopen(transaction_status, "w");
-        if (status) { fprintf(status, "committed\n"); fclose(status); }
+    if (write_transaction_status(transaction_status, "committed") != 0) {
+        fprintf(stderr, "lpm: warning: package committed, but transaction history status could not be finalized\n");
     }
 
 cleanup:
+    if (ret != 0 && root_mutated && !database_committed &&
+        rollback_ledger[0] && backup_dir[0]) {
+        fprintf(stderr, "lpm: restoring filesystem from transaction rollback ledger...\n");
+        if (rollback_transaction_ledger(rollback_ledger, backup_dir) == 0) {
+            (void)write_transaction_status(transaction_status, "rolled_back");
+            fprintf(stderr, "lpm: rollback completed successfully\n");
+        } else {
+            (void)write_transaction_status(transaction_status, "rollback_failed");
+            fprintf(stderr, "lpm: rollback was incomplete; Recovery Mode can retry transaction %s\n",
+                    transaction_dir[0] ? transaction_dir : "(unknown)");
+        }
+    }
     if (old_m) manifest_free(old_m);
     if (m) manifest_free(m);
     remove_tree(tmpdir);
