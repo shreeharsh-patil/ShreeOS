@@ -35,7 +35,7 @@
 #include <ctype.h>
 #include <poll.h>
 
-#define MAX_SERVICES 64
+#define MAX_SERVICES 256
 #define DEFAULT_SERVICE_DIR "/etc/services.d"
 #define DEFAULT_INIT_SOCK_PATH "/run/init.sock"
 #define DEFAULT_LOG_DIR "/var/log/shreeos/services"
@@ -58,8 +58,8 @@ typedef enum {
 
 typedef struct service {
     char name[64];
-    char command[256];
-    char after[128];             /* Comma-separated dependencies */
+    char command[1024];
+    char after[512];             /* Comma-separated dependencies */
     restart_policy_t restart;
     bool is_oneshot;
     bool is_critical;
@@ -83,6 +83,7 @@ typedef struct service {
 
 static service_t services[MAX_SERVICES];
 static int num_services = 0;
+static int service_config_errors = 0;
 static int ipc_sock_fd = -1;
 
 static char g_service_dir[256] = DEFAULT_SERVICE_DIR;
@@ -222,41 +223,78 @@ static service_t *find_service_by_pid(pid_t pid) {
     return NULL;
 }
 
-static void add_service_entry(service_t *table, int *count, const char *name,
-                              const char *command, const char *after,
-                              restart_policy_t restart, bool is_oneshot, bool is_critical) {
-    if (*count >= MAX_SERVICES) return;
+static int add_service_entry(service_t *table, int *count, const char *name,
+                             const char *command, const char *after,
+                             restart_policy_t restart, bool is_oneshot, bool is_critical) {
+    if (*count >= MAX_SERVICES) {
+        log_warn(name, "Service capacity exceeded; configuration entry rejected");
+        service_config_errors++;
+        return -1;
+    }
     if (!valid_service_name(name)) {
         log_warn(name, "Rejected invalid service name");
-        return;
+        service_config_errors++;
+        return -1;
     }
-    service_t *s = &table[(*count)++];
-    memset(s, 0, sizeof(service_t));
-    strncpy(s->name, name, sizeof(s->name) - 1);
-    strncpy(s->command, command, sizeof(s->command) - 1);
-    if (after) strncpy(s->after, after, sizeof(s->after) - 1);
-    s->restart = restart;
-    s->is_oneshot = is_oneshot;
-    s->is_critical = is_critical;
-    s->state = SVC_STOPPED;
-    s->num_deps = 0;
-    for (int i = 0; i < MAX_SERVICES; i++) s->dep_indices[i] = -1;
+    if (!command || !*command || strlen(command) >= sizeof(table[0].command)) {
+        log_warn(name, "Rejected missing or oversized service command");
+        service_config_errors++;
+        return -1;
+    }
+    if (after && strlen(after) >= sizeof(table[0].after)) {
+        log_warn(name, "Rejected oversized dependency list");
+        service_config_errors++;
+        return -1;
+    }
+    if (find_service_index(table, *count, name) >= 0) {
+        log_warn(name, "Rejected duplicate service name");
+        service_config_errors++;
+        return -1;
+    }
+
+    service_t *svc = &table[(*count)++];
+    memset(svc, 0, sizeof(service_t));
+    snprintf(svc->name, sizeof(svc->name), "%s", name);
+    snprintf(svc->command, sizeof(svc->command), "%s", command);
+    if (after) snprintf(svc->after, sizeof(svc->after), "%s", after);
+    svc->restart = restart;
+    svc->is_oneshot = is_oneshot;
+    svc->is_critical = is_critical;
+    svc->state = SVC_STOPPED;
+    svc->num_deps = 0;
+    for (int i = 0; i < MAX_SERVICES; i++) svc->dep_indices[i] = -1;
+    return 0;
 }
 
 /* Parse service configuration file */
 static void parse_service_file(const char *path, service_t *table, int *count) {
-    FILE *f = fopen(path, "r");
-    if (!f) return;
+    FILE *file = fopen(path, "r");
+    if (!file) {
+        log_warn(path, "Could not open service configuration");
+        service_config_errors++;
+        return;
+    }
 
-    char line[512];
+    char line[2048];
     char name[64] = {0};
-    char command[256] = {0};
-    char after[128] = {0};
+    char command[1024] = {0};
+    char after[512] = {0};
     restart_policy_t restart = RESTART_NEVER;
     bool is_oneshot = false;
     bool is_critical = false;
+    bool invalid_file = false;
 
-    while (fgets(line, sizeof(line), f)) {
+    while (fgets(line, sizeof(line), file)) {
+        size_t raw_len = strlen(line);
+        if (raw_len == sizeof(line) - 1 && line[raw_len - 1] != '\n') {
+            log_warn(path, "Service configuration line is too long");
+            service_config_errors++;
+            invalid_file = true;
+            int ch;
+            while ((ch = fgetc(file)) != '\n' && ch != EOF) {}
+            continue;
+        }
+
         char *p = line;
         while (*p == ' ' || *p == '\t') p++;
         if (*p == '#' || *p == '\n' || *p == '\0') continue;
@@ -265,33 +303,58 @@ static void parse_service_file(const char *path, service_t *table, int *count) {
         char *cr = strchr(p, '\r'); if (cr) *cr = '\0';
 
         char *eq = strchr(p, '=');
-        if (!eq) continue;
+        if (!eq) {
+            log_warn(path, "Ignored malformed service configuration line");
+            service_config_errors++;
+            invalid_file = true;
+            continue;
+        }
         *eq = '\0';
+
+        char *key = p;
+        char *key_end = key + strlen(key);
+        while (key_end > key && (key_end[-1] == ' ' || key_end[-1] == '\t')) *--key_end = '\0';
+
         char *val = eq + 1;
         while (*val == ' ' || *val == '\t') val++;
+        char *val_end = val + strlen(val);
+        while (val_end > val && (val_end[-1] == ' ' || val_end[-1] == '\t')) *--val_end = '\0';
 
-        if (strcmp(p, "name") == 0) {
-            strncpy(name, val, sizeof(name) - 1);
-        } else if (strcmp(p, "command") == 0) {
-            strncpy(command, val, sizeof(command) - 1);
-        } else if (strcmp(p, "after") == 0) {
-            strncpy(after, val, sizeof(after) - 1);
-        } else if (strcmp(p, "restart") == 0) {
+        if (strcmp(key, "name") == 0) {
+            if (strlen(val) >= sizeof(name)) { invalid_file = true; service_config_errors++; log_warn(path, "Service name is too long"); }
+            else snprintf(name, sizeof(name), "%s", val);
+        } else if (strcmp(key, "command") == 0) {
+            if (strlen(val) >= sizeof(command)) { invalid_file = true; service_config_errors++; log_warn(path, "Service command is too long"); }
+            else snprintf(command, sizeof(command), "%s", val);
+        } else if (strcmp(key, "after") == 0) {
+            if (strlen(val) >= sizeof(after)) { invalid_file = true; service_config_errors++; log_warn(path, "Dependency list is too long"); }
+            else snprintf(after, sizeof(after), "%s", val);
+        } else if (strcmp(key, "restart") == 0) {
             if (strcmp(val, "always") == 0) restart = RESTART_ALWAYS;
             else if (strcmp(val, "on-failure") == 0) restart = RESTART_ON_FAILURE;
-            else restart = RESTART_NEVER;
-        } else if (strcmp(p, "oneshot") == 0) {
-            is_oneshot = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
-        } else if (strcmp(p, "critical") == 0) {
-            is_critical = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
+            else if (strcmp(val, "never") == 0) restart = RESTART_NEVER;
+            else { invalid_file = true; service_config_errors++; log_warn(path, "Invalid restart policy"); }
+        } else if (strcmp(key, "oneshot") == 0) {
+            if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) is_oneshot = true;
+            else if (strcmp(val, "false") == 0 || strcmp(val, "0") == 0) is_oneshot = false;
+            else { invalid_file = true; service_config_errors++; log_warn(path, "Invalid oneshot boolean"); }
+        } else if (strcmp(key, "critical") == 0) {
+            if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) is_critical = true;
+            else if (strcmp(val, "false") == 0 || strcmp(val, "0") == 0) is_critical = false;
+            else { invalid_file = true; service_config_errors++; log_warn(path, "Invalid critical boolean"); }
         }
     }
-    fclose(f);
+    fclose(file);
 
+    if (invalid_file) {
+        log_warn(path, "Rejected invalid service configuration file");
+        return;
+    }
     if (name[0] && command[0]) {
-        add_service_entry(table, count, name, command, after, restart, is_oneshot, is_critical);
+        (void)add_service_entry(table, count, name, command, after, restart, is_oneshot, is_critical);
     } else {
         log_warn(path, "Ignored incomplete service configuration (missing name or command)");
+        service_config_errors++;
     }
 }
 
@@ -302,7 +365,7 @@ static void build_and_validate_dependency_graph(service_t *table, int count) {
         table[i].num_deps = 0;
         if (!table[i].after[0]) continue;
 
-        char buf[128];
+        char buf[512];
         strncpy(buf, table[i].after, sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
 
@@ -319,6 +382,12 @@ static void build_and_validate_dependency_graph(service_t *table, int count) {
                 }
             } else if (dep_idx == i) {
                 log_warn(table[i].name, "Service declared self-dependency. Breaking self-cycle.");
+                service_config_errors++;
+            } else {
+                char warn_buf[256];
+                snprintf(warn_buf, sizeof(warn_buf), "Dependency '%s' was not found", token);
+                log_warn(table[i].name, warn_buf);
+                service_config_errors++;
             }
             token = strtok(NULL, ", ");
         }
@@ -410,9 +479,21 @@ static void stop_service_sync(service_t *s) {
     s->pid = 0;
 }
 
-static void load_and_reconcile_services(void) {
+static void load_builtin_safe_services(service_t *table, int *count) {
+    int saved_errors = service_config_errors;
+    service_config_errors = 0;
+    (void)add_service_entry(table, count, "sysinit", "/bin/true", NULL, RESTART_NEVER, true, true);
+    (void)add_service_entry(table, count, "hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", "sysinit", RESTART_NEVER, true, false);
+    (void)add_service_entry(table, count, "network", "ip link set lo up 2>/dev/null || ifconfig lo 127.0.0.1 up 2>/dev/null", "hostname", RESTART_NEVER, true, false);
+    (void)add_service_entry(table, count, "console", "/usr/bin/shree-auth --login-tty", "network", RESTART_ALWAYS, false, true);
+    service_config_errors += saved_errors;
+}
+
+static int load_and_reconcile_services(void) {
     service_t new_table[MAX_SERVICES];
     int new_count = 0;
+    int config_files_seen = 0;
+    service_config_errors = 0;
 
     DIR *dir = opendir(g_service_dir);
     if (dir) {
@@ -422,21 +503,45 @@ static void load_and_reconcile_services(void) {
             size_t len = strlen(ent->d_name);
             if (len > 5 && strcmp(ent->d_name + len - 5, ".conf") == 0) {
                 char fullpath[512];
-                snprintf(fullpath, sizeof(fullpath), "%s/%s", g_service_dir, ent->d_name);
+                int written = snprintf(fullpath, sizeof(fullpath), "%s/%s", g_service_dir, ent->d_name);
+                config_files_seen++;
+                if (written < 0 || (size_t)written >= sizeof(fullpath)) {
+                    log_warn(ent->d_name, "Service configuration path is too long");
+                    service_config_errors++;
+                    continue;
+                }
                 parse_service_file(fullpath, new_table, &new_count);
             }
         }
         closedir(dir);
     }
 
-    if (new_count == 0 && num_services == 0) {
-        add_service_entry(new_table, &new_count, "sysinit", "/bin/true", NULL, RESTART_NEVER, true, true);
-        add_service_entry(new_table, &new_count, "hostname", "hostname $(cat /etc/hostname 2>/dev/null || echo shreeos)", "sysinit", RESTART_NEVER, true, false);
-        add_service_entry(new_table, &new_count, "network", "ip link set lo up 2>/dev/null || ifconfig lo 127.0.0.1 up 2>/dev/null", "hostname", RESTART_NEVER, true, false);
-        add_service_entry(new_table, &new_count, "console", "/usr/bin/shree-auth --login-tty", "network", RESTART_ALWAYS, false, true);
-    }
-
     build_and_validate_dependency_graph(new_table, new_count);
+
+    if (service_config_errors > 0) {
+        char msg[160];
+        snprintf(msg, sizeof(msg), "Service configuration contains %d error(s)", service_config_errors);
+        log_warn("init", msg);
+
+        if (num_services > 0) {
+            log_warn("init", "Reload rejected; keeping the currently running service graph");
+            return -1;
+        }
+
+        log_warn("init", "Initial configuration is invalid; starting the built-in safe service set");
+        memset(new_table, 0, sizeof(new_table));
+        new_count = 0;
+        load_builtin_safe_services(new_table, &new_count);
+        build_and_validate_dependency_graph(new_table, new_count);
+    } else if (new_count == 0 && num_services == 0) {
+        if (config_files_seen == 0) {
+            log_warn("init", "No service configuration files found; starting the built-in safe service set");
+        } else {
+            log_warn("init", "No valid services were loaded; starting the built-in safe service set");
+        }
+        load_builtin_safe_services(new_table, &new_count);
+        build_and_validate_dependency_graph(new_table, new_count);
+    }
 
     /* 1. Stop and remove services that no longer exist in new_table */
     for (int i = 0; i < num_services; i++) {
@@ -479,6 +584,7 @@ static void load_and_reconcile_services(void) {
 
     memcpy(services, new_table, sizeof(new_table));
     num_services = new_count;
+    return 0;
 }
 
 static bool check_dependencies_met(const service_t *s) {
@@ -550,11 +656,17 @@ static int start_service(service_t *s) {
             char log_path[512];
             snprintf(log_path, sizeof(log_path), "%s/%s.log", g_log_dir, s->name);
 
-            /* Truncate if exceeds max size */
+            /* Rotate one previous generation instead of deleting all diagnostics. */
             struct stat st;
             if (stat(log_path, &st) == 0 && st.st_size > MAX_LOG_FILE_BYTES) {
-                int trunc_fd = open(log_path, O_WRONLY | O_TRUNC);
-                if (trunc_fd >= 0) close(trunc_fd);
+                char backup_path[560];
+                int written = snprintf(backup_path, sizeof(backup_path), "%s.1", log_path);
+                if (written > 0 && (size_t)written < sizeof(backup_path)) {
+                    unlink(backup_path);
+                    if (rename(log_path, backup_path) != 0) {
+                        log_warn(s->name, "Could not rotate oversized service log");
+                    }
+                }
             }
 
             int fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0640);
@@ -717,7 +829,7 @@ static void init_ipc_socket(void) {
     strncpy(addr.sun_path, g_sock_path, sizeof(addr.sun_path) - 1);
 
     if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-        if (chmod(g_sock_path, 0666) != 0 || listen(ipc_sock_fd, 8) != 0) {
+        if (chmod(g_sock_path, 0666) != 0 || listen(ipc_sock_fd, 32) != 0) {
             close(ipc_sock_fd);
             ipc_sock_fd = -1;
         }
@@ -788,7 +900,7 @@ static void handle_ipc_connections(void) {
     ssize_t n = read(client_fd, req, sizeof(req) - 1);
     if (n <= 0) { close(client_fd); return; }
 
-    char res[8192] = {0};
+    char res[32768] = {0};
     char *cmd = req;
     while (*cmd == ' ' || *cmd == '\n' || *cmd == '\r') cmd++;
     char *nl = strchr(cmd, '\n'); if (nl) *nl = '\0';
@@ -904,8 +1016,11 @@ static void handle_ipc_connections(void) {
             snprintf(res, sizeof(res), "ERROR: Service '%s' not found\n", target);
         }
     } else if (strcmp(cmd, "RELOAD") == 0) {
-        load_and_reconcile_services();
-        snprintf(res, sizeof(res), "OK: Service configuration reloaded\n");
+        if (load_and_reconcile_services() == 0) {
+            snprintf(res, sizeof(res), "OK: Service configuration reloaded\n");
+        } else {
+            snprintf(res, sizeof(res), "ERROR: Service reload rejected; current configuration remains active\n");
+        }
     } else if (strcmp(cmd, "SHUTDOWN REBOOT") == 0) {
         shutdown_requested = 1;
         shutdown_mode = 0;
@@ -1079,7 +1194,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    load_and_reconcile_services();
+    (void)load_and_reconcile_services();
     init_ipc_socket();
 
     /* Start services according to validated dependency ordering */
@@ -1099,7 +1214,9 @@ int main(int argc, char **argv) {
         if (reload_requested) {
             reload_requested = 0;
             log_info(NULL, "Reloading service configuration...");
-            load_and_reconcile_services();
+            if (load_and_reconcile_services() != 0) {
+                log_warn("init", "SIGHUP reload rejected; current service graph remains active");
+            }
         }
 
         handle_ipc_connections();
