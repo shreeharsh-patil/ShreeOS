@@ -44,7 +44,11 @@ if [ -f "$REPO_SIG" ]; then
     exit 1
   fi
 else
-  echo "  [WARN] Repository index is unsigned"
+  if [ "$#" -eq 2 ] || [ -f "$PUB_KEY" ]; then
+    echo "  [FAIL] Repository signature is missing while a verification key is configured" >&2
+    exit 1
+  fi
+  echo "  [WARN] Repository index is unsigned (no verification key configured)"
 fi
 
 entries_file="$(mktemp)"
