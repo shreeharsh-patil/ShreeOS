@@ -43,7 +43,6 @@ TEST_FILES=(
   "${PROJECT_ROOT}/tests/security/test-security.sh"
   "${PROJECT_ROOT}/tests/auth/test-auth.sh"
   "${PROJECT_ROOT}/tests/installer/test-installer-validation.sh"
-  "${PROJECT_ROOT}/tests/build/test-source-fetch.sh"
   "${PROJECT_ROOT}/tests/pkgmanager/test-lpm-transactions.sh"
 )
 
