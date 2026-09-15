@@ -826,7 +826,13 @@ static void init_ipc_socket(void) {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, g_sock_path, sizeof(addr.sun_path) - 1);
+    if (strlen(g_sock_path) >= sizeof(addr.sun_path)) {
+        log_warn("init", "IPC socket path is too long; initctl IPC disabled");
+        close(ipc_sock_fd);
+        ipc_sock_fd = -1;
+        return;
+    }
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", g_sock_path);
 
     if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
         if (chmod(g_sock_path, 0666) != 0 || listen(ipc_sock_fd, 32) != 0) {
@@ -896,8 +902,21 @@ static void handle_ipc_connections(void) {
     }
 #endif
 
+    struct pollfd client_poll = { .fd = client_fd, .events = POLLIN, .revents = 0 };
+    int poll_result;
+    do {
+        poll_result = poll(&client_poll, 1, 250);
+    } while (poll_result < 0 && errno == EINTR);
+    if (poll_result <= 0 || !(client_poll.revents & (POLLIN | POLLHUP))) {
+        close(client_fd);
+        return;
+    }
+
     char req[512] = {0};
-    ssize_t n = read(client_fd, req, sizeof(req) - 1);
+    ssize_t n;
+    do {
+        n = read(client_fd, req, sizeof(req) - 1);
+    } while (n < 0 && errno == EINTR);
     if (n <= 0) { close(client_fd); return; }
 
     char res[32768] = {0};
@@ -909,14 +928,31 @@ static void handle_ipc_connections(void) {
     if (strcmp(cmd, "LIST") == 0) {
         char *p = res;
         size_t rem = sizeof(res);
-        p += snprintf(p, rem, "%-16s %-10s %-8s %-10s %s\n", "SERVICE", "STATE", "PID", "RESTART", "COMMAND");
-        for (int i = 0; i < num_services; i++) {
-            rem = sizeof(res) - (p - res);
-            if (rem < 100) break;
-            p += snprintf(p, rem, "%-16s %-10s %-8d %-10s %s\n",
-                          services[i].name, state_to_str(services[i].state),
-                          services[i].pid, restart_to_str(services[i].restart),
-                          services[i].command);
+        int appended = snprintf(p, rem, "%-16s %-10s %-8s %-10s %s\n",
+                                "SERVICE", "STATE", "PID", "RESTART", "COMMAND");
+        if (appended < 0) {
+            res[0] = '\0';
+        } else if ((size_t)appended >= rem) {
+            p += rem - 1;
+            rem = 1;
+        } else {
+            p += appended;
+            rem -= (size_t)appended;
+        }
+
+        for (int i = 0; i < num_services && rem > 1; i++) {
+            appended = snprintf(p, rem, "%-16s %-10s %-8d %-10s %s\n",
+                                services[i].name, state_to_str(services[i].state),
+                                services[i].pid, restart_to_str(services[i].restart),
+                                services[i].command);
+            if (appended < 0) break;
+            if ((size_t)appended >= rem) {
+                p += rem - 1;
+                rem = 1;
+                break;
+            }
+            p += appended;
+            rem -= (size_t)appended;
         }
     } else if (strcmp(cmd, "BLAME") == 0) {
         /* Sort services by duration_ms descending */
@@ -932,20 +968,37 @@ static void handle_ipc_connections(void) {
 
         char *p = res;
         size_t rem = sizeof(res);
-        p += snprintf(p, rem, "BOOT BLAME TIMELINE (initctl blame):\n\n");
+        int appended = snprintf(p, rem, "BOOT BLAME TIMELINE (initctl blame):\n\n");
+        if (appended < 0) {
+            res[0] = '\0';
+            appended = 0;
+        } else if ((size_t)appended >= rem) {
+            p += rem - 1;
+            rem = 1;
+        } else {
+            p += appended;
+            rem -= (size_t)appended;
+        }
         long total_ms = 0;
         for (int i = 0; i < num_services; i++) {
             int idx = order[i];
-            rem = sizeof(res) - (p - res);
             if (rem < 80) break;
             long ms = services[idx].duration_ms;
             total_ms += ms;
-            p += snprintf(p, rem, "  %6.3fs  %-16s (state: %s)\n",
-                          (double)ms / 1000.0, services[idx].name, state_to_str(services[idx].state));
+            appended = snprintf(p, rem, "  %6.3fs  %-16s (state: %s)\n",
+                                (double)ms / 1000.0, services[idx].name, state_to_str(services[idx].state));
+            if (appended < 0) break;
+            if ((size_t)appended >= rem) {
+                p += rem - 1;
+                rem = 1;
+                break;
+            }
+            p += appended;
+            rem -= (size_t)appended;
         }
-        rem = sizeof(res) - (p - res);
         if (rem >= 60) {
-            snprintf(p, rem, "\nTotal measured service initialization time: %.3fs\n", (double)total_ms / 1000.0);
+            (void)snprintf(p, rem, "\nTotal measured service initialization time: %.3fs\n",
+                           (double)total_ms / 1000.0);
         }
     } else if (strncmp(cmd, "STATUS ", 7) == 0 && valid_service_name(cmd + 7)) {
         char *target = cmd + 7;
@@ -1126,11 +1179,26 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--strict-auth") == 0) {
             g_strict_auth = true;
         } else if (strcmp(argv[i], "--services-dir") == 0 && i + 1 < argc) {
-            strncpy(g_service_dir, argv[++i], sizeof(g_service_dir) - 1);
+            const char *value = argv[++i];
+            if (strlen(value) >= sizeof(g_service_dir)) {
+                fprintf(stderr, "init: --services-dir path is too long\n");
+                return 2;
+            }
+            snprintf(g_service_dir, sizeof(g_service_dir), "%s", value);
         } else if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
-            strncpy(g_sock_path, argv[++i], sizeof(g_sock_path) - 1);
+            const char *value = argv[++i];
+            if (strlen(value) >= sizeof(g_sock_path)) {
+                fprintf(stderr, "init: --socket path is too long\n");
+                return 2;
+            }
+            snprintf(g_sock_path, sizeof(g_sock_path), "%s", value);
         } else if (strcmp(argv[i], "--log-dir") == 0 && i + 1 < argc) {
-            strncpy(g_log_dir, argv[++i], sizeof(g_log_dir) - 1);
+            const char *value = argv[++i];
+            if (strlen(value) >= sizeof(g_log_dir)) {
+                fprintf(stderr, "init: --log-dir path is too long\n");
+                return 2;
+            }
+            snprintf(g_log_dir, sizeof(g_log_dir), "%s", value);
         }
     }
 
