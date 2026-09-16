@@ -316,13 +316,13 @@ install-to-disk.sh <disk-device>
   [--yes]
   [--hostname=<name>]
   [--timezone=<zone>]
-  [--credentials-file=<path>]
+  --credentials-file=<path>
   [--username=<name>]
   [--boot-mode=both|uefi|bios]
 ```
 
-Passwords are intentionally not accepted on the command line. Create a protected
-credentials file instead:
+Passwords are intentionally not accepted on the command line. A protected
+credentials file is required for every installation:
 
 ```bash
 umask 077
