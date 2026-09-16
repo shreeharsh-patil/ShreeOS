@@ -83,15 +83,16 @@ Example:
 
 ```bash
 umask 077
+CREDS_FILE="$(mktemp /tmp/shreeos-credentials-XXXXXX)"
 
 read -r -s -p "Root password: " ROOT_PW
 printf '\n'
 read -r -s -p "User password: " USER_PW
 printf '\n'
 
-printf '%s\n%s\n' "$ROOT_PW" "$USER_PW" > /tmp/shreeos-credentials
+printf '%s\n%s\n' "$ROOT_PW" "$USER_PW" > "$CREDS_FILE"
 unset ROOT_PW USER_PW
-chmod 600 /tmp/shreeos-credentials
+chmod 600 "$CREDS_FILE"
 
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL
 
@@ -99,10 +100,11 @@ sudo bash installer/scripts/install-to-disk.sh /dev/nvme0n1 --yes \
   --hostname=shreeos \
   --timezone=Asia/Kolkata \
   --username=shree \
-  --credentials-file=/tmp/shreeos-credentials \
+  --credentials-file="$CREDS_FILE" \
   --boot-mode=both
 
-rm -f /tmp/shreeos-credentials
+rm -f "$CREDS_FILE"
+unset CREDS_FILE
 ```
 
 Replace `/dev/nvme0n1` with the whole target disk, not a partition such as
