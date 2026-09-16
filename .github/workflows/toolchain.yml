@@ -1,0 +1,38 @@
+name: Toolchain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'toolchain/**'
+      - 'build.conf'
+      - 'scripts/common.sh'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex gawk \
+            texinfo curl patch bzip2 xz-utils
+
+      - name: Cache toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: build/tools
+          key: toolchain-${{ hashFiles('build.conf', 'toolchain/scripts/**') }}
+
+      - name: Build toolchain
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          bash toolchain/scripts/build-all.sh --skip-tests
+
+      - name: Verify cross-compiler
+        run: |
+          bash tests/smoke/test-toolchain.sh

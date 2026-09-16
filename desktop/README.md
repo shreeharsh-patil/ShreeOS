@@ -1,23 +1,37 @@
 # Desktop Environment
 
-**Status:** scaffolded, implementation lands in Milestone 9 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-X11 plus a lightweight window manager and core apps, packaged as an optional layer on top of the base rootfs. Post-1.0 roadmap includes heavier DE options.
+X11 + lightweight window manager (dwm) optional package layer.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd desktop && make
+```
+desktop/
+├── wm/
+│   ├── sources.list        # Pinned upstream URLs (dwm, st, dmenu)
+│   ├── build-wm.sh         # Cross-compile suckless tools
+│   └── build-all.sh        # Orchestrator
+├── configs/
+│   ├── xinitrc.template    # X session startup
+│   ├── dwm-config.template # WM keybindings
+│   └── autostart/
+└── README.md
 ```
 
-## Testing
+## Building
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+bash desktop/wm/build-all.sh
+```
+
+## Components
+
+| Package | Purpose |
+|---------|---------|
+| dwm 6.5 | Dynamic window manager |
+| st 0.9.2 | Terminal emulator |
+| dmenu 5.3 | Application launcher |
+
+## Prerequisites
+
+- Cross-compiler (`x86_64-shreeos-linux-gnu-gcc`)
+- X11 headers + libs in sysroot

@@ -4,8 +4,21 @@
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
-#include <sys/stat.h>
 #include <errno.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
+
+static int mkdir_p(const char *path) {
+#ifdef _WIN32
+    return _mkdir(path);
+#else
+    return mkdir(path, 0755);
+#endif
+}
 
 static int run(const char *fmt, ...) {
     char buf[4096];
@@ -40,8 +53,8 @@ int cmd_install(int argc, char **argv) {
 
     char dbdir[4096];
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", m->name);
-    mkdir(LPM_INSTALLED, 0755);
-    mkdir(dbdir, 0755);
+    mkdir_p(LPM_INSTALLED);
+    mkdir_p(dbdir);
     manifest_save(m, dbdir);
 
     if (run("tar -xzf '%s' -C / --exclude=manifest.json 2>/dev/null", lpkg) != 0) {

@@ -1,0 +1,20 @@
+# dwm configuration: keybindings
+# Installed to /etc/dwm/config.h during build
+# Mod1 = Alt key
+
+MODKEY=Mod1
+
+# Terminal: Mod1 + Shift + Enter
+[Mod1|Shift]=Return -> st
+
+# Launcher: Mod1 + p
+[Mod1]=p -> dmenu_run
+
+# Close window: Mod1 + Shift + c
+[Mod1|Shift]=c -> killclient
+
+# Switch to tag N: Mod1 + 1-9
+[Mod1]=1-9 -> view
+
+# Quit dwm: Mod1 + Shift + q
+[Mod1|Shift]=q -> quit

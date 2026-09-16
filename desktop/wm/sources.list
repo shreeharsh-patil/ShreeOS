@@ -1,0 +1,13 @@
+# desktop/wm/sources.list — upstream sources for window manager and tools
+#
+# dwm 6.5 — suckless dynamic window manager
+DWM_URL=https://dl.suckless.org/dwm/dwm-6.5.tar.gz
+DWM_SHA256="3971e27d42ae674a78b5f56c04291b3cedf33279962532fc7b92657b75cefe67"
+
+# st 0.9.2 — suckless terminal emulator
+ST_URL=https://dl.suckless.org/st/st-0.9.2.tar.gz
+ST_SHA256="7f146e50692e962e2c0e359dcdb3e02a85cd5c1eab6e23639a568bf3af5d3566"
+
+# dmenu 5.3 — suckless dynamic menu (application launcher)
+DMENU_URL=https://dl.suckless.org/tools/dmenu-5.3.tar.gz
+DMENU_SHA256="d0e0e50747c1bb2fdeb08a0045350be7e2c8467b18bfb8b015fcb3d2402a2c14"

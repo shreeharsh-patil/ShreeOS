@@ -1,0 +1,37 @@
+name: Kernel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kernel/**'
+      - 'build.conf'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc flex bison \
+            openssl pkg-config cpio gzip
+
+      - name: Restore cached toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: build/tools
+          key: toolchain-${{ hashFiles('build.conf', 'toolchain/scripts/**') }}
+
+      - name: Build kernel
+        run: |
+          bash kernel/scripts/build-kernel.sh
+
+      - name: Verify kernel image
+        run: |
+          test -f build/build-kernel/arch/x86/boot/bzImage
+          echo "Kernel built: $(wc -c < build/build-kernel/arch/x86/boot/bzImage) bytes"

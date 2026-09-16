@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex gawk texinfo \
+            curl patch bzip2 xz-utils bc libssl-dev cpio gzip \
+            xorriso grub-pc grub-efi rsync
+
+      - name: Restore cached toolchain
+        uses: actions/cache@v4
+        with:
+          path: build/tools
+          key: toolchain-${{ hashFiles('build.conf', 'toolchain/scripts/**') }}
+
+      - name: Full build
+        run: |
+          bash toolchain/scripts/build-all.sh --skip-tests
+          bash base-system/scripts/build-all.sh
+          bash kernel/scripts/build-kernel.sh
+          bash rootfs/scripts/make-rootfs.sh --skip-init
+          bash iso-builder/scripts/build-iso.sh
+
+      - name: Create release checksums
+        run: |
+          cd out
+          sha256sum *.iso > SHA256SUMS.txt
+          echo "Release artifacts:"
+          ls -lh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ShreeOS ${{ github.ref_name }}
+          body: |
+            ## ShreeOS ${{ github.ref_name }}
+
+            ### Artifacts
+            - `shreeos-*.iso` — Hybrid BIOS/UEFI bootable ISO
+            - `SHA256SUMS.txt` — Checksums
+
+            ### Build
+            ```bash
+            git clone https://github.com/shreeharsh-patil/ShreeOS.git
+            cd ShreeOS
+            git checkout ${{ github.ref_name }}
+            make all
+            ```
+
+            ### Verify
+            ```bash
+            sha256sum -c SHA256SUMS.txt --ignore-missing
+            qemu-system-x86_64 -cdrom shreeos-*.iso -m 256M -nographic
+            ```
+          files: |
+            out/*.iso
+            out/SHA256SUMS.txt
