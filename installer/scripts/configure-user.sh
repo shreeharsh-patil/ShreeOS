@@ -36,6 +36,12 @@ if ! [[ "$USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
   echo "Error: Invalid username '${USER}'. Must match ^[a-z_][a-z0-9_-]{0,31}$." >&2
   exit 1
 fi
+case "$USER" in
+  root|daemon|bin|nobody)
+    echo "Error: Refusing to configure reserved/system account '${USER}'." >&2
+    exit 1
+    ;;
+esac
 
 # Never repurpose a privileged/system account through the primary-user helper.
 # Existing normal users (UID >= 1000) may still be updated intentionally.
