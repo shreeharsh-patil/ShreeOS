@@ -1,4 +1,4 @@
-# Lumen Linux — Phased Implementation Plan
+# ShreeOS Linux — Phased Implementation Plan
 
 This is the detailed execution plan behind `ROADMAP.md`'s summary table. Each
 phase lists its objective, exact deliverables, the technical approach, where
@@ -17,6 +17,7 @@ confirm with the project owner → next phase.
 code exists.
 
 **Delivered:**
+
 - Full directory layout for all downstream phases
 - `build.conf` (single source of truth: arch, versions, paths, branding)
 - `scripts/common.sh` (logging, checksummed fetch, guard helpers)
@@ -38,6 +39,7 @@ directory has a README; repo has at least one git commit. **Met.**
 toolchain — the foundation every later phase compiles against.
 
 **Technical approach (LFS two-pass method):**
+
 1. Pin exact versions of binutils, gcc, glibc, and Linux kernel headers in
    `toolchain/sources.list`, each with a SHA-256 checksum.
 2. **Pass 1 — binutils:** cross-assembler/linker only, no libc dependency.
@@ -52,6 +54,7 @@ toolchain — the foundation every later phase compiles against.
    the final, self-hosting cross-compiler.
 
 **Deliverables:**
+
 - `toolchain/sources.list` — pinned URLs + checksums
 - `toolchain/scripts/01-binutils-pass1.sh` … `07-gcc-pass2.sh`
 - `toolchain/scripts/build-all.sh` — orchestrates 01→07 in order, idempotent
@@ -59,12 +62,13 @@ toolchain — the foundation every later phase compiles against.
 - `toolchain/README.md` updated with the exact build sequence and prerequisites
 
 **Exit criteria / tests:**
+
 - `${LUMEN_TOOLS}/bin/x86_64-lumen-linux-gnu-gcc --version` runs
 - A trivial static C program cross-compiles and, under `qemu-x86_64` (user
   mode) or on a matching host, executes and returns the expected exit code
 - `toolchain/tests/` script asserting the above, runnable standalone
 
-**Execution environment:** Script *correctness* and the early binutils/gcc
+**Execution environment:** Script _correctness_ and the early binutils/gcc
 pass-1 steps are verified interactively here. The full pass-2 gcc + glibc
 bootstrap (the multi-hour part) is exercised end-to-end in a new
 `.github/workflows/toolchain.yml` CI job, with build artifacts cached so
@@ -78,12 +82,13 @@ and tested as a set, not upgraded independently.
 
 ## Phase 2 — Base System
 
-**Objective:** a minimal, chroot-able userland compiled *with* the Phase 1
+**Objective:** a minimal, chroot-able userland compiled _with_ the Phase 1
 cross-compiler: bash, coreutils, util-linux, and the small set of packages
 LFS/BLFS treats as load-bearing (e.g. ncurses, zlib, file, m4, bison,
 readline where required as build deps of the above).
 
 **Technical approach:**
+
 - Each package gets its own numbered script under `base-system/scripts/`
   (`build.conf`-driven `$LUMEN_STAGE_ROOT` as install target), following the
   same fetch → verify → configure → make → make install pattern as Phase 1.
@@ -91,11 +96,13 @@ readline where required as build deps of the above).
   discipline as `toolchain/sources.list`.
 
 **Deliverables:**
+
 - `base-system/packages.list`
 - `base-system/scripts/*.sh` per package + `build-all.sh`
 - Updated `base-system/README.md`
 
 **Exit criteria / tests:**
+
 - `chroot $LUMEN_STAGE_ROOT /bin/bash -c 'echo hello'` succeeds under QEMU or
   a compatible host
 - Core utilities (`ls`, `cat`, `mount`, `ps`) run inside the chroot
@@ -112,6 +119,7 @@ packages; full-set build verified in CI.
 `$LUMEN_ARCH`, that boots to a shell under QEMU.
 
 **Technical approach:**
+
 - Pin a specific LTS tag (recorded in `build.conf` as `VER_LINUX_KERNEL`),
   sourced from the `torvalds/linux` GitHub mirror.
 - Start from a config fragment strategy: `kernel/configs/x86_64-minimal.config`
@@ -123,18 +131,20 @@ packages; full-set build verified in CI.
   the Phase 1 toolchain, installs modules into `$LUMEN_STAGE_ROOT`.
 
 **Deliverables:**
+
 - `kernel/configs/*.config`
 - `kernel/scripts/build-kernel.sh`
 - `kernel/README.md` documenting config choices and how to add hardware support
 
 **Exit criteria / tests:**
+
 - Kernel + a trivial initramfs boots under QEMU (`qemu-system-x86_64`) far
   enough to print a kernel log and reach a shell prompt
 - `tests/qemu/boot-kernel-only.sh` automates this and checks for a known
   marker string in serial output
 
 **Execution environment:** Kernel compile is CPU-heavy but bounded (tens of
-minutes with `-j$(nproc)`); feasible to run a *minimal*-config build
+minutes with `-j$(nproc)`); feasible to run a _minimal_-config build
 interactively here, with the full generic-config build in CI. QEMU boot
 testing runs wherever `qemu-system-x86_64` is available (installable via the
 whitelisted `archive.ubuntu.com`).
@@ -148,6 +158,7 @@ new custom init into one clean root filesystem layout that reaches PID 1
 successfully.
 
 **Technical approach:**
+
 - `rootfs/skeleton/` holds the static layout (`/etc` templates, `/var`
   structure, device-node manifest for `/dev`, `/etc/os-release` templated
   from `build.conf`'s `DISTRO_*` variables).
@@ -159,14 +170,16 @@ successfully.
   kernel modules + compiled init into `$LUMEN_STAGE_ROOT`, then archives it.
 
 **Deliverables:**
+
 - `rootfs/skeleton/*`
 - `init/src/init.c` + `init/services/*`
 - `rootfs/scripts/make-rootfs.sh`
 - Updated `init/README.md`, `rootfs/README.md`
 
 **Exit criteria / tests:**
+
 - Booting the assembled rootfs + kernel in QEMU reaches a shell spawned by
-  the *custom* init (not a busybox/toybox stand-in)
+  the _custom_ init (not a busybox/toybox stand-in)
 - `tests/qemu/boot-full-rootfs.sh` automates this
 - `init/tests/` unit-tests the service-parsing logic outside of a real boot
   (pure logic test, fast, no QEMU needed)
@@ -183,6 +196,7 @@ in CI regardless.
 filesystem.
 
 **Technical approach:**
+
 - `bootloader/grub/grub.cfg.template` — GRUB2 menu templated with
   `DISTRO_NAME`/`DISTRO_VERSION`.
 - `bootloader/scripts/install-grub.sh` — installs GRUB2 into a target
@@ -192,11 +206,13 @@ filesystem.
   to produce a single hybrid `.iso`.
 
 **Deliverables:**
+
 - `bootloader/grub/grub.cfg.template`, `bootloader/scripts/install-grub.sh`
 - `iso-builder/scripts/build-iso.sh`
 - Updated `bootloader/README.md`, `iso-builder/README.md`
 
 **Exit criteria / tests:**
+
 - The produced ISO boots to the custom-init shell under QEMU in **both**
   `-bios` (legacy) and `-bios OVMF` (UEFI) modes
 - `tests/qemu/boot-iso-bios.sh` and `tests/qemu/boot-iso-uefi.sh`
@@ -213,6 +229,7 @@ also run in CI for regression protection.
 tooling to build a package repository it can pull from.
 
 **Technical approach:**
+
 - **Format (`.lpkg`):** tar+zstd payload + a JSON manifest (name, version,
   dependencies, file list, pre/post install hooks, checksums per file).
   Spec written first and versioned under `pkgmanager/spec/`.
@@ -224,6 +241,7 @@ tooling to build a package repository it can pull from.
   and writes a repo index (JSON) `lpm` can fetch and parse.
 
 **Deliverables:**
+
 - `pkgmanager/spec/lpkg-format.md`
 - `pkgmanager/src/*.c` + `Makefile`
 - `pkgmanager/tests/` — unit tests for manifest parsing, dependency
@@ -232,6 +250,7 @@ tooling to build a package repository it can pull from.
 - `repo-tools/scripts/build-repo.sh`
 
 **Exit criteria / tests:**
+
 - `lpm install` places files correctly into a scratch root and records them
   for later removal
 - `lpm remove` fully reverses an install (verified by directory diff)
@@ -249,6 +268,7 @@ build step, it's application development or C tooling.
 partitions a target disk, writes the rootfs, and installs the bootloader.
 
 **Technical approach:**
+
 - `installer/src/` — a small text-mode (ncurses or plain-line) installer:
   disk selection → partition (via `sfdisk`/`parted` calls) → filesystem
   creation (`mkfs.ext4`) → rootfs copy → `bootloader/scripts/install-grub.sh`
@@ -257,14 +277,16 @@ partitions a target disk, writes the rootfs, and installs the bootloader.
   so it's testable without a human driving a TUI.
 
 **Deliverables:**
+
 - `installer/src/*`
 - `installer/tests/` — a test that runs the installer non-interactively
   against a QEMU-attached virtual disk and verifies the disk is bootable
   afterward
 
 **Exit criteria / tests:**
+
 - Non-interactive install to a blank virtual disk image, followed by
-  booting *that disk* (not the ISO) in QEMU, reaching the custom init's
+  booting _that disk_ (not the ISO) in QEMU, reaching the custom init's
   shell
 
 **Execution environment:** Runs locally with QEMU + a scratch disk image;
@@ -278,6 +300,7 @@ mirrored in CI.
 installable as a package set via `lpm`, with branding wired in.
 
 **Technical approach:**
+
 - `desktop/wm/` — build scripts for a minimal WM (evaluated: dwm-style
   suckless WM vs. a small independent WM; decision recorded in
   `docs/design-decisions/` when this phase starts) plus a terminal emulator
@@ -288,19 +311,21 @@ installable as a package set via `lpm`, with branding wired in.
   `lpm install lumen-desktop-minimal`.
 
 **Deliverables:**
+
 - `desktop/wm/*`, `desktop/configs/*`
 - `branding/logo/*`, `branding/wallpapers/*`, `branding/theme/*` (real
   placeholder assets, not empty directories)
 - Desktop package(s) buildable via `repo-tools/scripts/build-repo.sh`
 
 **Exit criteria / tests:**
+
 - Booting the ISO with the desktop package installed reaches a working X11
   session with the WM running (verified via QEMU + VNC/screenshot capture,
   or a scripted check that the X server and WM processes are alive and a
   test window can be mapped)
 
 **Execution environment:** Compiling a WM is a normal, boundable local build;
-the *visual* verification (screenshot-based) is best run in CI where a
+the _visual_ verification (screenshot-based) is best run in CI where a
 consistent virtual display is available, with a lighter local check
 (process-alive) available for quick iteration.
 
@@ -312,6 +337,7 @@ consistent virtual display is available, with a lighter local check
 reproducibly.
 
 **Technical approach:**
+
 - Top-level `Makefile` with targets mirroring the phases (`make toolchain`,
   `make kernel`, `make rootfs`, `make iso`, `make packages`, `make all`),
   each depending on the previous, each idempotent (skips completed steps
@@ -319,11 +345,13 @@ reproducibly.
 - `make clean` / `make distclean` for controlled resets.
 
 **Deliverables:**
+
 - Root `Makefile`
 - `docs/BUILD_GUIDE.md` — the full walkthrough referenced from the root
   README, now actually accurate end-to-end
 
 **Exit criteria / tests:**
+
 - `make all` from a clean checkout produces a bootable ISO with no manual
   intervention (verified in CI, where the runtime budget exists for a full
   from-scratch run)
@@ -340,6 +368,7 @@ run is a CI job.
 checks, gating every merge.
 
 **Technical approach:**
+
 - `tests/unit/` — fast, no-build logic tests (init service parsing, `lpm`
   dependency resolution, manifest parsing) — run on every push.
 - `tests/smoke/` — structure/config sanity checks (already started in
@@ -372,6 +401,7 @@ is to move the expensive verification off the interactive path.
 **Objective:** a tagged, reproducible, documented release.
 
 **Technical approach:**
+
 - Freeze `build.conf` versions, run the full `make all` chain in CI via
   `release.yml`, triggered by pushing a `v1.0.0` tag.
 - `CHANGELOG.md` finalized for `1.0.0`.
@@ -395,8 +425,8 @@ without asking a single follow-up question.
   (script development, unit tests, config generation, small compiles) is
   done and verified here, interactively, with real output shown to you.
   Anything measured in hours (full glibc/gcc bootstrap, full kernel
-  defconfig build, full `make all`) is scripted here but *executed and
-  verified* in GitHub Actions, where the runtime budget exists. Every phase
+  defconfig build, full `make all`) is scripted here but _executed and
+  verified_ in GitHub Actions, where the runtime budget exists. Every phase
   above states explicitly which bucket it falls into.
 - **No phase starts until the previous phase's exit criteria are met and
   committed.** If a phase's tests fail, that's the next thing worked on —

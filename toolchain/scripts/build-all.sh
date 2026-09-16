@@ -15,24 +15,37 @@ source "$SCRIPT_DIR/common.sh"
 RESUME_FROM=1
 SKIP_TESTS=false
 
-for arg in "$@"; do
-  case "$arg" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --resume)
-      shift
-      RESUME_FROM=$1
+      if [[ -z "${2:-}" ]]; then
+        lumen_die "--resume requires a step number (1-7)"
+      fi
+      RESUME_FROM="$2"
+      shift 2
       ;;
     --resume=*)
-      RESUME_FROM="${arg#*=}"
+      RESUME_FROM="${1#*=}"
+      shift
       ;;
     --skip-tests)
       SKIP_TESTS=true
+      shift
       ;;
     --help|-h)
       echo "Usage: build-all.sh [--resume N] [--skip-tests]"
       exit 0
       ;;
+    *)
+      lumen_die "Unknown option: $1" "Usage: build-all.sh [--resume N] [--skip-tests]"
+      ;;
   esac
 done
+
+# Validate resume step is in range 1-7
+if [[ ! "$RESUME_FROM" =~ ^[1-7]$ ]]; then
+  lumen_die "Invalid resume step: ${RESUME_FROM}. Must be 1-7."
+fi
 
 lumen_verify_toolchain
 
