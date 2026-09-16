@@ -6,7 +6,11 @@
 
 int cmd_query(int argc, char **argv) {
     if (argc < 1) { fprintf(stderr, "Usage: lpm query <package>\n"); return 1; }
-    char dbdir[4096];
+    if (!lpm_valid_pkgname(argv[0])) {
+        fprintf(stderr, "lpm: invalid package name '%s'\n", argv[0]);
+        return 1;
+    }
+    char dbdir[LPM_PATH_MAX];
     snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", argv[0]);
 
     manifest *m = manifest_load(dbdir);
@@ -33,7 +37,8 @@ int cmd_list(int argc, char **argv) {
     int found = 0;
     while ((ent = readdir(dir))) {
         if (ent->d_name[0] == '.') continue;
-        char dbdir[4096];
+        if (!lpm_valid_pkgname(ent->d_name)) continue;
+        char dbdir[LPM_PATH_MAX];
         snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", ent->d_name);
         manifest *m = manifest_load(dbdir);
         if (m) {

@@ -4,7 +4,7 @@ name: Lint
 # added incrementally in later milestones as those components exist.
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:

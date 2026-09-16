@@ -1,23 +1,25 @@
 # Repository Tools
 
-**Status:** scaffolded, implementation lands in Milestone 7 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-Tools for building, indexing, and serving a ShreeOS package repository that `lpm` can pull from.
+Tools for building `.lpkg` packages and generating repository indices for `lpm`.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd repo-tools && make
+```
+repo-tools/
+├── scripts/
+│   └── build-repo.sh    # Scans staging dir, builds .lpkg files, writes repo.json
+└── README.md
 ```
 
-## Testing
+## Usage
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+bash repo-tools/scripts/build-repo.sh \
+  build/staging/packages \
+  out/repo
+```
+
+## Output
+
+- `pool/<name>-<version>.lpkg` — binary packages
+- `repo.json` — repository index

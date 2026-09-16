@@ -59,10 +59,10 @@ testable.
 - `toolchain/` produces a cross-compiler installed to `$LUMEN_TOOLS` (a
   sysroot-style prefix, never touching the host system's own toolchain).
 - `kernel/` and `base-system/` are both compiled *with* that cross-compiler,
-  targeting `$LUMEN_ROOT` (the staging root filesystem directory).
-- `rootfs/` assembles `$LUMEN_ROOT` into a clean filesystem image (skeleton
+  targeting `$LUMEN_STAGE_ROOT` (the staging root filesystem directory).
+- `rootfs/` assembles `$LUMEN_STAGE_ROOT` into a clean filesystem image (skeleton
   `/etc`, `/var`, device nodes, init wiring).
-- `bootloader/` and `iso-builder/` package `$LUMEN_ROOT` plus the compiled
+- `bootloader/` and `iso-builder/` package `$LUMEN_STAGE_ROOT` plus the compiled
   kernel into a bootable hybrid ISO.
 - `pkgmanager/` and `repo-tools/` are built for *both* the host (to build
   and sign packages) and the target (to install them at runtime).

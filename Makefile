@@ -18,6 +18,28 @@ BUILD_DIR := build
 MARKER_DIR := $(BUILD_DIR)/.markers
 SHELL := /usr/bin/env bash
 
+# Default target
+.DEFAULT_GOAL := help
+
+.PHONY: help
+help:
+	@echo "ShreeOS build targets:"
+	@echo ""
+	@echo "  make toolchain     Phase 1: Cross-compilation toolchain"
+	@echo "  make base-system   Phase 2: Base userland packages"
+	@echo "  make kernel        Phase 3: Linux kernel + initramfs"
+	@echo "  make rootfs        Phase 4: Init + root filesystem"
+	@echo "  make iso           Phase 5: Bootable hybrid ISO"
+	@echo "  make packages      Phase 6: lpm package manager"
+	@echo "  make desktop       Phase 7: Window manager + configs"
+	@echo "  make installer     Phase 7: Disk installer"
+	@echo "  make all           Phases 1-7 end-to-end"
+	@echo "  make tests         Run all smoke tests"
+	@echo "  make clean         Remove build artifacts"
+	@echo "  make distclean     Full reset"
+	@echo ""
+	@echo "Options: FORCE=1 to rebuild an already-completed target"
+
 # Marker-based idempotency: a target runs only if its marker is missing.
 # Force with: make <target> FORCE=1
 $(MARKER_DIR):
@@ -115,9 +137,9 @@ tests:
 # -- Cleanup ---------------------------------------------------------
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR)/build-*
-	rm -rf $(BUILD_DIR)/.markers
-	rm -rf $(BUILD_DIR)/rootfs.cpio.gz
+	rm -rf $(BUILD_DIR)/.markers $(BUILD_DIR)/build-*
+	rm -rf $(BUILD_DIR)/tools $(BUILD_DIR)/sysroot
+	rm -rf $(BUILD_DIR)/rootfs $(BUILD_DIR)/rootfs.cpio.gz
 	rm -rf out/*.iso
 	$(MAKE) -C pkgmanager/src clean
 

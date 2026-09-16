@@ -1,23 +1,43 @@
 # Package Manager
 
-**Status:** scaffolded, implementation lands in Milestone 7 (see `docs/ROADMAP.md`).
-
-## Purpose
-
-Source for `lpm`, the custom package manager, and the `.lpkg` package format spec (tar + zstd + JSON manifest). Built for both the host (packaging) and the target (install/remove/query).
+`lpm` — custom package manager for ShreeOS. Installs, removes, and queries `.lpkg` packages.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd pkgmanager && make
+```
+pkgmanager/
+├── spec/lpkg-format.md    # .lpkg format specification
+├── src/                    # lpm CLI source (C)
+│   ├── main.c              # CLI entry point
+│   ├── json.c/h            # Minimal JSON parser
+│   ├── manifest.c/h         # Package manifest
+│   ├── install.c            # Install/remove logic
+│   ├── resolve.c            # Query/list commands
+│   └── Makefile
+├── tests/
+│   ├── test-manifest.c     # Manifest parse/save/load tests
+│   └── Makefile
+└── README.md
 ```
 
-## Testing
+## Usage
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+lpm install package.lpkg
+lpm remove  package-name
+lpm query   package-name
+lpm list
+```
+
+## Building
+
+```bash
+make -C pkgmanager/src                # host build
+make -C pkgmanager/src CROSS_COMPILE=x86_64-shreeos-linux-gnu-  # target
+```
+
+## Tests
+
+```bash
+make -C pkgmanager/tests test
+```

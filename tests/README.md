@@ -1,23 +1,29 @@
 # Tests
 
-**Status:** scaffolded, implementation lands in Milestone 11 (ongoing from Milestone 2) (see `docs/ROADMAP.md`).
-
-## Purpose
-
-Unit tests, smoke tests, and QEMU-based boot tests. Every milestone contributes tests here as it lands — testing is not deferred to the end.
+Test suites for ShreeOS across three layers.
 
 ## Layout
 
-_(populated as this milestone is implemented)_
-
-## Building standalone
-
-```bash
-# once implemented:
-# cd tests && make
+```
+tests/
+├── smoke/        # Fast structural checks (every commit)
+│   ├── run-all.sh            # Orchestrator
+│   ├── test-toolchain.sh     # Toolchain verification
+│   └── test-base-system.sh   # Base system checks
+├── qemu/         # Full boot tests (post-build)
+│   ├── qemu-common.sh                 # Shared helpers
+│   ├── boot-kernel-only.sh            # Kernel + initramfs
+│   ├── boot-full-rootfs.sh            # Full rootfs
+│   ├── boot-iso-bios.sh               # ISO (BIOS)
+│   ├── boot-iso-uefi.sh               # ISO (UEFI)
+│   └── boot-installed-disk.sh         # Installed disk
+├── unit/         # Logic tests (empty — future)
+└── README.md
 ```
 
-## Testing
+## Running
 
-Tests for this component live in `tests/` and are also runnable from
-within this directory once scripts exist here.
+```bash
+bash tests/smoke/run-all.sh           # all smoke tests
+bash tests/qemu/boot-kernel-only.sh   # QEMU boot test
+```
