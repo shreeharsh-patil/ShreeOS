@@ -77,7 +77,8 @@ required for every installation and must:
 - be owned by the invoking user;
 - have mode exactly `0600`;
 - contain the root password on line 1;
-- optionally contain the primary user's password on line 2.
+- contain the primary user's password on line 2 whenever `--username` is used;
+- use passwords of at least 8 characters.
 
 Example:
 
@@ -121,6 +122,22 @@ For a root-only installation, create a one-line credentials file and omit
 | `uefi` | UEFI-only systems | Installs x86_64 UEFI GRUB to the EFI System Partition |
 | `bios` | Legacy BIOS-only systems | Installs i386-pc GRUB to the target disk |
 
+## Installed Boot Handoff
+
+An installed ShreeOS disk boots differently from the live ISO:
+
+1. GRUB passes the installed root as `root=UUID=...` and loads the initramfs.
+2. Initramfs `/init` mounts `/proc`, `/sys`, `/dev` and `/run`.
+3. It resolves the requested UUID with `blkid` and waits briefly for the block
+   device to appear.
+4. It mounts the installed ext4 root at `/newroot` and verifies
+   `/newroot/etc/os-release` identifies ShreeOS.
+5. It executes `switch_root /newroot /sbin/init`.
+
+If the root UUID cannot be resolved, the root cannot be mounted, or the target
+does not look like ShreeOS, the initramfs fails closed into an emergency shell
+instead of pretending the installation booted successfully.
+
 ## Testing the Installer Safely
 
 Run validation tests first:
@@ -136,7 +153,9 @@ REQUIRE_ARTIFACTS=1 bash tests/qemu/test-e2e-install-and-boot.sh
 ```
 
 The E2E test creates a temporary raw disk image, installs ShreeOS to it, then
-checks BIOS and UEFI boot paths where the host supports them.
+checks BIOS and UEFI boot paths where the host supports them. An installed boot
+passes only after the serial log contains both the initramfs real-root handoff
+marker and the normal ShreeOS service-ready marker.
 
 ## Troubleshooting
 
@@ -151,4 +170,8 @@ checks BIOS and UEFI boot paths where the host supports them.
   `Asia/Kolkata`.
 - **Interrupted/failed installation:** do not assume the target disk is
   bootable. Correct the error and rerun the installer; it verifies the kernel,
-  initramfs, GRUB configuration and `fstab` before reporting success.
+  initramfs, GRUB configuration, `fstab`, and account state before reporting
+  success.
+- **Boot drops to the initramfs emergency shell:** inspect the GRUB root UUID
+  and compare it with `blkid`; also check the ext4 root filesystem before
+  attempting another boot.
