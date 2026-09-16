@@ -117,46 +117,271 @@ sequenceDiagram
 | 📦 lpm Package Manager | Custom package manager with SHA-256 integrity verification, transactional staging, file conflict detection, and `/var/lib/lpm/lock` locking. |
 | 💿 Hybrid ISO Builder | Isohybrid image with dual GRUB2 boot paths (`i386-pc` for BIOS and `x86_64-efi` for UEFI). |
 
-## 🚀 Build Guide & Local Execution
+## 🚀 Build, Test & Installation Guide
 
-### Prerequisites
+### Current Build Status
 
-- **Host System:** Linux (Ubuntu 22.04 / 24.04 LTS or equivalent)
-- **Core Dependencies:** `git`, `make`, `gcc`, `g++`, `bash`, `bison`, `flex`, `gawk`, `texinfo`, `wget`, `curl`, `file`, `xorriso`, `qemu-system-x86_64`
-- **Storage:** ~30 GB free disk space.
+ShreeOS is still experimental. The **minimal** profile is the recommended build
+and installation target while the target-native desktop graphics stack is being
+completed. The desktop profile can be used for development/integration testing,
+but it is not considered a certified GUI image until target X11/Xft/Xinerama,
+Fontconfig, FreeType, Xorg, xinit and fonts are present.
 
-### Building ShreeOS
+### Supported Build Hosts
+
+- **Recommended:** Ubuntu 22.04 LTS or Ubuntu 24.04 LTS on x86_64.
+- **Windows:** WSL2 with Ubuntu is supported for building. Keep the repository
+  under the WSL Linux filesystem (for example `~/ShreeOS`), not `/mnt/c`.
+- **Disk space:** at least 15 GB free; **30–50 GB recommended** for a full build.
+- **Memory:** 8 GB RAM recommended.
+- **CPU:** 4 or more threads recommended.
+
+ShreeOS builds a cross-toolchain and target userland from source. Host X11 or
+other development packages are build tools only; they do not replace missing
+ShreeOS-target libraries.
+
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
-
-# Build a complete headless/minimal ISO with the currently source-built stack
-make PROFILE=minimal iso
-
-# Desktop-development ISO: stages desktop assets but explicitly permits the
-# still-incomplete target graphics stack. This is NOT desktop-certified yet.
-ALLOW_DEFERRED_GRAPHICS=1 make PROFILE=desktop iso
 ```
 
-### Reliable WSL2 Build
+### 2. Install Host Dependencies
 
-For Windows development, keep the repository inside the WSL Linux filesystem (for example `~/ShreeOS`), not under `/mnt/c`.
+On Ubuntu/Debian:
 
 ```bash
+sudo bash scripts/install-build-deps-apt.sh
+```
+
+This installs the compiler/build tools, GRUB BIOS/UEFI tooling, QEMU, OVMF,
+filesystem utilities, ISO tooling, ShellCheck, and the libraries needed by the
+host-side build process.
+
+On WSL2 you can instead run:
+
+```bash
+make bootstrap-wsl
+```
+
+If WSL reports that the repository is under `/mnt/c`, move or clone it into
+the Linux filesystem:
+
+```bash
+cd ~
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
+```
 
-# Install the supported Ubuntu/Debian host dependencies and run diagnostics.
-make bootstrap-wsl
+### 3. Verify the Host Before Building
 
-# Strict build path: doctor -> source verification -> stages -> ISO verification.
+```bash
+# Normal diagnostics
+make doctor
+
+# Strict diagnostics: includes QEMU, OVMF and installer prerequisites
+bash scripts/doctor.sh --strict
+```
+
+Do not continue with a real disk installation while strict diagnostics report
+required-tool failures.
+
+### 4. Verify and Fetch Pinned Sources
+
+```bash
+bash scripts/verify-sources.sh --fetch
+```
+
+The source verifier checks the pinned upstream package metadata and validates
+downloaded archives before compilation.
+
+### 5. Build the Recommended Minimal ISO
+
+The reliable build entry point runs strict diagnostics, verifies/fetches sources,
+builds the selected profile, and validates the resulting ISO:
+
+```bash
+bash scripts/build.sh minimal
+```
+
+Equivalent manual commands:
+
+```bash
+make PROFILE=minimal iso
+make PROFILE=minimal verify-iso
+```
+
+Build output is written under `out/`, including:
+
+```text
+out/shreeos-<version>.iso
+out/shreeos-<version>.iso.sha256
+out/shreeos-<version>-manifest.json
+```
+
+### 6. Desktop Development Build
+
+The strict desktop build deliberately stops when the ShreeOS **target** graphics
+stack is incomplete:
+
+```bash
 bash scripts/build.sh desktop
 ```
 
-The strict desktop path intentionally stops if the ShreeOS **target** X11/FreeType/Fontconfig stack has not been source-built into the sysroot. Host packages such as `libx11-dev` are useful for tooling and tests, but they are not accepted as substitutes for target libraries.
+For explicit desktop integration work only, deferred graphics can be permitted:
 
-Useful recovery commands:
+```bash
+ALLOW_DEFERRED_GRAPHICS=1 make PROFILE=desktop iso
+```
+
+A deferred desktop ISO must not be treated as a finished/certified desktop
+release.
+
+### 7. Test the Build
+
+Run fast/non-destructive suites:
+
+```bash
+make test-unit
+make test-init
+make test-security
+make test-auth
+make test-installer
+make test-pkgmanager
+make test-desktop
+make test-hardware
+make test-smoke
+```
+
+After building the ISO, validate boot paths:
+
+```bash
+make PROFILE=minimal verify-iso
+make qemu       # UEFI
+make qemu-bios  # Legacy BIOS
+```
+
+For the strict QEMU installation-and-boot path:
+
+```bash
+REQUIRE_ARTIFACTS=1 bash tests/qemu/test-e2e-install-and-boot.sh
+```
+
+### 8. Install ShreeOS to a Disk
+
+> [!CAUTION]
+> The installer repartitions and formats the selected target disk. **All data on
+> that disk will be destroyed.** Verify the whole-disk device carefully before
+> confirming. Do not use a partition such as `/dev/nvme0n1p1` as the target.
+
+The current installer is run from a **completed ShreeOS source/build tree**.
+The bootable ISO is useful for boot validation, but the installer is not yet a
+self-contained live-ISO installer.
+
+First identify the target disk:
+
+```bash
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL
+```
+
+#### Recommended: guided installer
+
+```bash
+sudo bash installer/scripts/installer-tui.sh
+```
+
+The TUI:
+
+1. shows system/hardware information;
+2. lists candidate whole disks and rejects detected active/mounted targets;
+3. collects hostname, username, root password and user password;
+4. validates the timezone;
+5. shows a destructive-operation summary and requires confirmation;
+6. partitions/formats the disk, copies ShreeOS, installs GRUB and verifies the
+   final installation.
+
+#### Scripted installer
+
+See all supported options:
+
+```bash
+bash installer/scripts/install-to-disk.sh --help
+```
+
+Syntax:
+
+```text
+install-to-disk.sh <disk-device>
+  [--yes]
+  [--hostname=<name>]
+  [--timezone=<zone>]
+  [--credentials-file=<path>]
+  [--username=<name>]
+  [--boot-mode=both|uefi|bios]
+```
+
+Passwords are intentionally not accepted on the command line. Create a protected
+credentials file instead:
+
+```bash
+umask 077
+
+read -r -s -p "Root password: " ROOT_PW
+printf '\n'
+read -r -s -p "User password: " USER_PW
+printf '\n'
+
+printf '%s\n%s\n' "$ROOT_PW" "$USER_PW" > /tmp/shreeos-credentials
+unset ROOT_PW USER_PW
+chmod 600 /tmp/shreeos-credentials
+```
+
+Then install. Replace `/dev/nvme0n1` with the **whole target disk**:
+
+```bash
+sudo bash installer/scripts/install-to-disk.sh /dev/nvme0n1 --yes \
+  --hostname=shreeos \
+  --timezone=Asia/Kolkata \
+  --username=shree \
+  --credentials-file=/tmp/shreeos-credentials \
+  --boot-mode=both
+
+rm -f /tmp/shreeos-credentials
+```
+
+The credentials file must be a regular non-symlink file, owned by the invoking
+user, with mode exactly `0600`. Line 1 is the root password; optional line 2
+is the primary user's password.
+
+Boot modes:
+
+| Mode | Behavior |
+|---|---|
+| `both` | Default. Installs both UEFI and legacy BIOS GRUB; both paths must succeed. |
+| `uefi` | Installs x86_64 UEFI GRUB to the EFI System Partition. |
+| `bios` | Installs legacy i386-pc GRUB to the target disk. |
+
+Before reporting success, the installer verifies the installed kernel,
+initramfs, GRUB configuration, root filesystem UUID/`fstab`, and credential
+file permissions.
+
+### Build Recovery & Troubleshooting
+
+| Problem | Recommended action |
+|---|---|
+| WSL build is under `/mnt/c` | Re-clone to `~/ShreeOS`; Windows-mounted filesystems are slower and less reliable for this build. |
+| Missing host command/tool | Run `sudo bash scripts/install-build-deps-apt.sh`, then `bash scripts/doctor.sh --strict`. |
+| Source download/checksum issue | Run `bash scripts/verify-sources.sh --fetch` again. Do not bypass checksum failures. |
+| Base-system build is stale/broken | Run `make clean-base`, then rebuild. |
+| Toolchain is stale/broken | Run `make clean-toolchain`, then rebuild. |
+| Kernel build is stale/broken | Run `make clean-kernel`, then rebuild. |
+| Desktop graphics readiness fails | Use `PROFILE=minimal` for the supported path; desktop certification is intentionally deferred. |
+| ISO validation fails | Run `make clean-iso && make PROFILE=minimal iso && make PROFILE=minimal verify-iso`. |
+| Installer refuses the target disk | Check mounts/swap with `lsblk` and `findmnt`; do not bypass active-disk safety checks. |
+| Installation is interrupted | Treat the target as incomplete; correct the problem and rerun installation before attempting to boot it. |
+
+Targeted cleanup commands:
 
 ```bash
 make clean-desktop
@@ -165,26 +390,17 @@ make clean-base
 make clean-toolchain
 make clean-iso
 
-# Re-check target graphical readiness.
-make graphics
-
-# Validate an already-built image, including BIOS/UEFI QEMU boot checks.
-make PROFILE=desktop verify-iso
+# Full reset (removes build/ and out/)
+make distclean
 ```
 
-The native desktop is intentionally not certified until X11/Xft/Xinerama, Fontconfig, FreeType, Xorg, xinit and fonts are built for the ShreeOS target. Use the minimal profile for a fully supported bootable build today. Use `ALLOW_DEFERRED_GRAPHICS=1` only when testing desktop-profile boot/integration while that graphics dependency chain is incomplete.
-
-### Testing & Validation
+Useful diagnostics:
 
 ```bash
-# Run all test suites (unit tests + security + auth + installer + desktop)
-make test-all
-
-# Launch built ISO in QEMU (UEFI mode)
-make qemu
-
-# Launch built ISO in QEMU (BIOS mode)
-make qemu-bios
+make doctor
+make verify-sources
+make graphics
+make PROFILE=minimal verify-iso
 ```
 
 ## 📁 Repository Directory Architecture
