@@ -86,6 +86,7 @@ check_cmd flex "Lexer (flex)" true
 check_cmd gawk "GNU awk" true
 check_cmd sed "Stream editor (sed)" true
 check_cmd patch "Patch utility" true
+check_cmd file "File type inspector" true
 check_cmd tar "Archive tool (tar)" true
 check_cmd gzip "Gzip compression" true
 check_cmd bzip2 "Bzip2 compression" true

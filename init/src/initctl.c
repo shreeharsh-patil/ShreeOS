@@ -22,29 +22,96 @@ static const char *get_sock_path(void) {
     return DEFAULT_INIT_SOCK_PATH;
 }
 
+static int write_all(int fd, const char *buf, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = write(fd, buf + written, len - written);
+        if (n > 0) {
+            written += (size_t)n;
+            continue;
+        }
+        if (n < 0 && errno == EINTR) continue;
+        return -1;
+    }
+    return 0;
+}
+
 static int send_ipc_command(const char *cmd, char *out, size_t out_len) {
+    if (!cmd || !out || out_len < 2) {
+        errno = EINVAL;
+        return -1;
+    }
+
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
+
     const char *sock_path = get_sock_path();
-    strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+    size_t sock_len = strlen(sock_path);
+    if (sock_len >= sizeof(addr.sun_path)) {
+        close(fd);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    memcpy(addr.sun_path, sock_path, sock_len + 1);
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        int saved_errno = errno;
         close(fd);
+        errno = saved_errno;
         return -1;
     }
 
-    ssize_t w = write(fd, cmd, strlen(cmd));
-    (void)w;
-    w = write(fd, "\n", 1);
-    (void)w;
+    if (write_all(fd, cmd, strlen(cmd)) != 0 || write_all(fd, "\n", 1) != 0) {
+        int saved_errno = errno;
+        close(fd);
+        errno = saved_errno;
+        return -1;
+    }
 
-    ssize_t n = read(fd, out, out_len - 1);
-    if (n >= 0) out[n] = '\0';
-    else out[0] = '\0';
+    (void)shutdown(fd, SHUT_WR);
+
+    size_t used = 0;
+    while (used < out_len - 1) {
+        ssize_t n = read(fd, out + used, out_len - 1 - used);
+        if (n > 0) {
+            used += (size_t)n;
+            continue;
+        }
+        if (n == 0) break;
+        if (errno == EINTR) continue;
+
+        int saved_errno = errno;
+        close(fd);
+        out[used] = '\0';
+        errno = saved_errno;
+        return -1;
+    }
+
+    out[used] = '\0';
+
+    if (used == out_len - 1) {
+        char extra;
+        ssize_t n;
+        do {
+            n = read(fd, &extra, 1);
+        } while (n < 0 && errno == EINTR);
+
+        if (n > 0) {
+            close(fd);
+            errno = EMSGSIZE;
+            return -1;
+        }
+        if (n < 0) {
+            int saved_errno = errno;
+            close(fd);
+            errno = saved_errno;
+            return -1;
+        }
+    }
 
     close(fd);
     return 0;
@@ -72,14 +139,14 @@ int main(int argc, char **argv) {
     if (argc < 2) { usage(); return 1; }
 
     const char *cmd = argv[1];
-    char resp[8192] = {0};
+    char resp[32768] = {0};
 
     if (strcmp(cmd, "list") == 0) {
         if (send_ipc_command("LIST", resp, sizeof(resp)) == 0) {
             printf("%s", resp);
             return 0;
         } else {
-            fprintf(stderr, "initctl: could not connect to init socket at %s\n", get_sock_path());
+            fprintf(stderr, "initctl: IPC request failed at %s: %s\n", get_sock_path(), strerror(errno));
             return 1;
         }
     } else if (strcmp(cmd, "blame") == 0) {
@@ -87,7 +154,7 @@ int main(int argc, char **argv) {
             printf("%s", resp);
             return 0;
         } else {
-            fprintf(stderr, "initctl: could not connect to init socket at %s\n", get_sock_path());
+            fprintf(stderr, "initctl: IPC request failed at %s: %s\n", get_sock_path(), strerror(errno));
             return 1;
         }
     } else if (strcmp(cmd, "logs") == 0) {

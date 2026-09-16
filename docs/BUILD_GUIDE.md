@@ -16,13 +16,13 @@
 ## Quick Start
 
 ```bash
-# Clone and build everything:
+# Clone and build the currently complete minimal profile:
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
-make all
+make PROFILE=minimal all
 ```
 
-This runs Phases 1-7 end-to-end (toolchain, base system, kernel, rootfs, ISO, packages, desktop). Expect 2-4 hours depending on your machine.
+This runs the source-built toolchain, base system, kernel, target utilities, rootfs and ISO pipeline end-to-end. The native desktop profile is not yet certifiable because its target graphics dependency stack is incomplete; do not treat a deferred desktop build as a finished GUI image.
 
 ## Build Stages
 
@@ -44,29 +44,34 @@ make kernel
 ```
 Cross-compiles the kernel with embedded initramfs. Output: `build/build-kernel/arch/x86/boot/bzImage`.
 
-### Phase 4: Init + Root Filesystem
+### Phase 4: Target Utilities
+```bash
+make packages
+```
+Cross-compiles the custom init, `lpm` package manager and hardware daemon with the ShreeOS target toolchain.
+
+### Phase 5: Desktop Layer
+```bash
+make desktop
+```
+Requires the ShreeOS-target X11/Xft/Xinerama, Fontconfig, FreeType, Xorg, xinit and fonts stack. Until that dependency chain is source-built, the strict desktop target correctly refuses certification.
+
+For explicit headless/integration testing only:
+```bash
+ALLOW_DEFERRED_GRAPHICS=1 make PROFILE=desktop desktop
+```
+
+### Phase 6: Init + Root Filesystem
 ```bash
 make rootfs
 ```
-Assembles init binary, skeleton configs, kernel modules. Output: `build/rootfs/`.
+Assembles the target init, runtime libraries, skeleton configs and kernel modules into `build/rootfs/`.
 
-### Phase 5: Bootable ISO
+### Phase 7: Bootable ISO
 ```bash
 make iso
 ```
 Creates a hybrid BIOS/UEFI ISO. Output: `out/shreeos-<version>.iso`.
-
-### Phase 6: Package Manager
-```bash
-make packages
-```
-Builds the `lpm` package manager. Output: `pkgmanager/src/lpm`.
-
-### Phase 7: Desktop Environment
-```bash
-make desktop
-```
-Builds dwm window manager, st terminal, dmenu launcher. Output: installed to `build/rootfs/`.
 
 ## Testing
 
@@ -107,12 +112,12 @@ ShreeOS/
 ├── toolchain/            # Phase 1: cross-compiler
 ├── base-system/          # Phase 2: base packages
 ├── kernel/               # Phase 3: Linux kernel
-├── init/                 # Phase 4: PID 1 init
-├── rootfs/               # Phase 4: root filesystem assembly
-├── bootloader/           # Phase 5: GRUB config
-├── iso-builder/          # Phase 5: ISO creation
-├── pkgmanager/           # Phase 6: lpm package manager
-├── desktop/              # Phase 7: window manager
+├── init/                 # Phase 4: target PID 1 init
+├── rootfs/               # Phase 6: root filesystem assembly
+├── bootloader/           # Phase 7: GRUB config
+├── iso-builder/          # Phase 7: ISO creation
+├── pkgmanager/           # Phase 4: lpm package manager
+├── desktop/              # Phase 5: window manager
 ├── installer/            # Phase 7: disk installer
 ├── branding/             # Phase 7: distro assets
 ├── tests/                # Smoke tests

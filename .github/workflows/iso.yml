@@ -46,7 +46,7 @@ jobs:
       - name: Run verification & unit tests
         run: |
           make doctor
-          make verify-sources
+          bash scripts/verify-sources.sh --fetch --component=base-system
           make test-unit
           bash tests/smoke/run-all.sh
 

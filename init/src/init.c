@@ -517,49 +517,37 @@ static int load_and_reconcile_services(void) {
     }
 
     /*
-     * Descriptor errors are isolated to the bad file and can be tolerated when
-     * at least one valid service remains. Dependency-graph errors are different:
-     * accepting them could silently remove ordering guarantees and start a
-     * service too early, so those still reject a live reload.
+     * A malformed .conf file must not discard unrelated valid services.
+     * Keep parser errors separate from dependency-graph errors: invalid files
+     * are skipped, while a broken dependency graph remains fatal because
+     * silently dropping dependencies could start services in an unsafe order.
      */
-    int descriptor_errors = service_config_errors;
+    int parse_errors = service_config_errors;
     build_and_validate_dependency_graph(new_table, new_count);
-    int dependency_errors = service_config_errors - descriptor_errors;
+    int graph_errors = service_config_errors - parse_errors;
 
-    if (dependency_errors > 0) {
-        char msg[160];
-        snprintf(msg, sizeof(msg), "Service dependency graph contains %d error(s)", dependency_errors);
+    if (service_config_errors > 0) {
+        char msg[192];
+        snprintf(msg, sizeof(msg),
+                 "Service configuration contains %d error(s): %d file/entry, %d dependency",
+                 service_config_errors, parse_errors, graph_errors);
         log_warn("init", msg);
+    }
 
+    if (graph_errors > 0 || (parse_errors > 0 && new_count == 0)) {
         if (num_services > 0) {
             log_warn("init", "Reload rejected; keeping the currently running service graph");
             return -1;
         }
 
-        log_warn("init", "Initial dependency graph is invalid; starting the built-in safe service set");
+        log_warn("init", "Initial configuration has no safe service graph; starting the built-in safe service set");
         memset(new_table, 0, sizeof(new_table));
         new_count = 0;
+        service_config_errors = 0;
         load_builtin_safe_services(new_table, &new_count);
         build_and_validate_dependency_graph(new_table, new_count);
-    } else if (descriptor_errors > 0) {
-        char msg[160];
-        snprintf(msg, sizeof(msg), "Ignored %d invalid service descriptor error(s)", descriptor_errors);
-        log_warn("init", msg);
-
-        if (new_count == 0) {
-            if (num_services > 0) {
-                log_warn("init", "Reload rejected; no valid services remain");
-                return -1;
-            }
-
-            log_warn("init", "Initial configuration has no valid services; starting the built-in safe service set");
-            memset(new_table, 0, sizeof(new_table));
-            new_count = 0;
-            load_builtin_safe_services(new_table, &new_count);
-            build_and_validate_dependency_graph(new_table, new_count);
-        } else {
-            log_warn("init", "Continuing with valid service descriptors; invalid files were skipped");
-        }
+    } else if (parse_errors > 0) {
+        log_warn("init", "Ignoring invalid service files and continuing with the valid service set");
     } else if (new_count == 0 && num_services == 0) {
         if (config_files_seen == 0) {
             log_warn("init", "No service configuration files found; starting the built-in safe service set");
@@ -645,7 +633,7 @@ static int start_service(service_t *s) {
     }
 
     char log_buf[512];
-    snprintf(log_buf, sizeof(log_buf), "Starting service (command: %s)", s->command);
+    snprintf(log_buf, sizeof(log_buf), "Starting service (command: %.470s)", s->command);
     log_info(s->name, log_buf);
 
     s->state = SVC_STARTING;
@@ -853,13 +841,14 @@ static void init_ipc_socket(void) {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    if (strlen(g_sock_path) >= sizeof(addr.sun_path)) {
+    size_t sock_len = strlen(g_sock_path);
+    if (sock_len >= sizeof(addr.sun_path)) {
         log_warn("init", "IPC socket path is too long; initctl IPC disabled");
         close(ipc_sock_fd);
         ipc_sock_fd = -1;
         return;
     }
-    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", g_sock_path);
+    memcpy(addr.sun_path, g_sock_path, sock_len + 1);
 
     if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
         if (chmod(g_sock_path, 0666) != 0 || listen(ipc_sock_fd, 32) != 0) {
@@ -1205,27 +1194,42 @@ int main(int argc, char **argv) {
             g_test_mode = true;
         } else if (strcmp(argv[i], "--strict-auth") == 0) {
             g_strict_auth = true;
-        } else if (strcmp(argv[i], "--services-dir") == 0 && i + 1 < argc) {
-            const char *value = argv[++i];
+        } else if (strcmp(argv[i], "--services-dir") == 0) {
+            if (++i >= argc) {
+                fprintf(stderr, "init: --services-dir requires a path\n");
+                return 2;
+            }
+            const char *value = argv[i];
             if (strlen(value) >= sizeof(g_service_dir)) {
                 fprintf(stderr, "init: --services-dir path is too long\n");
                 return 2;
             }
             snprintf(g_service_dir, sizeof(g_service_dir), "%s", value);
-        } else if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
-            const char *value = argv[++i];
-            if (strlen(value) >= sizeof(g_sock_path)) {
-                fprintf(stderr, "init: --socket path is too long\n");
+        } else if (strcmp(argv[i], "--socket") == 0) {
+            if (++i >= argc) {
+                fprintf(stderr, "init: --socket requires a path\n");
+                return 2;
+            }
+            const char *value = argv[i];
+            if (strlen(value) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
+                fprintf(stderr, "init: --socket path is too long for AF_UNIX\n");
                 return 2;
             }
             snprintf(g_sock_path, sizeof(g_sock_path), "%s", value);
-        } else if (strcmp(argv[i], "--log-dir") == 0 && i + 1 < argc) {
-            const char *value = argv[++i];
+        } else if (strcmp(argv[i], "--log-dir") == 0) {
+            if (++i >= argc) {
+                fprintf(stderr, "init: --log-dir requires a path\n");
+                return 2;
+            }
+            const char *value = argv[i];
             if (strlen(value) >= sizeof(g_log_dir)) {
                 fprintf(stderr, "init: --log-dir path is too long\n");
                 return 2;
             }
             snprintf(g_log_dir, sizeof(g_log_dir), "%s", value);
+        } else {
+            fprintf(stderr, "init: unknown option: %s\n", argv[i]);
+            return 2;
         }
     }
 
