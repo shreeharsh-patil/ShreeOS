@@ -23,14 +23,23 @@ rm -rf "$SOURCE"
 tar -xzf "$ARCHIVE" -C "$BASE_SOURCES"
 cd "$SOURCE"
 
-perl ./Configure linux-x86_64 \
-  --prefix=/usr \
-  --openssldir=/etc/ssl \
-  --libdir=lib \
-  --cross-compile-prefix="${LUMEN_TARGET_TRIPLET}-" \
-  --sysroot="${LUMEN_SYSROOT}" \
-  shared \
-  no-tests
+# common.sh exports CC/AR/etc. as fully-prefixed target tools. OpenSSL's
+# --cross-compile-prefix applies that prefix itself; leaving those variables in
+# the environment would produce a double-prefixed compiler name.
+env -u CC -u CXX -u AR -u AS -u RANLIB -u LD -u STRIP \
+  perl ./Configure linux-x86_64 \
+    --prefix=/usr \
+    --openssldir=/etc/ssl \
+    --libdir=lib \
+    --cross-compile-prefix="${LUMEN_TARGET_TRIPLET}-" \
+    --sysroot="${LUMEN_SYSROOT}" \
+    shared \
+    no-tests
+
+# Guard against this regression before the expensive compile starts.
+if grep -Fq "${LUMEN_TARGET_TRIPLET}-${LUMEN_TARGET_TRIPLET}-gcc" Makefile; then
+  lumen_die "OpenSSL compiler was double-prefixed during cross configuration"
+fi
 
 make -j"${LUMEN_MAKE_JOBS}"
 make DESTDIR="${LUMEN_STAGE_ROOT}" install_sw install_ssldirs
