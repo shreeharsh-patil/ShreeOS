@@ -60,7 +60,7 @@ install-to-disk.sh <disk-device>
   [--yes]
   [--hostname=<name>]
   [--timezone=<zone>]
-  [--credentials-file=<path>]
+  --credentials-file=<path>
   [--username=<name>]
   [--boot-mode=both|uefi|bios]
 ```
@@ -70,8 +70,8 @@ Use `--yes` only after verifying the target disk. The default boot mode is
 
 ### Secure credentials file
 
-Passwords are **not** accepted as command-line arguments. The credentials file
-must:
+Passwords are **not** accepted as command-line arguments. A credentials file is
+required for every installation and must:
 
 - be a regular file, not a symlink;
 - be owned by the invoking user;
