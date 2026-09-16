@@ -85,14 +85,20 @@ sequenceDiagram
     actor User as Hardware / QEMU
     participant Boot as GRUB2 Bootloader
     participant Kernel as Linux Kernel Matrix
+    participant EarlyInit as Initramfs /init Handoff
     participant Init as Custom Init (PID 1)
     participant Service as Service Supervisor
     participant Desktop as Window Manager Shell
 
     User->>Boot: Power On / Select ShreeOS Entry
     Boot->>Kernel: Load bzImage & Initramfs Payload
-    Kernel->>Kernel: Initialize Hardware Drivers & Mount RootFS
-    Kernel->>Init: Execute PID 1 Handoff (/sbin/init)
+    Kernel->>EarlyInit: Execute initramfs /init
+    alt Installed boot (root=UUID is present)
+        EarlyInit->>EarlyInit: Resolve UUID & mount installed ext4 root
+        EarlyInit->>Init: switch_root to /sbin/init
+    else Live ISO boot
+        EarlyInit->>Init: Execute /sbin/init from initramfs
+    end
     
     rect rgb(20, 30, 20)
         note over Init,Service: System Initialization Lifecycle
@@ -353,8 +359,9 @@ unset CREDS_FILE
 ```
 
 The credentials file must be a regular non-symlink file, owned by the invoking
-user, with mode exactly `0600`. Line 1 is the root password; optional line 2
-is the primary user's password.
+user, with mode exactly `0600`. Line 1 is the root password. When
+`--username` is supplied, line 2 is required and contains that user's
+password. Both passwords must be at least 8 characters.
 
 Boot modes:
 
@@ -365,8 +372,21 @@ Boot modes:
 | `bios` | Installs legacy i386-pc GRUB to the target disk. |
 
 Before reporting success, the installer verifies the installed kernel,
-initramfs, GRUB configuration, root filesystem UUID/`fstab`, and credential
-file permissions.
+initramfs, GRUB configuration, root filesystem UUID/`fstab`, account/password
+state, and sensitive-file permissions.
+
+#### What happens on the first installed boot
+
+The installed GRUB entry passes the root filesystem as `root=UUID=...` and
+loads the ShreeOS initramfs. The initramfs `/init` handoff waits for that
+device, resolves the UUID with `blkid`, mounts the installed ext4 filesystem,
+checks that it is a ShreeOS root, and then uses `switch_root` to start the
+installed `/sbin/init`. This is different from live-ISO boot, which has no
+`root=` argument and intentionally continues from the in-memory rootfs.
+
+The strict QEMU installed-disk test now requires **both** the real-root handoff
+marker and the normal ShreeOS service-ready marker, so an in-RAM false-positive
+boot no longer counts as an installation success.
 
 ### Build Recovery & Troubleshooting
 
@@ -382,6 +402,7 @@ file permissions.
 | ISO validation fails | Run `make clean-iso && make PROFILE=minimal iso && make PROFILE=minimal verify-iso`. |
 | Installer refuses the target disk | Check mounts/swap with `lsblk` and `findmnt`; do not bypass active-disk safety checks. |
 | Installation is interrupted | Treat the target as incomplete; correct the problem and rerun installation before attempting to boot it. |
+| Installed boot drops to the initramfs emergency shell | Check the GRUB `root=UUID=...` value with `blkid`, verify the root partition is ext4 and intact, and rerun the strict QEMU installed-disk test before using the disk. |
 
 Targeted cleanup commands:
 
