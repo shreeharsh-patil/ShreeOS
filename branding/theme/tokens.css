@@ -36,10 +36,10 @@
 }
 
 [data-theme="dark"] {
-  --shree-bg: #0F0F10;
-  --shree-surface: #1C1C1E;
-  --shree-surface-secondary: #242426;
-  --shree-surface-elevated: rgba(35, 35, 38, 0.88);
+  --shree-bg: #1C1C1E;
+  --shree-surface: #2C2C2E;
+  --shree-surface-secondary: #1C1C1E;
+  --shree-surface-elevated: rgba(44, 44, 46, 0.88);
   --shree-text-primary: #F5F5F7;
   --shree-text-secondary: #A1A1A6;
   --shree-text-muted: #86868B;

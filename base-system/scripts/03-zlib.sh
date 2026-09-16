@@ -25,10 +25,10 @@ cd "$SRCDIR"
 # zlib uses a custom configure script, not autoconf.
 # Must pass CC explicitly for cross-compilation.
 CC="${CC}" ./configure \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
-  --libdir="${LUMEN_STAGE_ROOT}/usr/lib"
+  --prefix=/usr \
+  --libdir=/usr/lib
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

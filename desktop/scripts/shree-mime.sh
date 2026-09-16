@@ -27,7 +27,9 @@ fi
 
 get_default() {
   local type="$1"
-  grep -oP "^${type}=\\K.*" "$MIME_FILE" 2>/dev/null || echo "default"
+  local value
+  value=$(awk -F= -v key="$type" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$MIME_FILE" 2>/dev/null || true)
+  printf '%s\n' "${value:-default}"
 }
 
 set_default() {

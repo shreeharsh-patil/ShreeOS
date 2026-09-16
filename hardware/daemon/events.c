@@ -12,10 +12,19 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifndef IFF_LOWER_UP
+#define IFF_LOWER_UP 0x10000
+#endif
+
 static int read_int_file(const char *path) {
     FILE *file = fopen(path, "r");
     int value = -1;
-    if (file) { (void)fscanf(file, "%d", &value); fclose(file); }
+    if (file) {
+        if (fscanf(file, "%d", &value) != 1) {
+            value = -1;
+        }
+        fclose(file);
+    }
     return value;
 }
 

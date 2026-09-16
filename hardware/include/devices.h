@@ -37,5 +37,10 @@ int shreed_collect_drivers(const char *root, char *buffer, size_t size, bool mis
 int shreed_collect_firmware(const char *root, char *buffer, size_t size);
 int shreed_collect_diagnostics(const char *root, char *buffer, size_t size);
 int shreed_collect_hardware(const char *root, char *buffer, size_t size);
+int shreed_collect_battery(const char *root, char *buffer, size_t size);
+int shreed_collect_power(const char *root, char *buffer, size_t size);
+int shreed_collect_brightness(const char *root, char *buffer, size_t size);
+int shreed_collect_audio(const char *root, char *buffer, size_t size);
+int shreed_collect_display(const char *root, char *buffer, size_t size);
 
 #endif

@@ -39,7 +39,6 @@ fi
 echo ""
 echo "  --- Checking essential binaries ---"
 check_bin bash
-check_bin sh
 check_bin ls
 check_bin cat
 check_bin cp
@@ -56,6 +55,14 @@ check_bin patch
 check_bin m4
 check_bin bison
 check_bin diff
+
+if [ -x "${LUMEN_STAGE_ROOT}/bin/sh" ]; then
+  lumen_ok "Found: /bin/sh compatibility shell"
+  PASSED=$((PASSED + 1))
+else
+  lumen_warn "Missing: /bin/sh compatibility shell"
+  FAILED=$((FAILED + 1))
+fi
 
 echo ""
 echo "  --- Checking libraries ---"
@@ -76,17 +83,17 @@ if [ $FAILED -gt 0 ]; then
   exit 1
 fi
 
-# Verify bash can execute code
+# Do not execute a target binary against the host runtime. Verify that
+# the staged shell is the expected target ELF; runtime execution is covered
+# later by the rootfs/QEMU tests with the target loader and libraries present.
 echo ""
-lumen_step "Testing bash execution"
+lumen_step "Validating target bash binary"
 BASH="${LUMEN_STAGE_ROOT}/usr/bin/bash"
-if [ -x "$BASH" ]; then
-  OUTPUT=$("$BASH" -c 'echo "ShreeOS base system OK"')
-  if [ "$OUTPUT" = "ShreeOS base system OK" ]; then
-    lumen_ok "Bash execution test passed"
-    lumen_ok "=== BASE SYSTEM SMOKE TEST PASSED ==="
-    exit 0
-  fi
+if command -v file >/dev/null 2>&1 && file "$BASH" | grep -q 'ELF 64-bit.*x86-64'; then
+  lumen_ok "Target bash ELF validation passed"
+  lumen_ok "=== BASE SYSTEM SMOKE TEST PASSED ==="
+  exit 0
 fi
 
+lumen_warn "Target bash is not a valid x86-64 ELF binary"
 exit 1

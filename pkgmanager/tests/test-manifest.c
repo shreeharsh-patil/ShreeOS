@@ -5,12 +5,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #ifdef _WIN32
 #include <direct.h>
 #define mkdir(path, mode) _mkdir(path)
 #else
 #include <sys/stat.h>
+#include <sys/file.h>
 #endif
 
 static int failures = 0;
@@ -165,6 +167,104 @@ static void test_manifest_check_deps(void) {
     manifest_free(m);
 }
 
+static void test_manifest_conflicts_provides_replaces(void) {
+    const char *json =
+        "{\n"
+        "  \"name\": \"network-manager\",\n"
+        "  \"version\": \"2.1.0\",\n"
+        "  \"dependencies\": [\"libnet >= 1.0\"],\n"
+        "  \"conflicts\": [\"legacy-network\"],\n"
+        "  \"provides\": [\"network-service\", \"dhcp-client\"],\n"
+        "  \"replaces\": [\"old-network\"]\n"
+        "}";
+
+    manifest *m = manifest_parse(json);
+    TEST("parse with conflicts/provides/replaces", m != NULL);
+    if (m) {
+        TEST("name matches", strcmp(m->name, "network-manager") == 0);
+        TEST("1 dep", m->ndeps == 1 && strcmp(m->deps[0], "libnet >= 1.0") == 0);
+        TEST("1 conflict", m->nconflicts == 1 && strcmp(m->conflicts[0], "legacy-network") == 0);
+        TEST("2 provides", m->nprovides == 2 && strcmp(m->provides[0], "network-service") == 0 && strcmp(m->provides[1], "dhcp-client") == 0);
+        TEST("1 replaces", m->nreplaces == 1 && strcmp(m->replaces[0], "old-network") == 0);
+
+        /* Test save & reload */
+        const char *tmpdir = "/tmp/lpm-test-cpr";
+        mkdir(tmpdir, 0755);
+        TEST("save manifest with cpr", manifest_save(m, tmpdir) == 0);
+        manifest_free(m);
+
+        manifest *reloaded = manifest_load(tmpdir);
+        TEST("reload manifest with cpr", reloaded != NULL);
+        if (reloaded) {
+            TEST("reloaded conflicts count", reloaded->nconflicts == 1 && strcmp(reloaded->conflicts[0], "legacy-network") == 0);
+            TEST("reloaded provides count", reloaded->nprovides == 2 && strcmp(reloaded->provides[0], "network-service") == 0);
+            TEST("reloaded replaces count", reloaded->nreplaces == 1 && strcmp(reloaded->replaces[0], "old-network") == 0);
+            manifest_free(reloaded);
+        }
+        char mp[256]; snprintf(mp, sizeof(mp), "%s/manifest.json", tmpdir);
+        unlink(mp); rmdir(tmpdir);
+    }
+}
+
+static void test_dep_spec_parsing(void) {
+    char name[64], op[16], ver[64];
+
+    TEST("parse simple name", lpm_parse_dep_spec("libssl", name, sizeof(name), op, sizeof(op), ver, sizeof(ver)) &&
+         strcmp(name, "libssl") == 0 && op[0] == '\0' && ver[0] == '\0');
+
+    TEST("parse with >= and spaces", lpm_parse_dep_spec("glibc >= 2.38", name, sizeof(name), op, sizeof(op), ver, sizeof(ver)) &&
+         strcmp(name, "glibc") == 0 && strcmp(op, ">=") == 0 && strcmp(ver, "2.38") == 0);
+
+    TEST("parse with <= without spaces", lpm_parse_dep_spec("python<=3.12", name, sizeof(name), op, sizeof(op), ver, sizeof(ver)) &&
+         strcmp(name, "python") == 0 && strcmp(op, "<=") == 0 && strcmp(ver, "3.12") == 0);
+
+    TEST("parse with ==", lpm_parse_dep_spec("busybox == 1.36.1", name, sizeof(name), op, sizeof(op), ver, sizeof(ver)) &&
+         strcmp(name, "busybox") == 0 && strcmp(op, "==") == 0 && strcmp(ver, "1.36.1") == 0);
+}
+
+static void test_version_constraints(void) {
+    TEST("1.2.3 >= 1.2.0 (true)", lpm_version_matches("1.2.3", ">=", "1.2.0") == true);
+    TEST("1.2.0 >= 1.2.0 (true)", lpm_version_matches("1.2.0", ">=", "1.2.0") == true);
+    TEST("1.1.9 >= 1.2.0 (false)", lpm_version_matches("1.1.9", ">=", "1.2.0") == false);
+
+    TEST("2.0.0 <= 2.1.0 (true)", lpm_version_matches("2.0.0", "<=", "2.1.0") == true);
+    TEST("2.2.0 <= 2.1.0 (false)", lpm_version_matches("2.2.0", "<=", "2.1.0") == false);
+
+    TEST("1.5.0 == 1.5.0 (true)", lpm_version_matches("1.5.0", "==", "1.5.0") == true);
+    TEST("1.5.1 == 1.5.0 (false)", lpm_version_matches("1.5.1", "==", "1.5.0") == false);
+
+    TEST("2.0 > 1.9 (true)", lpm_version_matches("2.0", ">", "1.9") == true);
+    TEST("2.0 > 2.0 (false)", lpm_version_matches("2.0", ">", "2.0") == false);
+}
+
+static void test_path_traversal_protection(void) {
+    TEST("reject ../ relative path", lpm_safe_path("../etc/shadow") == false);
+    TEST("reject /usr/bin/../../etc/shadow", lpm_safe_path("/usr/bin/../../etc/shadow") == false);
+    TEST("reject /var/lib/lpm db path", lpm_safe_path("/var/lib/lpm/manifest.json") == false);
+    TEST("reject trailing /..", lpm_safe_path("/usr/bin/..") == false);
+    TEST("reject double slash //etc/shadow", lpm_safe_path("//etc/shadow") == false);
+    TEST("accept valid /usr/bin/hello", lpm_safe_path("/usr/bin/hello") == true);
+    TEST("accept valid /etc/hostname", lpm_safe_path("/etc/hostname") == true);
+    TEST("accept valid /lib/modules/test.ko", lpm_safe_path("/lib/modules/test.ko") == true);
+}
+
+static void test_safe_locking(void) {
+    const char *test_lock = "/tmp/lpm-test.lock";
+    setenv("LPM_LOCK_FILE", test_lock, 1);
+    unlink(test_lock);
+
+    TEST("acquire lock", lpm_lock() == 0);
+    /* Attempting recursive lock should fail */
+    int second_fd = open(test_lock, O_RDWR);
+    if (second_fd >= 0) {
+        TEST("flock prevents concurrent lock", flock(second_fd, LOCK_EX | LOCK_NB) != 0);
+        close(second_fd);
+    }
+    lpm_unlock();
+    unlink(test_lock);
+    unsetenv("LPM_LOCK_FILE");
+}
+
 int main(void) {
     test_basic_manifest();
     test_manifest_with_deps();
@@ -175,6 +275,11 @@ int main(void) {
     test_sha256_hashing();
     test_version_comparison();
     test_manifest_check_deps();
+    test_manifest_conflicts_provides_replaces();
+    test_dep_spec_parsing();
+    test_version_constraints();
+    test_path_traversal_protection();
+    test_safe_locking();
 
     printf("\n%d failures\n", failures);
     return failures ? 1 : 0;

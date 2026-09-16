@@ -11,24 +11,21 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bison flex gawk texinfo \
-            curl patch bzip2 xz-utils bc libssl-dev libelf-dev cpio gzip \
-            xorriso grub-pc grub-efi-amd64-bin rsync qemu-system-x86 ovmf \
-            libx11-dev libxinerama-dev libxft-dev libcrypt-dev
+        run: bash scripts/install-build-deps-apt.sh
 
       - name: Restore cached toolchain & sysroot
         id: cache-toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             build/tools
             build/sysroot
-          key: toolchain-sysroot-${{ hashFiles('build.conf', 'toolchain/scripts/**', 'toolchain/patches/**') }}
+          key: toolchain-sysroot-${{ hashFiles('build.conf', 'scripts/common.sh', 'toolchain/scripts/**', 'toolchain/patches/**') }}
+          restore-keys: |
+            toolchain-sysroot-
 
       - name: Build Toolchain (if not cached)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -41,16 +38,12 @@ jobs:
           mkdir -p build/.markers
           touch build/.markers/.toolchain
 
-      - name: Build Desktop ISO Profile
+      - name: Build and certify Desktop ISO Profile
         run: |
-          make PROFILE=desktop iso
+          bash scripts/build.sh desktop
 
       - name: Run verification test suite
         run: |
-          make test-unit
-          bash tests/smoke/run-all.sh
-          bash tests/qemu/boot-iso-bios.sh
-          bash tests/qemu/boot-iso-uefi.sh
           make test-all
 
       - name: Create release checksums

@@ -98,9 +98,22 @@ if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "bios" ]; then
   fi
 fi
 
-if [ "$UEFI_SUCCESS" = false ] && [ "$BIOS_SUCCESS" = false ]; then
-  shreeos_die "FATAL: Neither UEFI nor BIOS GRUB installation succeeded on ${DISK}."
-fi
+case "$BOOT_MODE" in
+  both)
+    if [ "$UEFI_SUCCESS" != true ] || [ "$BIOS_SUCCESS" != true ]; then
+      shreeos_die "FATAL: --boot-mode=both requires both UEFI and BIOS GRUB installation to succeed."
+    fi
+    ;;
+  uefi)
+    [ "$UEFI_SUCCESS" = true ] || shreeos_die "FATAL: UEFI GRUB installation did not complete."
+    ;;
+  bios)
+    [ "$BIOS_SUCCESS" = true ] || shreeos_die "FATAL: BIOS GRUB installation did not complete."
+    ;;
+  *)
+    shreeos_die "Invalid boot mode: $BOOT_MODE"
+    ;;
+esac
 
 # 3. Detect Root UUID and Generate Target grub.cfg (Fail closed if missing)
 shreeos_log "Discovering root filesystem UUID for ${TARGET}..."
@@ -143,7 +156,7 @@ insmod part_msdos
 insmod ext2
 insmod fat
 
-menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
+menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.2.0-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet ${CMDLINE_EXTRA}
@@ -155,13 +168,13 @@ menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.1.0-dev}" {
 menuentry "${DISTRO_NAME:-ShreeOS} (Recovery Mode)" {
     echo "Loading Linux kernel in single-user recovery mode..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.mode=recovery ${CMDLINE_EXTRA}
     initrd /boot/initramfs.cpio.gz
 }
 
-menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State" {
+menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State (SafeUpdate Rollback)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro shreeos.rollback=1 ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.rollback=1 ${CMDLINE_EXTRA}
     initrd /boot/initramfs.cpio.gz
 }
 EOF

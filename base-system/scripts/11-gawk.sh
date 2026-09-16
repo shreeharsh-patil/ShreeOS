@@ -24,13 +24,13 @@ fi
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
 "${SRCDIR}/configure" \
-  --prefix="${LUMEN_STAGE_ROOT}/usr" \
+  --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
-  --docdir="${LUMEN_STAGE_ROOT}/usr/share/doc/gawk-${PKG_VER}"
+  --docdir="/usr/share/doc/gawk-${PKG_VER}"
 
 make -j"${LUMEN_MAKE_JOBS}"
-make install
+make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

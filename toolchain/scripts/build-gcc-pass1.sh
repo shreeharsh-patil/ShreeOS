@@ -24,8 +24,13 @@ cd "$BUILDDIR"
 "${SRCDIR}/configure" \
   --prefix="${LUMEN_TOOLS}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
+  --with-glibc-version="${VER_GLIBC}" \
   --with-sysroot="${LUMEN_SYSROOT}" \
+  --with-newlib \
+  --without-headers \
   --disable-nls \
+  --disable-shared \
+  --disable-threads \
   --enable-languages=c \
   --disable-libatomic \
   --disable-libgomp \

@@ -46,10 +46,10 @@ fi
 lumen_ok "Binary format verified: ELF x86_64"
 
 # 5. Check static linking
-if ldd "${TESTDIR}/hello" 2>&1 | grep -q "not a dynamic executable"; then
+if (ldd "${TESTDIR}/hello" 2>&1 || true) | grep -q "not a dynamic executable"; then
   lumen_ok "Binary is statically linked (no dynamic dependencies)"
 else
-  lumen_warn "Binary is dynamically linked (unexpected for -static flag)"
+  lumen_die "Binary is not statically linked (unexpected for -static flag)"
 fi
 
 # 6. Execute the binary
@@ -66,8 +66,57 @@ else
   echo "  Skipping runtime test — use QEMU user mode on CI"
 fi
 
+# 7. Verify C++ cross-compiler and libstdc++
+CXX="${LUMEN_TOOLS}/bin/${LUMEN_TARGET_TRIPLET}-g++"
+if [ ! -x "$CXX" ]; then
+  lumen_die "C++ cross-compiler not found at ${CXX}"
+fi
+lumen_ok "C++ cross-compiler found: ${CXX}"
+
+cat > "${TESTDIR}/hello.cpp" << 'EOF'
+#include <iostream>
+#include <vector>
+#include <string>
+
+int main() {
+  std::vector<std::string> msg = {"ShreeOS", "C++", "toolchain", "OK"};
+  for (size_t i = 0; i < msg.size(); ++i) {
+    std::cout << msg[i] << (i + 1 < msg.size() ? " " : "\n");
+  }
+  return 0;
+}
+EOF
+
+"$CXX" -static "${TESTDIR}/hello.cpp" -o "${TESTDIR}/hello_cpp"
+lumen_ok "Static C++ hello-world compiled"
+
+if file "${TESTDIR}/hello_cpp" | grep -q "x86-64"; then
+  OUTPUT_CPP=$("${TESTDIR}/hello_cpp")
+  echo "  C++ Output: ${OUTPUT_CPP}"
+  if [ "$OUTPUT_CPP" = "ShreeOS C++ toolchain OK" ]; then
+    lumen_ok "C++ binary executed and produced correct output"
+  else
+    lumen_die "Unexpected C++ output: ${OUTPUT_CPP}"
+  fi
+fi
+
+# 8. Verify dynamic C linking
+"$CC" "${TESTDIR}/hello.c" -o "${TESTDIR}/hello_dyn"
+if ! readelf -d "${TESTDIR}/hello_dyn" | grep -q "libc\.so"; then
+  lumen_die "Dynamic C binary does not link against libc.so"
+fi
+lumen_ok "Dynamic C binary compiled and verified against sysroot libc"
+
+# 9. Verify dynamic C++ linking
+"$CXX" "${TESTDIR}/hello.cpp" -o "${TESTDIR}/hello_cpp_dyn"
+if ! readelf -d "${TESTDIR}/hello_cpp_dyn" | grep -q "libstdc++\.so"; then
+  lumen_die "Dynamic C++ binary does not link against libstdc++.so"
+fi
+lumen_ok "Dynamic C++ binary compiled and verified against libstdc++.so"
+
 echo ""
 lumen_ok "=== TOOLCHAIN SMOKE TEST PASSED ==="
-echo "  Compiler: ${CC}"
-echo "  Version:  ${CC_VERSION}"
-echo "  Binary:   ${TESTDIR}/hello"
+echo "  C Compiler:   ${CC}"
+echo "  C++ Compiler: ${CXX}"
+echo "  Version:      ${CC_VERSION}"
+

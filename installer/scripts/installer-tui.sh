@@ -20,14 +20,20 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
   shreeos_ok() { echo "  [OK] $1"; }
   shreeos_warn() { echo "  [WARN] $1"; }
   shreeos_die() { echo "  [ERROR] $1" >&2; exit 1; }
+  shreeos_require_cmd() { for c in "$@"; do command -v "$c" >/dev/null 2>&1 || shreeos_die "Missing required command: $c"; done; }
 }
+
+if [ "$(id -u)" -ne 0 ]; then
+  shreeos_die "The interactive installer requires root privileges. Re-run it with sudo."
+fi
+shreeos_require_cmd lsblk findmnt realpath stat awk grep
 
 clear
 
 echo "┌──────────────────────────────────────────────────────────────────────────┐"
 echo "│                                                                          │"
 echo "│                                ShreeOS                                   │"
-echo "│                         Version 0.1.0-dev (x86_64)                       │"
+printf "│                         Version %-12.12s (x86_64)                │\n" "${DISTRO_VERSION:-0.2.0-dev}"
 echo "│                                                                          │"
 echo "│            Designed for Performance, Safety, and Restraint               │"
 echo "│                                                                          │"
@@ -45,20 +51,112 @@ read -r -p "Press [Enter] to begin installation setup... " _
 clear
 # Stage 2: Disk Selection
 echo "==> Step 2 of 5: Target Disk Selection"
-echo "Available storage block devices:"
+echo "Detecting available storage devices (NVMe, SATA, VirtIO, MMC)..."
 echo "--------------------------------------------------------------------------"
-if command -v lsblk >/dev/null 2>&1; then
-  lsblk -d -o NAME,SIZE,MODEL,ROTA,TYPE | grep -E "disk|loop" || true
-else
-  fdisk -l 2>/dev/null | grep "Disk /dev/" || echo "No disks found"
+printf "  %-16s %-10s %-12s %-24s\n" "DEVICE" "SIZE" "TYPE" "MODEL"
+echo "--------------------------------------------------------------------------"
+
+disk_has_active_usage() {
+  local disk="$1"
+  [ -b "$disk" ] || return 1
+
+  local target_mms mounted swap_mms mm
+  if ! target_mms=$(lsblk -nr -o MAJ:MIN -- "$disk" 2>/dev/null); then
+    return 0
+  fi
+  [ -n "$target_mms" ] || return 0
+
+  if ! mounted=$(findmnt -r -n -o MAJ:MIN 2>/dev/null); then
+    return 0
+  fi
+  while IFS= read -r mm; do
+    [ -n "$mm" ] || continue
+    if grep -Fxq "$mm" <<< "$target_mms"; then
+      return 0
+    fi
+  done <<< "$mounted"
+
+  if command -v swapon >/dev/null 2>&1; then
+    if ! swap_mms=$(swapon --show --noheadings --raw --output MAJ:MIN 2>/dev/null); then
+      return 0
+    fi
+    while IFS= read -r mm; do
+      [ -n "$mm" ] || continue
+      if grep -Fxq "$mm" <<< "$target_mms"; then
+        return 0
+      fi
+    done <<< "$swap_mms"
+  fi
+
+  return 1
+}
+
+AVAILABLE_DISKS=()
+while read -r name size type tran; do
+  [ -n "$name" ] || continue
+  [ "$type" = "disk" ] || continue
+  [[ "$name" == sr* ]] && continue
+
+  DEV_PATH="/dev/${name}"
+  [ -b "$DEV_PATH" ] || continue
+  disk_has_active_usage "$DEV_PATH" && continue
+
+  MODEL=$(lsblk -dn -o MODEL -- "$DEV_PATH" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
+  TRANSPORT="${tran:-disk}"
+  case "$name" in
+    nvme*) TRANSPORT="NVMe" ;;
+    vd*)   TRANSPORT="VirtIO" ;;
+    sd*)   [ "$TRANSPORT" = "disk" ] && TRANSPORT="SATA/SCSI" ;;
+    mmc*)  TRANSPORT="MMC/SD" ;;
+  esac
+
+  printf "  %-16s %-10s %-12s %-24.24s\n" "$DEV_PATH" "$size" "$TRANSPORT" "${MODEL:-Generic Storage}"
+  AVAILABLE_DISKS+=("$DEV_PATH")
+done < <(lsblk -d -n -o NAME,SIZE,TYPE,TRAN 2>/dev/null)
+if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
+  echo "  No unmounted candidate disks automatically detected."
+  echo "  You may manually specify a target block device or raw disk image below."
 fi
 echo "--------------------------------------------------------------------------"
 echo ""
-read -r -p "Enter target disk path (e.g. /dev/sda or /dev/nvme0n1): " TARGET_DISK
 
-if [[ -z "$TARGET_DISK" || ( ! -b "$TARGET_DISK" && ! -f "$TARGET_DISK" ) ]]; then
-  shreeos_die "Invalid target disk '${TARGET_DISK}'. Aborting."
-fi
+while true; do
+  read -r -p "Enter target disk path (e.g. /dev/nvme0n1, /dev/vda, /dev/sda): " TARGET_DISK
+  if [[ -z "$TARGET_DISK" ]]; then
+    echo "Error: Disk path cannot be empty."
+    continue
+  fi
+  if [ ! -b "$TARGET_DISK" ] && [ ! -f "$TARGET_DISK" ]; then
+    echo "Error: '${TARGET_DISK}' is not a valid block device or file."
+    continue
+  fi
+
+  if ! CANON_TGT=$(realpath -- "$TARGET_DISK" 2>/dev/null); then
+    echo "Error: Unable to resolve target path safely."
+    continue
+  fi
+
+  if [ -b "$CANON_TGT" ]; then
+    TARGET_TYPE=$(lsblk -dn -o TYPE -- "$CANON_TGT" 2>/dev/null || true)
+    if [ "$TARGET_TYPE" != "disk" ] && [ "$TARGET_TYPE" != "loop" ]; then
+      echo "Error: Target must be a whole disk/loop device, not a partition or mapped child."
+      continue
+    fi
+    if disk_has_active_usage "$CANON_TGT"; then
+      echo "Error: Target '${TARGET_DISK}' or one of its child devices is mounted or active swap. Refusing."
+      continue
+    fi
+  else
+    IMAGE_BYTES=$(stat -c '%s' "$CANON_TGT" 2>/dev/null || echo 0)
+    if ! [[ "$IMAGE_BYTES" =~ ^[0-9]+$ ]] || [ "$IMAGE_BYTES" -lt 1073741824 ]; then
+      echo "Error: Raw disk images must be at least 1 GiB for the ShreeOS partition layout."
+      continue
+    fi
+  fi
+
+  TARGET_DISK="$CANON_TGT"
+  break
+done
 
 clear
 # Stage 3: User & Hostname Configuration
@@ -92,8 +190,8 @@ while true; do
   echo -n "Confirm Root Administrator Password: "
   read -r -s ROOT_PW_CONFIRM
   echo ""
-  if [ -z "$ROOT_PW" ]; then
-    echo "Error: Password cannot be empty."
+  if [ "${#ROOT_PW}" -lt 8 ]; then
+    echo "Error: Root password must be at least 8 characters."
   elif [ "$ROOT_PW" != "$ROOT_PW_CONFIRM" ]; then
     echo "Error: Passwords do not match. Please try again."
   else
@@ -109,8 +207,8 @@ while true; do
   echo -n "Confirm Password for User (${USERNAME}): "
   read -r -s USER_PW_CONFIRM
   echo ""
-  if [ -z "$USER_PW" ]; then
-    echo "Error: Password cannot be empty."
+  if [ "${#USER_PW}" -lt 8 ]; then
+    echo "Error: User password must be at least 8 characters."
   elif [ "$USER_PW" != "$USER_PW_CONFIRM" ]; then
     echo "Error: Passwords do not match. Please try again."
   else
@@ -122,8 +220,20 @@ clear
 # Stage 4: Timezone Setup
 echo "==> Step 4 of 5: System Clock & Timezone"
 echo ""
-read -r -p "Timezone (e.g. UTC, Asia/Kolkata, America/New_York) [default: UTC]: " USER_TZ
-USER_TZ="${USER_TZ:-UTC}"
+while true; do
+  read -r -p "Timezone (e.g. UTC, Asia/Kolkata, America/New_York) [default: UTC]: " USER_TZ
+  USER_TZ="${USER_TZ:-UTC}"
+  if [[ "$USER_TZ" == *".."* ]] || [[ "$USER_TZ" == /* ]] ||
+     ! [[ "$USER_TZ" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]]; then
+    echo "Invalid timezone format."
+    continue
+  fi
+  if [ -d /usr/share/zoneinfo ] && [ ! -f "/usr/share/zoneinfo/$USER_TZ" ]; then
+    echo "Timezone '$USER_TZ' was not found on this system."
+    continue
+  fi
+  break
+done
 
 clear
 # Stage 5: Destructive Confirmation & Review
@@ -146,13 +256,19 @@ if [ "$CONFIRM_DISK" != "$TARGET_DISK" ]; then
   shreeos_die "Disk confirmation failed ('$CONFIRM_DISK' != '$TARGET_DISK'). Installation cancelled."
 fi
 
-# Create secure temporary credential file mode 0600
+# Create secure temporary credential file mode 0600.
 CREDS_FILE=$(mktemp /tmp/shreeos-creds-XXXXXX)
 chmod 600 "$CREDS_FILE"
 printf "%s\n%s\n" "$ROOT_PW" "$USER_PW" > "$CREDS_FILE"
+ROOT_PW=""; ROOT_PW_CONFIRM=""; USER_PW=""; USER_PW_CONFIRM=""
+unset ROOT_PW ROOT_PW_CONFIRM USER_PW USER_PW_CONFIRM
 
-# Clean credentials on exit
-trap 'rm -f "$CREDS_FILE"' EXIT
+cleanup_credentials() {
+  [ -n "${CREDS_FILE:-}" ] && rm -f "$CREDS_FILE"
+}
+trap cleanup_credentials EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo ""
 echo "==> Starting installation process..."

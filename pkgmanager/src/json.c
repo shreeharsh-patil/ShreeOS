@@ -1,9 +1,10 @@
 #include "json.h"
+#include "manifest.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define JSON_MAX_INPUT (1024U * 1024U)
+#define JSON_MAX_INPUT LPM_REPO_MAX_BYTES
 #define JSON_MAX_DEPTH 64U
 typedef struct { const char *p, *end; unsigned depth; } parser_t;
 

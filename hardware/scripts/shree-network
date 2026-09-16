@@ -1,0 +1,398 @@
+#!/usr/bin/env bash
+# hardware/scripts/shree-network — Lightweight network management for ShreeOS
+#
+# Avoids polling and hardcoded interface names (no eth0/wlan0 assumptions).
+# Discovers interfaces dynamically via /sys/class/net and shreed IPC.
+#
+# Commands:
+#   shree-network status                  # Show summary of all interfaces, IPs, routes, DNS
+#   shree-network list                    # List all network interfaces dynamically
+#   shree-network up [iface]              # Bring interface up & obtain DHCP lease
+#   shree-network down [iface]            # Bring interface down & release lease
+#   shree-network restart                 # Restart networking on all active interfaces
+#   shree-network dns [set <ip> | show]   # Show or set DNS resolvers
+#   shree-network wifi scan [iface]       # Scan for Wi-Fi networks (dynamic wireless iface)
+#   shree-network wifi connect <ssid> [p] # Connect to Wi-Fi network securely
+#
+set -euo pipefail
+
+SHREED_SOCK="${SHREED_SOCK:-/run/shreed.sock}"
+
+# Dynamic network interface discovery (never assume eth0 or wlan0)
+discover_interfaces() {
+  local ifaces=()
+  for dev in /sys/class/net/*; do
+    [ -e "$dev" ] || continue
+    local name="${dev##*/}"
+    [ "$name" = "lo" ] && continue
+    ifaces+=("$name")
+  done
+  echo "${ifaces[@]}"
+}
+
+discover_wireless() {
+  local wdev=""
+  for dev in /sys/class/net/*; do
+    [ -e "$dev" ] || continue
+    local name="${dev##*/}"
+    [ "$name" = "lo" ] && continue
+    if [ -d "${dev}/wireless" ] || [ -d "${dev}/phy80211" ]; then
+      wdev="$name"
+      break
+    fi
+  done
+  if [ -z "$wdev" ] && command -v iw >/dev/null 2>&1; then
+    wdev=$(iw dev 2>/dev/null | awk '$1=="Interface"{print $2; exit}' || echo "")
+  fi
+  echo "$wdev"
+}
+
+get_iface_type() {
+  local iface="$1"
+  if [ "$iface" = "lo" ]; then
+    echo "loopback"
+  elif [ -d "/sys/class/net/${iface}/wireless" ] || [ -d "/sys/class/net/${iface}/phy80211" ]; then
+    echo "wireless"
+  else
+    local t
+    t=$(cat "/sys/class/net/${iface}/type" 2>/dev/null || echo "1")
+    [ "$t" = "1" ] && echo "ethernet" || echo "other"
+  fi
+}
+
+cmd_status() {
+  echo "┌────────────────────────────────────────────────────────────────────────────┐"
+  echo "│                      ShreeOS Network Status Overview                       │"
+  echo "└────────────────────────────────────────────────────────────────────────────┘"
+  echo ""
+
+  # If shreed daemon is active, print daemon query
+  if [ -S "$SHREED_SOCK" ] && command -v shreedctl >/dev/null 2>&1; then
+    shreedctl network 2>/dev/null || true
+    echo ""
+  fi
+
+  printf "  %-12s %-10s %-8s %-18s %-20s\n" "INTERFACE" "TYPE" "STATE" "MAC ADDRESS" "IPv4 ADDRESS"
+  echo "  ──────────────────────────────────────────────────────────────────────────"
+
+  for dev in /sys/class/net/*; do
+    [ -e "$dev" ] || continue
+    local name="${dev##*/}"
+    local itype
+    itype=$(get_iface_type "$name")
+    local state
+    state=$(cat "${dev}/operstate" 2>/dev/null || echo "unknown")
+    local mac
+    mac=$(cat "${dev}/address" 2>/dev/null || echo "N/A")
+    local ip
+    ip=$(ip -4 -o addr show dev "$name" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | tr '\n' ' ' || echo "none")
+    [ -z "$ip" ] && ip="none"
+
+    printf "  %-12s %-10s %-8s %-18s %-20s\n" "$name" "$itype" "$state" "$mac" "$ip"
+  done
+
+  echo ""
+  echo "Default Gateway: $(ip route 2>/dev/null | awk '/^default/ {print $3}' || echo 'none')"
+  echo "DNS Servers:     $(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' | tr '\n' ' ' || echo 'none')"
+  echo ""
+}
+
+cmd_list() {
+  for dev in /sys/class/net/*; do
+    [ -e "$dev" ] || continue
+    local name="${dev##*/}"
+    local itype
+    itype=$(get_iface_type "$name")
+    local state
+    state=$(cat "${dev}/operstate" 2>/dev/null || echo "unknown")
+    local carrier
+    carrier=$(cat "${dev}/carrier" 2>/dev/null || echo "0")
+    local link="down"
+    [ "$carrier" = "1" ] && link="up"
+    echo "${name} (${itype}): state=${state}, link=${link}"
+  done
+}
+
+cmd_up() {
+  local target_ifaces=()
+  local failures=0
+  if [ $# -ge 1 ]; then
+    target_ifaces=("$1")
+  else
+    local all
+    all=$(discover_interfaces)
+    read -r -a target_ifaces <<< "$all"
+  fi
+
+  if [ ${#target_ifaces[@]} -eq 0 ]; then
+    echo "shree-network: No network interfaces detected." >&2
+    return 1
+  fi
+
+  if ! ip link set lo up >/dev/null 2>&1; then
+    echo "shree-network: Failed to bring loopback interface up." >&2
+    return 1
+  fi
+
+  for iface in "${target_ifaces[@]}"; do
+    echo "shree-network: Bringing up ${iface}..."
+    if ! ip link set "$iface" up >/dev/null 2>&1; then
+      if ! command -v ifconfig >/dev/null 2>&1 || ! ifconfig "$iface" up >/dev/null 2>&1; then
+        echo "  [ERROR] Failed to bring ${iface} up" >&2
+        failures=$((failures + 1))
+        continue
+      fi
+    fi
+
+    echo "shree-network: Requesting DHCP on ${iface}..."
+    if command -v dhcpcd >/dev/null 2>&1; then
+      if ! dhcpcd -w -t 15 "$iface" >/dev/null 2>&1; then
+        echo "  [WARN] DHCP client failed on ${iface}" >&2
+      fi
+    elif command -v udhcpc >/dev/null 2>&1; then
+      if ! udhcpc -n -q -T 3 -t 3 -i "$iface" >/dev/null 2>&1; then
+        echo "  [WARN] DHCP client failed on ${iface}" >&2
+      fi
+    else
+      echo "  [WARN] No DHCP client is installed" >&2
+    fi
+
+    local ip
+    ip=$(ip -4 -o addr show dev "$iface" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 || echo "")
+    if [ -n "$ip" ]; then
+      echo "  [OK] ${iface} is UP with IP ${ip}"
+    else
+      echo "  [WARN] ${iface} is UP, but no IPv4 lease is assigned" >&2
+      failures=$((failures + 1))
+    fi
+  done
+
+  [ "$failures" -eq 0 ]
+}
+
+cmd_down() {
+  local target_ifaces=()
+  local failures=0
+  if [ $# -ge 1 ]; then
+    target_ifaces=("$1")
+  else
+    local all
+    all=$(discover_interfaces)
+    read -r -a target_ifaces <<< "$all"
+  fi
+
+  for iface in "${target_ifaces[@]}"; do
+    echo "shree-network: Bringing down ${iface}..."
+    if command -v dhcpcd >/dev/null 2>&1; then
+      dhcpcd -k "$iface" >/dev/null 2>&1 || true
+    fi
+    if ! ip link set "$iface" down >/dev/null 2>&1; then
+      if ! command -v ifconfig >/dev/null 2>&1 || ! ifconfig "$iface" down >/dev/null 2>&1; then
+        echo "  [ERROR] Failed to bring ${iface} down" >&2
+        failures=$((failures + 1))
+        continue
+      fi
+    fi
+    echo "  [OK] ${iface} is DOWN"
+  done
+
+  [ "$failures" -eq 0 ]
+}
+
+cmd_dns() {
+  local sub="${1:-show}"
+  shift || true
+
+  case "$sub" in
+    show)
+      echo "Current DNS Servers (/etc/resolv.conf):"
+      grep -E '^nameserver' /etc/resolv.conf 2>/dev/null || echo "No nameservers configured."
+      ;;
+    set)
+      if [ $# -lt 1 ]; then
+        echo "Usage: shree-network dns set <ip-address> [ip-address-2]" >&2
+        return 1
+      fi
+      local tmp
+      tmp=$(mktemp /tmp/resolv.conf.XXXXXX)
+      for ns in "$@"; do
+        echo "nameserver ${ns}" >> "$tmp"
+      done
+      chmod 0644 "$tmp"
+      mv "$tmp" /etc/resolv.conf
+      echo "  [OK] Updated /etc/resolv.conf"
+      ;;
+    *)
+      echo "Usage: shree-network dns [show | set <ip> ...]" >&2
+      return 1
+      ;;
+  esac
+}
+
+cmd_wifi_scan() {
+  local iface="${1:-}"
+  if [ -z "$iface" ]; then
+    iface=$(discover_wireless)
+  fi
+
+  if [ -z "$iface" ]; then
+    echo "shree-network: No wireless network interface found." >&2
+    return 1
+  fi
+
+  echo "shree-network: Scanning Wi-Fi networks on ${iface}..."
+  if ! ip link set "$iface" up >/dev/null 2>&1; then
+    echo "shree-network: Unable to bring wireless interface ${iface} up." >&2
+    return 1
+  fi
+
+  if command -v iw >/dev/null 2>&1; then
+    iw dev "$iface" scan 2>/dev/null | grep -E 'SSID:|signal:' | awk '
+      /SSID:/ { ssid=$2 }
+      /signal:/ { printf "  %-32s (Signal: %s)\n", ssid, $2 }
+    ' | sort -u
+  elif command -v wpa_cli >/dev/null 2>&1; then
+    wpa_cli -i "$iface" scan >/dev/null 2>&1 || true
+    sleep 2
+    wpa_cli -i "$iface" scan_results 2>/dev/null
+  else
+    echo "shree-network: Neither 'iw' nor 'wpa_cli' available for scanning." >&2
+    return 1
+  fi
+}
+
+cmd_wifi_connect() {
+  if [ $# -lt 1 ]; then
+    echo "Usage: shree-network wifi connect <ssid> [password] [interface]" >&2
+    return 1
+  fi
+
+  local ssid="$1"
+  local pass="${2:-}"
+  local iface="${3:-}"
+  local ssid_len
+
+  ssid_len=$(printf '%s' "$ssid" | wc -c | tr -d '[:space:]')
+  if ! [[ "$ssid_len" =~ ^[0-9]+$ ]] || [ "$ssid_len" -lt 1 ] || [ "$ssid_len" -gt 32 ] ||
+     [[ "$ssid" == *$'\n'* || "$ssid" == *$'\r'* ]]; then
+    echo "shree-network: Invalid SSID." >&2
+    return 1
+  fi
+
+  if [ -z "$iface" ]; then
+    iface=$(discover_wireless)
+  fi
+
+  if [ -z "$iface" ] || [ ! -e "/sys/class/net/$iface" ]; then
+    echo "shree-network: No valid wireless network interface found." >&2
+    return 1
+  fi
+
+  echo "shree-network: Connecting to '${ssid}' on interface ${iface}..."
+  if ! ip link set "$iface" up >/dev/null 2>&1; then
+    echo "shree-network: Unable to bring ${iface} up." >&2
+    return 1
+  fi
+
+  command -v wpa_supplicant >/dev/null 2>&1 || {
+    echo "shree-network: wpa_supplicant is not installed." >&2
+    return 1
+  }
+
+  local wpa_cfg ssid_hex
+  wpa_cfg=$(mktemp /tmp/wpa_supplicant.XXXXXX.conf)
+  chmod 0600 "$wpa_cfg"
+
+  if [ -n "$pass" ]; then
+    if ! command -v wpa_passphrase >/dev/null 2>&1; then
+      pass=""
+      rm -f "$wpa_cfg"
+      echo "shree-network: wpa_passphrase is required for protected networks." >&2
+      return 1
+    fi
+    if ! printf '%s\n' "$pass" | wpa_passphrase "$ssid" 2>/dev/null |
+         sed '/^[[:space:]]*#psk=/d; /^[[:space:]]*ssid=/a\  scan_ssid=1' > "$wpa_cfg"; then
+      pass=""
+      rm -f "$wpa_cfg"
+      echo "shree-network: Failed to generate a protected Wi-Fi configuration." >&2
+      return 1
+    fi
+  else
+    ssid_hex=$(printf '%s' "$ssid" | od -An -tx1 | tr -d ' \n')
+    printf 'ctrl_interface=/run/wpa_supplicant\nnetwork={\n  ssid=%s\n  key_mgmt=NONE\n  scan_ssid=1\n}\n' "$ssid_hex" > "$wpa_cfg"
+  fi
+  pass=""
+  unset pass
+
+  if command -v wpa_cli >/dev/null 2>&1; then
+    wpa_cli -i "$iface" terminate >/dev/null 2>&1 || true
+  fi
+
+  if ! wpa_supplicant -B -i "$iface" -c "$wpa_cfg" >/dev/null 2>&1; then
+    rm -f "$wpa_cfg"
+    echo "shree-network: Failed to start wpa_supplicant on ${iface}." >&2
+    return 1
+  fi
+  rm -f "$wpa_cfg"
+
+  if command -v wpa_cli >/dev/null 2>&1; then
+    local connected=false
+    for _attempt in {1..15}; do
+      if [ "$(wpa_cli -i "$iface" status 2>/dev/null | sed -n 's/^wpa_state=//p' | head -n1)" = "COMPLETED" ]; then
+        connected=true
+        break
+      fi
+      sleep 1
+    done
+    if [ "$connected" != true ]; then
+      echo "shree-network: Wi-Fi authentication did not complete for '${ssid}'." >&2
+      return 1
+    fi
+  else
+    sleep 2
+  fi
+
+  cmd_up "$iface"
+}
+
+# Main CLI dispatch
+ACTION="${1:-status}"
+shift || true
+
+case "$ACTION" in
+  status)  cmd_status "$@" ;;
+  list)    cmd_list "$@" ;;
+  up)      cmd_up "$@" ;;
+  down)    cmd_down "$@" ;;
+  restart) cmd_down; sleep 1; cmd_up ;;
+  dns)     cmd_dns "$@" ;;
+  wifi)
+    SUBCMD="${1:-scan}"
+    shift || true
+    case "$SUBCMD" in
+      scan)    cmd_wifi_scan "$@" ;;
+      connect) cmd_wifi_connect "$@" ;;
+      *) echo "Usage: shree-network wifi <scan | connect <ssid> [pass]>" >&2; exit 1 ;;
+    esac
+    ;;
+  help|-h|--help)
+    echo "ShreeOS Network Manager (shree-network)"
+    echo "Usage: shree-network <command> [arguments]"
+    echo ""
+    echo "Commands:"
+    echo "  status                  Show overview of interfaces, IPs, gateways, DNS"
+    echo "  list                    List all dynamically discovered network interfaces"
+    echo "  up [iface]              Bring interface up and acquire DHCP lease"
+    echo "  down [iface]            Bring interface down"
+    echo "  restart                 Restart all active network connections"
+    echo "  dns [show | set <ip>]   Display or configure DNS resolvers"
+    echo "  wifi scan [iface]       Scan for available Wi-Fi access points"
+    echo "  wifi connect <ssid> [p] Connect to Wi-Fi network securely"
+    exit 0
+    ;;
+  *)
+    echo "Unknown command: ${ACTION}" >&2
+    echo "Run 'shree-network --help' for usage." >&2
+    exit 1
+    ;;
+esac

@@ -128,15 +128,50 @@ sequenceDiagram
 ### Building ShreeOS
 
 ```bash
-git clone https://github.com/shreeharsh-patil/shreeos.git
-cd shreeos
+git clone https://github.com/shreeharsh-patil/ShreeOS.git
+cd ShreeOS
 
-# Build full desktop ISO profile
+# Standard development build
 make PROFILE=desktop iso
 
 # Or build minimal headless profile
 make PROFILE=minimal iso
 ```
+
+### Reliable WSL2 Build
+
+For Windows development, keep the repository inside the WSL Linux filesystem (for example `~/ShreeOS`), not under `/mnt/c`.
+
+```bash
+git clone https://github.com/shreeharsh-patil/ShreeOS.git
+cd ShreeOS
+
+# Install the supported Ubuntu/Debian host dependencies and run diagnostics.
+make bootstrap-wsl
+
+# Strict build path: doctor -> source verification -> stages -> ISO verification.
+bash scripts/build.sh desktop
+```
+
+The strict desktop path intentionally stops if the ShreeOS **target** X11/FreeType/Fontconfig stack has not been source-built into the sysroot. Host packages such as `libx11-dev` are useful for tooling and tests, but they are not accepted as substitutes for target libraries.
+
+Useful recovery commands:
+
+```bash
+make clean-desktop
+make clean-kernel
+make clean-base
+make clean-toolchain
+make clean-iso
+
+# Re-check target graphical readiness.
+make graphics
+
+# Validate an already-built image, including BIOS/UEFI QEMU boot checks.
+make PROFILE=desktop verify-iso
+```
+
+The legacy `make PROFILE=desktop iso` target remains available for development while the full target graphics dependency chain is being completed, but `scripts/build.sh desktop` is the recommended path for builds that should be certified as ready.
 
 ### Testing & Validation
 

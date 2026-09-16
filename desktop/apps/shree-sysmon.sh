@@ -36,18 +36,38 @@ run_monitor() {
     echo "  [k] Kill Process   [r] Refresh Now   [q] Exit"
     echo ""
     
+    local KEY=""
     read -r -t 3 -n 1 KEY || true
     if [ "$KEY" = "q" ] || [ "$KEY" = "Q" ]; then
       break
     elif [ "$KEY" = "k" ] || [ "$KEY" = "K" ]; then
+      local TARGET_PID=""
       read -r -p "  Enter PID to terminate: " TARGET_PID
-      if [ -n "$TARGET_PID" ] && kill -15 "$TARGET_PID" 2>/dev/null; then
-        echo "  Sent SIGTERM to PID ${TARGET_PID}"
+      if ! [[ "$TARGET_PID" =~ ^[0-9]+$ ]] || [ "$TARGET_PID" -le 1 ] || [ "$TARGET_PID" -eq "$$" ]; then
+        echo "  Invalid or protected PID: ${TARGET_PID:-<empty>}"
         sleep 1
+        continue
+      fi
+      if [ ! -d "/proc/$TARGET_PID" ]; then
+        echo "  PID ${TARGET_PID} no longer exists"
+        sleep 1
+        continue
+      fi
+
+      local target_name
+      target_name=$(ps -p "$TARGET_PID" -o comm= 2>/dev/null | head -n1 || true)
+      local confirm=""
+      read -r -p "  Terminate PID ${TARGET_PID} (${target_name:-unknown})? [y/N]: " confirm
+      if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        continue
+      fi
+
+      if kill -15 "$TARGET_PID" 2>/dev/null; then
+        echo "  Sent SIGTERM to PID ${TARGET_PID}"
       else
         echo "  Failed to terminate PID ${TARGET_PID}"
-        sleep 1
       fi
+      sleep 1
     fi
   done
 }
