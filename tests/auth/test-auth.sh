@@ -68,8 +68,22 @@ else
 fi
 rm -f "$CREDS_FILE"
 
-# Insecure/malformed username tests must fail before any privileged operation.
-INVALID_USERS=("user:root" "../baduser" "user with spaces" "user\\nname" "-dashfirst" "user/slash")
+# Password policy must also be enforced when configure-user.sh is called
+# directly instead of through the installer wrapper.
+CREDS_FILE=$(mktemp /tmp/cred-short-XXXXXX)
+chmod 600 "$CREDS_FILE"
+printf '%s\n' "short" > "$CREDS_FILE"
+if bash "${ROOT_DIR}/installer/scripts/configure-user.sh" "$TMP_ROOT" "shortpassuser" "$CREDS_FILE" >/dev/null 2>&1; then
+  echo "  [FAIL] Short password was accepted by configure-user.sh" >&2
+  exit 1
+else
+  echo "  [OK] Short password correctly rejected by configure-user.sh"
+fi
+rm -f "$CREDS_FILE"
+CREDS_FILE=""
+
+# Insecure/malformed and reserved username tests must fail before any privileged operation.
+INVALID_USERS=("root" "daemon" "bin" "nobody" "user:root" "../baduser" "user with spaces" "user\\nname" "-dashfirst" "user/slash")
 for bad_user in "${INVALID_USERS[@]}"; do
   if bash "${ROOT_DIR}/installer/scripts/configure-user.sh" "$TMP_ROOT" "$bad_user" "testpass" >/dev/null 2>&1; then
     echo "  [FAIL] Insecure username '${bad_user}' was incorrectly accepted!" >&2
