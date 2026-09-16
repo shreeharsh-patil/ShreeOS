@@ -23,13 +23,27 @@ fi
 
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 
-# Minimize build: only what we need for a chroot base system
+# util-linux probes ncurses with ncursesw6-config. During a cross-build,
+# falling back to the host runner's config script leaks host-only linker flags
+# (Ubuntu's script adds -ltinfo) into the ShreeOS target link. Use the config
+# script installed by our target ncurses build and explicitly keep terminfo
+# inside libncursesw, matching how 02-ncurses.sh is configured.
+TARGET_NCURSES_CONFIG="${LUMEN_STAGE_ROOT}/usr/bin/ncursesw6-config"
+if [ ! -x "$TARGET_NCURSES_CONFIG" ]; then
+  lumen_die "Target ncurses config not found: ${TARGET_NCURSES_CONFIG}. Build ncurses before util-linux."
+fi
+
+# Minimize build: only what we need for a chroot base system.
+NCURSESW6_CONFIG="$TARGET_NCURSES_CONFIG" \
 "${SRCDIR}/configure" \
   --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
   --docdir="/usr/share/doc/util-linux-${PKG_VER}" \
+  --with-ncursesw \
+  --without-ncurses \
+  --without-tinfo \
   --disable-chfn-chsh \
   --disable-login \
   --disable-nologin \
