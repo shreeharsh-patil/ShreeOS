@@ -159,6 +159,13 @@ if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
 fi
 
+if [ -f "$DISK" ] && [ ! -b "$DISK" ]; then
+  IMAGE_BYTES="$(stat -c '%s' "$DISK" 2>/dev/null || echo 0)"
+  if ! [[ "$IMAGE_BYTES" =~ ^[0-9]+$ ]] || [ "$IMAGE_BYTES" -lt 1073741824 ]; then
+    shreeos_die "Raw disk images must be at least 1 GiB for the ShreeOS partition layout."
+  fi
+fi
+
 # Partitioning, loop setup, filesystem creation, mounting and GRUB installation
 # all require real root privileges. Fail before touching the requested target
 # rather than failing half-way through an installation.
