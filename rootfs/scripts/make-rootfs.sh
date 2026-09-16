@@ -157,15 +157,18 @@ else
   fi
 fi
 
-# Linux executes /init from an initramfs.  This must follow the custom-init
-# build/install step so a completely empty build directory is supported.
+# Linux executes /init from an initramfs. Live ISO boots continue directly
+# with /sbin/init, while installed boots must honor root=... and switch to the
+# on-disk root filesystem before starting the same supervisor.
 if [ ! -x "${LUMEN_STAGE_ROOT}/sbin/init" ]; then
   lumen_die "Custom ShreeOS init is missing or not executable."
 fi
-ln -sfn sbin/init "${LUMEN_STAGE_ROOT}/init"
-if [ ! -L "${LUMEN_STAGE_ROOT}/init" ] || [ "$(readlink "${LUMEN_STAGE_ROOT}/init")" != "sbin/init" ]; then
-  lumen_die "Could not create the required relative initramfs /init -> sbin/init link."
-fi
+INITRAMFS_INIT="${ROOTFS_DIR}/scripts/initramfs-init.sh"
+[ -f "$INITRAMFS_INIT" ] || lumen_die "Missing initramfs handoff script: $INITRAMFS_INIT"
+rm -f "${LUMEN_STAGE_ROOT}/init"
+cp "$INITRAMFS_INIT" "${LUMEN_STAGE_ROOT}/init"
+chmod 755 "${LUMEN_STAGE_ROOT}/init"
+[ -x "${LUMEN_STAGE_ROOT}/init" ] || lumen_die "Could not stage executable initramfs /init handoff."
 
 # 4. Verify base system essentials
 if ! grep -q '^shree-hardware:' "${LUMEN_STAGE_ROOT}/etc/group" 2>/dev/null; then
@@ -210,6 +213,15 @@ for bin in bash ls mount; do
 done
 [ -x "${LUMEN_STAGE_ROOT}/bin/bash" ] || lumen_die "Missing /bin/bash compatibility link"
 [ -x "${LUMEN_STAGE_ROOT}/bin/sh" ] || lumen_die "Missing /bin/sh compatibility link"
+
+# Installed boots rely on the initramfs shim to resolve root=UUID and perform
+# the real-root handoff. Fail the build instead of creating an ISO whose
+# installed-disk path can never leave the initramfs.
+for early_tool in blkid switch_root; do
+  if ! find "${LUMEN_STAGE_ROOT}/usr" "${LUMEN_STAGE_ROOT}/sbin" -type f -name "$early_tool" -perm /111 -print -quit 2>/dev/null | grep -q .; then
+    lumen_die "Missing early-boot utility in target rootfs: $early_tool"
+  fi
+done
 
 # 6. Ensure device nodes
 bash "${SCRIPT_DIR}/populate-devices.sh" "${LUMEN_STAGE_ROOT}"
