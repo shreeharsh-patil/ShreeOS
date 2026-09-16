@@ -175,11 +175,17 @@ done
 
 while true; do
   read -r -p "Primary User Account Name: " USERNAME
-  if [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
-    break
-  else
+  if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
     echo "Invalid username. Must start with lowercase letter or underscore, 1-32 characters, no colons/slashes/spaces."
+    continue
   fi
+  case "$USERNAME" in
+    root|daemon|bin|nobody)
+      echo "Username '$USERNAME' is reserved by the ShreeOS base system."
+      continue
+      ;;
+  esac
+  break
 done
 
 echo ""
