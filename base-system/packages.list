@@ -65,6 +65,9 @@ util-linux	2.40.4	https://www.kernel.org/pub/linux/utils/util-linux/v2.40/util-l
 # libxcrypt 4.4.36
 libxcrypt	4.4.36	https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz	e5e1f4caee0a01de2aee26e3138807d6d3ca2b8e67287966d1fefd65e1fd8943
 
+# libnl 3.11.0 — target netlink library required by nl80211
+libnl	3.11.0	https://github.com/thom311/libnl/releases/download/libnl3_11_0/libnl-3.11.0.tar.gz	2a56e1edefa3e68a7c00879496736fdbf62fc94ed3232c0baba127ecfa76874d
+
 # wpa_supplicant 2.11
 wpa_supplicant	2.11	https://w1.fi/releases/wpa_supplicant-2.11.tar.gz	912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
 
