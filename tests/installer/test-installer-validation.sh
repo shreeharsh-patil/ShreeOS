@@ -149,21 +149,33 @@ validate_user "dev_user01" || { echo "  [FAIL] Valid username with underscore/di
 ! validate_user "root:evil" || { echo "  [FAIL] Username with colon accepted"; exit 1; }
 echo "  [OK] Username validation correctly enforced"
 
-# 9. Behavioral test: Partition a virtual disk image using GPT layout
+# 9. Behavioral test: undersized images must fail, while a valid sparse image
+# must receive the complete GPT layout.
 if command -v sfdisk >/dev/null 2>&1; then
   TEST_DISK=$(mktemp /tmp/shreeos-part-test-XXXXXX.img)
-  truncate -s 100M "$TEST_DISK"
   trap 'rm -f "$TEST_DISK" "${TMP_CREDS:-}"' EXIT
 
+  truncate -s 512M "$TEST_DISK"
   if bash "${ROOT_DIR}/installer/scripts/partition-disk.sh" "$TEST_DISK" --yes >/dev/null 2>&1; then
-    # Verify GPT partitions were created
-    if sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "BIOS-Boot" && \
-       sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "EFI-System" && \
-       sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "ShreeOS-Root"; then
-      echo "  [OK] Successfully partitioned virtual disk image with GPT BIOS+ESP+Root layout"
-    else
-      echo "  [WARN] sfdisk did not report expected partition labels"
-    fi
+    echo "  [FAIL] Undersized raw disk image was accepted" >&2
+    exit 1
+  else
+    echo "  [OK] Undersized raw disk image correctly rejected"
+  fi
+
+  truncate -s 2G "$TEST_DISK"
+  if ! bash "${ROOT_DIR}/installer/scripts/partition-disk.sh" "$TEST_DISK" --yes >/dev/null 2>&1; then
+    echo "  [FAIL] Valid 2 GiB raw disk image could not be partitioned" >&2
+    exit 1
+  fi
+
+  if sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "BIOS-Boot" && \
+     sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "EFI-System" && \
+     sfdisk -l "$TEST_DISK" 2>/dev/null | grep -q "ShreeOS-Root"; then
+    echo "  [OK] Successfully partitioned virtual disk image with GPT BIOS+ESP+Root layout"
+  else
+    echo "  [FAIL] GPT partition labels/layout are incomplete" >&2
+    exit 1
   fi
   rm -f "$TEST_DISK"
 fi
