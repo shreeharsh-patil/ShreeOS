@@ -224,8 +224,9 @@ $(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS) | ch
 
 .PHONY: installer
 installer:
-	@echo "Installer is executed on-demand (e.g. within live ISO or target disk):"
-	@echo "  bash installer/scripts/install-to-disk.sh /dev/sda"
+	@echo "Installer is executed from a completed ShreeOS source/build tree:"
+	@echo "  sudo bash installer/scripts/installer-tui.sh"
+	@echo "  sudo bash installer/scripts/install-to-disk.sh /dev/sda --help"
 
 # -- All -------------------------------------------------------------
 .PHONY: all
