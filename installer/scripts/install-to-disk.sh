@@ -110,6 +110,11 @@ fi
 if [ -n "$USERNAME" ] && ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
   shreeos_die "Invalid username '${USERNAME}'. Must match ^[a-z_][a-z0-9_-]{0,31}$."
 fi
+case "$USERNAME" in
+  root|daemon|bin|nobody)
+    shreeos_die "Username '${USERNAME}' is reserved by the ShreeOS base system."
+    ;;
+esac
 
 if [ -n "$CREDS_FILE" ]; then
   if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
@@ -188,6 +193,16 @@ fi
 if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"; fi
 if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
 shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip od
+if ! command -v openssl >/dev/null 2>&1 && ! command -v mkpasswd >/dev/null 2>&1; then
+  shreeos_die "Password hashing requires openssl or mkpasswd; refusing to modify the target disk."
+fi
+
+# Never let a requested primary user collide with an account already present
+# in the base rootfs. This check occurs before loop setup or partitioning.
+if [ -n "$USERNAME" ] && [ -f "${STAGE_ROOT}/etc/passwd" ] && grep -q "^${USERNAME}:" "${STAGE_ROOT}/etc/passwd"; then
+  shreeos_die "Username '${USERNAME}' already exists in the staged ShreeOS base system."
+fi
+
 if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
     shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
@@ -341,10 +356,16 @@ if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
       shreeos_die "Failed to securely hash root administrator password. Installation aborted."
     fi
 
+    SHADOW_DAY=$(( $(date +%s) / 86400 ))
     if [ -f "${TARGET}/etc/shadow" ]; then
-      sed -i "s|^root:[^:]*:|root:${HASHED_PW}:|" "${TARGET}/etc/shadow"
+      awk -F: -v OFS=: -v hash="$HASHED_PW" -v day="$SHADOW_DAY" '
+        $1 == "root" { $2 = hash; $3 = day }
+        { print }
+      ' "${TARGET}/etc/shadow" > "${TARGET}/etc/shadow.tmp"
+      chmod 600 "${TARGET}/etc/shadow.tmp"
+      mv -f "${TARGET}/etc/shadow.tmp" "${TARGET}/etc/shadow"
     else
-      echo "root:${HASHED_PW}:19000:0:99999:7:::" > "${TARGET}/etc/shadow"
+      echo "root:${HASHED_PW}:${SHADOW_DAY}:0:99999:7:::" > "${TARGET}/etc/shadow"
     fi
     chmod 600 "${TARGET}/etc/shadow"
   fi
@@ -421,6 +442,30 @@ fi
 if [ -f "${TARGET}/etc/shadow" ]; then
   if [ "$(stat -c '%a' "${TARGET}/etc/shadow" 2>/dev/null || echo '0')" != "600" ]; then
     chmod 0600 "${TARGET}/etc/shadow" 2>/dev/null || true
+  fi
+  ROOT_HASH="$(awk -F: '$1 == "root" { print $2; exit }' "${TARGET}/etc/shadow")"
+  if [ -z "$ROOT_HASH" ] || [[ "$ROOT_HASH" == '!'* ]] || [[ "$ROOT_HASH" == '*'* ]]; then
+    shreeos_warn "Verification failure: root account is still locked or has no password hash"
+    VERIFY_FAILED=true
+  fi
+else
+  shreeos_warn "Verification failure: /etc/shadow is missing"
+  VERIFY_FAILED=true
+fi
+
+if [ -n "$USERNAME" ]; then
+  if ! grep -q "^${USERNAME}:" "${TARGET}/etc/passwd" 2>/dev/null; then
+    shreeos_warn "Verification failure: user '${USERNAME}' is missing from /etc/passwd"
+    VERIFY_FAILED=true
+  fi
+  USER_HASH="$(awk -F: -v user="$USERNAME" '$1 == user { print $2; exit }' "${TARGET}/etc/shadow" 2>/dev/null || true)"
+  if [ -z "$USER_HASH" ] || [[ "$USER_HASH" == '!'* ]] || [[ "$USER_HASH" == '*'* ]]; then
+    shreeos_warn "Verification failure: user '${USERNAME}' has no usable password hash"
+    VERIFY_FAILED=true
+  fi
+  if [ ! -d "${TARGET}/home/${USERNAME}" ]; then
+    shreeos_warn "Verification failure: user home /home/${USERNAME} is missing"
+    VERIFY_FAILED=true
   fi
 fi
 
