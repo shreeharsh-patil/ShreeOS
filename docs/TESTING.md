@@ -57,9 +57,9 @@ bash tests/qemu/boot-installed-disk.sh /path/to/disk.img
 | Workflow | Trigger | Scope |
 |----------|---------|-------|
 | `lint.yml` | Every push/PR | Shellcheck + structure |
-| `toolchain.yml` | Push to main | Full toolchain build |
-| `kernel.yml` | Push to main | Kernel against cached toolchain |
-| `iso.yml` | Push to main, tags | Full chain → ISO artifact |
+| `toolchain.yml` | Push to master | Full toolchain build |
+| `kernel.yml` | Push to master | Kernel against cached toolchain |
+| `iso.yml` | Push to master, tags | Full chain → ISO artifact |
 | `release.yml` | v* tags | GitHub Release with ISO |
 
 ## Writing Tests
