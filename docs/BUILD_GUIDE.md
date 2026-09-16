@@ -2,24 +2,30 @@
 
 ## Prerequisites
 
-- **OS:** Ubuntu 22.04+ (or Debian-based)
-- **Packages:**
-  ```bash
-  sudo apt update
-  sudo apt install -y build-essential bison flex gawk texinfo \
-    curl wget patch bzip2 xz-utils bc rsync cpio \
-    qemu-system-x86 xorriso grub-pc grub-efi ovmf \
-    python3 libssl-dev
-  ```
-- **Disk:** ~20 GB free for the build
+- **OS:** Ubuntu 22.04/24.04 LTS (or a compatible Debian-based host)
+- **Architecture:** x86_64
+- **Disk:** at least 15 GB free; 30-50 GB recommended
+- **RAM:** 8 GB recommended
+- **CPU:** 4+ threads recommended
+
+Install the maintained dependency set instead of copying a stale package list:
+
+```bash
+sudo bash scripts/install-build-deps-apt.sh
+bash scripts/doctor.sh --strict
+```
+
+On WSL2, keep the repository under the Linux filesystem (for example
+`~/ShreeOS`) and use `make bootstrap-wsl`.
 
 ## Quick Start
 
 ```bash
-# Clone and build the currently complete minimal profile:
+# Clone and build the recommended minimal profile:
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
-make PROFILE=minimal all
+sudo bash scripts/install-build-deps-apt.sh
+bash scripts/build.sh minimal
 ```
 
 This runs the source-built toolchain, base system, kernel, target utilities, rootfs and ISO pipeline end-to-end. The native desktop profile is not yet certifiable because its target graphics dependency stack is incomplete; do not treat a deferred desktop build as a finished GUI image.
@@ -90,17 +96,61 @@ bash tests/qemu/boot-iso-uefi.sh          # ISO (UEFI)
 
 ## Installing to Disk
 
+> [!CAUTION]
+> The installer repartitions and formats the selected whole disk. All existing
+> data on that disk is destroyed.
+
+Run installation from a completed ShreeOS source/build tree. The current ISO is
+bootable for validation, but it does not contain a self-contained copy of the
+source-tree installer.
+
+First verify the target device:
+
 ```bash
-# After building the ISO, install to a target disk:
-sudo bash installer/scripts/install-to-disk.sh /dev/sda --yes
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL
 ```
+
+Recommended guided installation:
+
+```bash
+sudo bash installer/scripts/installer-tui.sh
+```
+
+For scripted installation, a secure credentials file is mandatory. It must be a
+regular non-symlink file owned by the invoking user with mode `0600`. Line 1
+contains the root password and, when `--username` is used, line 2 contains the
+user password. Passwords must be at least 8 characters.
+
+```bash
+umask 077
+read -r -s -p "Root password: " ROOT_PW; printf '\n'
+read -r -s -p "User password: " USER_PW; printf '\n'
+printf '%s\n%s\n' "$ROOT_PW" "$USER_PW" > /tmp/shreeos-credentials
+unset ROOT_PW USER_PW
+chmod 600 /tmp/shreeos-credentials
+
+sudo bash installer/scripts/install-to-disk.sh /dev/nvme0n1 --yes \
+  --hostname=shreeos \
+  --timezone=Asia/Kolkata \
+  --username=shree \
+  --credentials-file=/tmp/shreeos-credentials \
+  --boot-mode=both
+
+rm -f /tmp/shreeos-credentials
+```
+
+Replace `/dev/nvme0n1` with the whole target disk. Do not pass a partition such
+as `/dev/nvme0n1p1`. Supported boot modes are `both` (default), `uefi`, and
+`bios`.
+
+See `installer/README.md` for installer safeguards and troubleshooting.
 
 ## Rebuilding
 
 ```bash
 make clean           # remove build artifacts, keep sources
 make distclean       # full reset (removes build/ and out/)
-make all FORCE=1     # force rebuild all phases
+make PROFILE=minimal all FORCE=1  # force rebuild the supported minimal path
 ```
 
 ## Directory Layout
