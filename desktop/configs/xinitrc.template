@@ -9,5 +9,10 @@ fi
 # Keyboard
 setxkbmap us &
 
+# Status bar
+if [ -x /usr/bin/dwm-statusbar.sh ]; then
+  /usr/bin/dwm-statusbar.sh &
+fi
+
 # Start window manager
 exec dwm

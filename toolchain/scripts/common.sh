@@ -11,6 +11,9 @@ fi
 if [ -f "$LUMEN_ROOT_DIR/scripts/common.sh" ]; then
   source "$LUMEN_ROOT_DIR/scripts/common.sh"
 fi
+if [ -f "$LUMEN_SCRIPT_DIR/sources.list" ]; then
+  source "$LUMEN_SCRIPT_DIR/sources.list"
+fi
 
 export PATH="$LUMEN_TOOLS/bin:${PATH}"
 
@@ -20,11 +23,14 @@ mkdir -p "$LUMEN_SYSROOT/usr"
 
 lumen_verify_toolchain() {
   local missing=()
-  for cmd in gcc g++ make bison flex gawk texinfo curl patch bzip2 xz; do
+  for cmd in gcc g++ make bison flex gawk curl patch bzip2 xz; do
     if ! command -v "$cmd" &>/dev/null; then
       missing+=("$cmd")
     fi
   done
+  if ! command -v makeinfo &>/dev/null && ! command -v texi2any &>/dev/null; then
+    missing+=("makeinfo")
+  fi
   if [ ${#missing[@]} -gt 0 ]; then
     lumen_die "Missing host build tools: ${missing[*]}"
   fi

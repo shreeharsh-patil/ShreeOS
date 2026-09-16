@@ -56,7 +56,11 @@ static void test_manifest_save_load(void) {
     const char *json = "{\"name\":\"test-pkg\",\"version\":\"0.1\",\"files\":[\"/usr/bin/test\"]}";
     manifest *m1 = manifest_parse(json);
 
+#ifdef _WIN32
+    const char *tmpdir = "lpm-test-manifest";
+#else
     const char *tmpdir = "/tmp/lpm-test-manifest";
+#endif
     mkdir(tmpdir, 0755);
     manifest_save(m1, tmpdir);
     manifest_free(m1);
@@ -75,10 +79,41 @@ static void test_manifest_save_load(void) {
     unlink(mp); rmdir(tmpdir);
 }
 
+static void test_manifest_sha256(void) {
+    const char *json =
+        "{\"name\":\"sec-pkg\",\"version\":\"1.0\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"files\":[\"/usr/bin/sec\"]}";
+
+    manifest *m = manifest_parse(json);
+    TEST("parse sha256", m != NULL && m->sha256 != NULL);
+    if (m && m->sha256) {
+        TEST("sha256 matches", strcmp(m->sha256, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") == 0);
+    }
+    manifest_free(m);
+}
+
+static void test_manifest_check_deps(void) {
+    const char *json = "{\"name\":\"app\",\"version\":\"1.0\",\"dependencies\":[\"missing-lib-12345\"],\"files\":[\"/usr/bin/app\"]}";
+    manifest *m = manifest_parse(json);
+    TEST("parse app manifest", m != NULL);
+
+    char **missing = NULL;
+    int nmissing = 0;
+    int res = manifest_check_deps(m, &missing, &nmissing);
+    TEST("missing deps detected", res == 1 && nmissing == 1);
+    if (nmissing > 0 && missing) {
+        TEST("missing dep name correct", strcmp(missing[0], "missing-lib-12345") == 0);
+        free(missing[0]);
+        free(missing);
+    }
+    manifest_free(m);
+}
+
 int main(void) {
     test_basic_manifest();
     test_manifest_with_deps();
     test_manifest_save_load();
+    test_manifest_sha256();
+    test_manifest_check_deps();
 
     printf("\n%d failures\n", failures);
     return failures ? 1 : 0;

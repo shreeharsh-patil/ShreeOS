@@ -92,7 +92,24 @@ fi
 ISO_SIZE=$(stat -c%s "$ISO_OUT" 2>/dev/null || stat -f%z "$ISO_OUT" 2>/dev/null || echo "unknown")
 lumen_ok "ISO created: ${ISO_OUT} (${ISO_SIZE} bytes)"
 
-# 6. Cleanup staging
+# 6. Generate SHA256 Checksum & Build Manifest
+if command -v sha256sum &>/dev/null; then
+  sha256sum "$ISO_OUT" > "${ISO_OUT}.sha256"
+  lumen_ok "Generated SHA-256 checksum: ${ISO_OUT}.sha256"
+fi
+
+cat > "${LUMEN_OUT}/${DISTRO_ID}-${DISTRO_VERSION}-manifest.json" <<MANIFEST
+{
+  "name": "${DISTRO_NAME}",
+  "version": "${DISTRO_VERSION}",
+  "iso": "$(basename "$ISO_OUT")",
+  "size_bytes": ${ISO_SIZE},
+  "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")"
+}
+MANIFEST
+lumen_ok "Generated build manifest: ${DISTRO_ID}-${DISTRO_VERSION}-manifest.json"
+
+# 7. Cleanup staging
 if [ "$NO_CLEANUP" = false ]; then
   rm -rf "$ISO_STAGING"
   lumen_log "Cleaned up ISO staging directory"

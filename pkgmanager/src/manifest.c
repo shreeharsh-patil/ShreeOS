@@ -45,6 +45,7 @@ manifest *manifest_parse(const char *json_str) {
     m->name        = strdup_safe(json_string(json_get(root, "name")));
     m->version     = strdup_safe(json_string(json_get(root, "version")));
     m->description = strdup_safe(json_string(json_get(root, "description")));
+    m->sha256      = strdup_safe(json_string(json_get(root, "sha256")));
     fill_str_array(json_get(root, "dependencies"), &m->deps, &m->ndeps);
     fill_str_array(json_get(root, "files"),        &m->files, &m->nfiles);
 
@@ -57,6 +58,7 @@ void manifest_free(manifest *m) {
     free(m->name);
     free(m->version);
     free(m->description);
+    free(m->sha256);
     if (m->deps) { for (int i = 0; i < m->ndeps; i++) free(m->deps[i]); free(m->deps); }
     if (m->files) { for (int i = 0; i < m->nfiles; i++) free(m->files[i]); free(m->files); }
     free(m);
@@ -67,7 +69,7 @@ int manifest_save(const manifest *m, const char *dir) {
     snprintf(path, sizeof(path), "%s/manifest.json", dir);
     mkdir_p(dir);
 
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen(path, "wb");
     if (!f) return -1;
 
     fprintf(f, "{\n");
@@ -75,6 +77,8 @@ int manifest_save(const manifest *m, const char *dir) {
     fprintf(f, "  \"version\": \"%s\",\n", m->version);
     if (m->description && *m->description)
         fprintf(f, "  \"description\": \"%s\",\n", m->description);
+    if (m->sha256 && *m->sha256)
+        fprintf(f, "  \"sha256\": \"%s\",\n", m->sha256);
     fprintf(f, "  \"dependencies\": [");
     for (int i = 0; i < m->ndeps; i++) {
         if (i > 0) fprintf(f, ",");
@@ -92,10 +96,36 @@ int manifest_save(const manifest *m, const char *dir) {
     return 0;
 }
 
+int manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_out) {
+    if (!missing_out || !nmissing_out) return -1;
+    *missing_out = NULL;
+    *nmissing_out = 0;
+    if (!m || m->ndeps <= 0) return 0;
+
+    char **missing = calloc(m->ndeps, sizeof(char *));
+    if (!missing) return -1;
+    int count = 0;
+
+    for (int i = 0; i < m->ndeps; i++) {
+        char dbdir[LPM_PATH_MAX];
+        snprintf(dbdir, sizeof(dbdir), LPM_INSTALLED "/%s", m->deps[i]);
+        manifest *dep_m = manifest_load(dbdir);
+        if (!dep_m) {
+            missing[count++] = strdup(m->deps[i]);
+        } else {
+            manifest_free(dep_m);
+        }
+    }
+
+    *missing_out = missing;
+    *nmissing_out = count;
+    return count;
+}
+
 manifest *manifest_load(const char *dir) {
     char path[LPM_PATH_MAX];
     snprintf(path, sizeof(path), "%s/manifest.json", dir);
-    FILE *f = fopen(path, "r");
+    FILE *f = fopen(path, "rb");
     if (!f) return NULL;
 
     fseek(f, 0, SEEK_END);

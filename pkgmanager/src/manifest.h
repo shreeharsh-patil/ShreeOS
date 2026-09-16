@@ -5,6 +5,8 @@
 
 #define LPM_DB "/var/lib/lpm"
 #define LPM_INSTALLED LPM_DB "/installed"
+#define LPM_REPO_JSON LPM_DB "/repo.json"
+#define LPM_REPOS_CONF "/etc/lpm/repos.conf"
 
 /* Path buffer size: Linux PATH_MAX = 4096, ensure we match target */
 #ifndef LPM_PATH_MAX
@@ -15,6 +17,7 @@ typedef struct {
     char *name;
     char *version;
     char *description;
+    char *sha256;
     int ndeps;
     char **deps;
     int nfiles;
@@ -25,6 +28,7 @@ manifest *manifest_parse(const char *json_str);
 void       manifest_free(manifest *m);
 int        manifest_save(const manifest *m, const char *path);
 manifest *manifest_load(const char *path);
+int        manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_out);
 
 /*
  * Validate a package name for safety.

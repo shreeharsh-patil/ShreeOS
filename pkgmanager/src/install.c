@@ -101,6 +101,17 @@ int cmd_install(int argc, char **argv) {
         goto cleanup;
     }
 
+    char **missing_deps = NULL;
+    int nmissing = 0;
+    if (manifest_check_deps(m, &missing_deps, &nmissing) > 0) {
+        fprintf(stderr, "lpm: warning: missing dependency for %s:\n", m->name);
+        for (int i = 0; i < nmissing; i++) {
+            fprintf(stderr, "  - %s\n", missing_deps[i]);
+            free(missing_deps[i]);
+        }
+        free(missing_deps);
+    }
+
     printf("lpm: installing %s-%s\n", m->name, m->version);
 
     char dbdir[LPM_PATH_MAX];
