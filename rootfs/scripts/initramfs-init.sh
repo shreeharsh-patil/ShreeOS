@@ -30,6 +30,10 @@ mount -t tmpfs -o mode=0755 tmpfs /run 2>/dev/null || true
 
 CMDLINE="$(cat /proc/cmdline 2>/dev/null || true)"
 ROOT_SPEC=""
+# Kernel command lines are space-delimited by definition. Disable pathname
+# expansion while intentionally splitting the command line into arguments.
+set -f
+# shellcheck disable=SC2086
 for arg in $CMDLINE; do
   case "$arg" in
     root=*)
@@ -37,6 +41,7 @@ for arg in $CMDLINE; do
       ;;
   esac
 done
+set +f
 
 # The live ISO intentionally has no root= device; its cpio archive is the
 # complete runtime, so continue directly with the ShreeOS supervisor.
@@ -97,7 +102,14 @@ if [ ! -x /newroot/sbin/init ]; then
 fi
 
 if [ ! -f /newroot/etc/os-release ] ||
-   ! grep -Eq '^(ID|NAME)=("?)(shreeos|ShreeOS)\2$' /newroot/etc/os-release 2>/dev/null; then
+   ! grep -Eq '^ID="?shreeos"?
+  umount /newroot 2>/dev/null || true
+  emergency_shell "target does not look like a ShreeOS root filesystem."
+fi
+
+log "switching to installed root $ROOT_DEV ($ROOT_SPEC)"
+exec switch_root /newroot /sbin/init
+ /newroot/etc/os-release 2>/dev/null; then
   umount /newroot 2>/dev/null || true
   emergency_shell "target does not look like a ShreeOS root filesystem."
 fi
