@@ -59,6 +59,16 @@ if ! CANONICAL_DISK="$(realpath -- "$DISK" 2>/dev/null)"; then
   shreeos_die "Unable to resolve target path safely: $DISK"
 fi
 
+# The fixed GPT layout needs room for the BIOS boot partition, 512 MiB ESP,
+# and a useful root filesystem. Reject undersized raw images before sfdisk
+# modifies their partition table.
+if [ -f "$CANONICAL_DISK" ] && [ ! -b "$CANONICAL_DISK" ]; then
+  IMAGE_BYTES="$(stat -c '%s' "$CANONICAL_DISK" 2>/dev/null || echo 0)"
+  if ! [[ "$IMAGE_BYTES" =~ ^[0-9]+$ ]] || [ "$IMAGE_BYTES" -lt 1073741824 ]; then
+    shreeos_die "Raw disk images must be at least 1 GiB for the ShreeOS partition layout."
+  fi
+fi
+
 # For real block devices, prove that the target is a whole disk/loop device
 # and that none of its descendants back a mounted filesystem or active swap.
 # Any failed topology query aborts the destructive operation.
