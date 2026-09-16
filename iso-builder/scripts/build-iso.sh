@@ -9,7 +9,7 @@
 #
 # Prerequisites:
 #   - Phase 3: kernel bzImage at build/build-kernel/arch/x86/boot/bzImage
-#   - Phase 4: rootfs archive at build/rootfs.cpio.gz
+#   - Phase 4: initramfs archive at build/initramfs.cpio.gz
 #   - Host packages: xorriso, grub-pc, grub-efi, grub-common
 #
 # Output:
@@ -36,7 +36,7 @@ done
 lumen_require_cmd xorriso
 
 BZIMAGE="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/build-kernel/arch/x86/boot/bzImage"
-INITRD="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/rootfs.cpio.gz"
+INITRD="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/initramfs.cpio.gz"
 ISO_STAGING="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/iso-staging"
 ISO_OUT="${SHREEOS_OUT:-${LUMEN_OUT}}/${DISTRO_ID}-${DISTRO_VERSION}.iso"
 
@@ -56,8 +56,8 @@ mkdir -p "${ISO_STAGING}/boot/grub"
 
 # 3. Copy kernel and initramfs
 cp "$BZIMAGE" "${ISO_STAGING}/boot/bzImage"
-cp "$INITRD" "${ISO_STAGING}/boot/rootfs.cpio.gz"
-shreeos_ok "Kernel and rootfs copied to staging"
+cp "$INITRD" "${ISO_STAGING}/boot/initramfs.cpio.gz"
+shreeos_ok "Kernel and initramfs copied to staging"
 
 # 4. Install GRUB2
 bash "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/bootloader/scripts/install-grub-iso.sh" "$ISO_STAGING"

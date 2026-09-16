@@ -37,6 +37,7 @@ echo "============================================"
 
 # Collect all test scripts across suites
 TEST_FILES=(
+  "${PROJECT_ROOT}/hardware/tests/run-tests.sh"
   "${PROJECT_ROOT}/tests/smoke/test-desktop-suite.sh"
   "${PROJECT_ROOT}/tests/security/test-security.sh"
   "${PROJECT_ROOT}/tests/auth/test-auth.sh"

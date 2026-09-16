@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+json=false; [ "$#" -gt 0 ] && [ "${!#}" = --json ] && json=true
+has_audio() { command -v amixer >/dev/null 2>&1 && [ -r /proc/asound/cards ]; }
+volume() { amixer sget Master 2>/dev/null | sed -n 's/.*\[\([0-9][0-9]*\)%\].*/\1/p' | head -n1; }
+muted() { amixer sget Master 2>/dev/null | grep -q '\[off\]'; }
+need_root() { [ "$(id -u)" -eq 0 ] || { echo 'Audio control requires root privileges' >&2; exit 1; }; }
+cmd="${1:-status}"; shift || true
+case "$cmd" in
+ devices) if ! has_audio; then $json && echo '{"ok":true,"result":{"available":false,"devices":[]}}' || echo 'Audio: Not available'; else if $json; then printf '{"ok":true,"result":{"available":true,"devices":['; first=true; while IFS= read -r l; do $first || printf ','; first=false; printf '"%s"' "$l"; done < <(sed -n 's/^ *[0-9][0-9]* \[\([^]]*\)\].*/\1/p' /proc/asound/cards); printf ']}}\n'; else cat /proc/asound/cards; fi; fi ;;
+ status) if ! has_audio; then $json && echo '{"ok":true,"result":{"available":false}}' || echo 'Audio: Not available'; else v="$(volume)"; $json && printf '{"ok":true,"result":{"available":true,"volume":%s,"muted":%s}}\n' "${v:-0}" "$(muted && echo true || echo false)" || echo "Audio: ${v:-0}%"; fi ;;
+ volume) has_audio || { echo 'Audio: Not available'; exit 3; }; if [ "$#" -eq 0 ] || [ "$1" = --json ]; then v="$(volume)"; $json && printf '{"ok":true,"result":{"volume":%s}}\n' "${v:-0}" || echo "${v:-0}%"; else [[ "$1" =~ ^([0-9]|[1-9][0-9]|100)$ ]] || { echo 'Volume must be 0-100' >&2; exit 2; }; need_root; amixer sset Master "$1%" >/dev/null; $json && printf '{"ok":true,"result":{"volume":%s}}\n' "$1" || echo "$1%"; fi ;;
+ mute|unmute) has_audio || { echo 'Audio: Not available'; exit 3; }; need_root; amixer sset Master "$([ "$cmd" = mute ] && echo mute || echo unmute)" >/dev/null; $json && printf '{"ok":true,"result":{"muted":%s}}\n' "$([ "$cmd" = mute ] && echo true || echo false)" || echo "$cmd" ;;
+ *) echo 'Usage: shreectl audio <devices|status|volume|mute|unmute> [--json]' >&2; exit 2 ;;
+esac

@@ -43,6 +43,7 @@ ASSUME_YES=false
 HOSTNAME="${DISTRO_CODENAME:-shreeos}"
 TIMEZONE="UTC"
 CREDS_FILE=""
+CREDS_FILE_OWNED=false
 USERNAME=""
 BOOT_MODE="both"
 
@@ -55,6 +56,7 @@ for arg in "$@"; do
     --username=*) USERNAME="${arg#*=}" ;;
     --boot-mode=*) BOOT_MODE="${arg#*=}" ;;
     --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...]"; exit 0 ;;
+    *) shreeos_die "Unknown installer option: ${arg}" ;;
   esac
 done
 
@@ -72,22 +74,44 @@ cleanup() {
     shreeos_log "Detaching loop device ${LOOP_DEV}..."
     losetup -d "$LOOP_DEV" 2>/dev/null || true
   fi
-  if [ -n "${CREDS_FILE:-}" ] && [ -f "${CREDS_FILE}" ]; then
+  if [ "${CREDS_FILE_OWNED:-false}" = true ] && [ -n "${CREDS_FILE:-}" ] && [ -f "${CREDS_FILE}" ]; then
     rm -f "${CREDS_FILE}"
   fi
 }
 trap cleanup EXIT INT TERM
-
-shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid
 
 # Validate hostname strictly: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$
 if ! [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
   shreeos_die "Invalid hostname '${HOSTNAME}'. Must match RFC 1123 format."
 fi
 
+case "$BOOT_MODE" in
+  bios|uefi|both) ;;
+  *) shreeos_die "Invalid --boot-mode '${BOOT_MODE}'; expected bios, uefi, or both." ;;
+esac
+
 # Validate timezone: reject .. and traversal
-if [[ "$TIMEZONE" == *".."* ]] || [[ "$TIMEZONE" == /* ]] || ! [[ "$TIMEZONE" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)?$ ]]; then
+if [[ "$TIMEZONE" == *".."* ]] || [[ "$TIMEZONE" == /* ]] || ! [[ "$TIMEZONE" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]]; then
   shreeos_die "Invalid timezone specification '${TIMEZONE}'."
+fi
+
+if [ -n "$CREDS_FILE" ]; then
+  if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
+    shreeos_die "Credentials file must be a regular, non-symlink file."
+  fi
+  if [ "$(stat -c '%u' "$CREDS_FILE")" != "$(id -u)" ] || [ "$(stat -c '%a' "$CREDS_FILE")" != "600" ]; then
+    shreeos_die "Credentials file must be owned by the invoking user and have mode exactly 0600."
+  fi
+  CREDS_LINE_COUNT=$(awk 'END { print NR }' "$CREDS_FILE")
+  if [ "$CREDS_LINE_COUNT" -lt 1 ] || [ "$CREDS_LINE_COUNT" -gt 2 ]; then
+    shreeos_die "Credentials file must contain one root password line and one optional user password line."
+  fi
+  CREDS_ROOT_CHECK=$(sed -n '1p' "$CREDS_FILE")
+  if [ -z "$CREDS_ROOT_CHECK" ]; then
+    CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
+    shreeos_die "Credentials file has an empty root password."
+  fi
+  CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
 fi
 
 # If UEFI requested, require FAT formatting utility
@@ -99,6 +123,27 @@ fi
 
 if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
+fi
+
+# Complete every non-destructive preflight before creating a loop device,
+# partitioning, formatting, or mounting the requested disk.
+STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
+ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/initramfs.cpio.gz"
+BZIMAGE="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/build-kernel/arch/x86/boot/bzImage"
+if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
+  if [ ! -f "${STAGE_ROOT}/usr/share/zoneinfo/${TIMEZONE}" ]; then
+    shreeos_die "Timezone '${TIMEZONE}' is not present in the staged root filesystem."
+  fi
+elif [ ! -s "${ROOTFS_CPIO}" ]; then
+  shreeos_die "No usable rootfs found at ${STAGE_ROOT} or ${ROOTFS_CPIO}."
+fi
+if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"; fi
+if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
+shreeos_require_cmd sfdisk mkfs.ext4 grub-install blkid cpio gzip
+if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
+  if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
+    shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
+  fi
 fi
 
 WORKING_DISK="$DISK"
@@ -169,9 +214,6 @@ fi
 
 # 4. Copy rootfs payload
 shreeos_log "Copying root filesystem contents..."
-STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
-ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/rootfs.cpio.gz"
-
 if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if command -v rsync >/dev/null 2>&1; then
     rsync -aHAX "${STAGE_ROOT}/" "$TARGET/"
@@ -184,15 +226,25 @@ else
   shreeos_die "No rootfs found at ${STAGE_ROOT} or ${ROOTFS_CPIO}"
 fi
 
+# The installed boot configuration is independent of the copied rootfs tree.
+# Install the exact validated build artifacts before GRUB is invoked.
+mkdir -p "${TARGET}/boot"
+cp "${BZIMAGE}" "${TARGET}/boot/bzImage"
+cp "${ROOTFS_CPIO}" "${TARGET}/boot/initramfs.cpio.gz"
+if [ ! -s "${TARGET}/boot/bzImage" ] || [ ! -s "${TARGET}/boot/initramfs.cpio.gz" ]; then
+  shreeos_die "Failed to install required kernel or initramfs boot artifact."
+fi
+
 # 5. Configure system identity, timezone and credentials
 shreeos_log "Configuring system identity and credentials..."
 mkdir -p "${TARGET}/etc"
 echo "${HOSTNAME}" > "${TARGET}/etc/hostname"
 
 echo "${TIMEZONE}" > "${TARGET}/etc/timezone"
-if [ -f "${TARGET}/usr/share/zoneinfo/${TIMEZONE}" ]; then
-  ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${TARGET}/etc/localtime"
+if [ ! -f "${TARGET}/usr/share/zoneinfo/${TIMEZONE}" ]; then
+  shreeos_die "Timezone '${TIMEZONE}' is not present in the target zoneinfo database."
 fi
+ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${TARGET}/etc/localtime"
 
 # Read root & user passwords from secure credential file if provided
 if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then

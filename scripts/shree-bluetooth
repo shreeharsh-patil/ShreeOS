@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+adapter() { find /sys/class/bluetooth -mindepth 1 -maxdepth 1 -type l -printf '%f\n' 2>/dev/null | head -n1; }
+json=false; [ "$#" -gt 0 ] && [ "${!#}" = --json ] && json=true
+cmd="${1:-status}"
+available() { [ -n "$(adapter)" ] && command -v bluetoothctl >/dev/null 2>&1; }
+status() { if ! available; then $json && echo '{"ok":true,"result":{"available":false}}' || echo 'Bluetooth: Not available'; return; fi; p="$(bluetoothctl show 2>/dev/null | awk '/Powered:/ {print $2}')"; $json && printf '{"ok":true,"result":{"available":true,"adapter":"%s","powered":%s}}\n' "$(adapter)" "$([ "$p" = yes ] && echo true || echo false)" || echo "Bluetooth: ${p:-unknown}"; }
+need_root() { [ "$(id -u)" -eq 0 ] || { echo 'Bluetooth control requires root privileges' >&2; exit 1; }; }
+devices() { bluetoothctl devices 2>/dev/null | sed 's/^Device //'; }
+case "$cmd" in
+ status) status ;;
+ enable|disable) need_root; available || { echo 'Bluetooth: Not available'; exit 3; }; bluetoothctl power "$([ "$cmd" = enable ] && echo on || echo off)" >/dev/null; $json && printf '{"ok":true,"result":{"powered":%s}}\n' "$([ "$cmd" = enable ] && echo true || echo false)" || echo "Bluetooth $cmd" ;;
+ scan) available || { echo 'Bluetooth: Not available'; exit 3; }; bluetoothctl --timeout 8 scan on >/dev/null 2>&1 || true; if $json; then printf '{"ok":true,"result":{"devices":['; first=true; while IFS= read -r d; do $first || printf ','; first=false; mac="${d%% *}"; name="${d#* }"; name="${name//\\/\\\\}"; name="${name//\"/\\\"}"; printf '{"address":"%s","name":"%s"}' "$mac" "$name"; done < <(devices); printf ']}}\n'; else devices; fi ;;
+ devices) available || { echo 'Bluetooth: Not available'; exit 3; }; devices ;;
+ *) echo 'Usage: shreectl bluetooth <status|enable|disable|scan|devices> [--json]' >&2; exit 2 ;;
+esac

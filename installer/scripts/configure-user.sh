@@ -8,7 +8,7 @@
 #   - Password variables wiped immediately from memory
 #   - Discovers next available UID and GID independently (>= 1000)
 #   - Sets /home/<user> ownership to <uid>:<gid> and mode 0700 (fails closed on error)
-#   - Adds user to wheel group securely
+#   - Adds user to wheel and shree-hardware groups securely
 
 set -euo pipefail
 
@@ -112,6 +112,18 @@ else
   if ! grep -E "^wheel:.*([,: ]|^)${USER}([,: ]|$)" "${TARGET}/etc/group" 2>/dev/null; then
     sed -i "s|^wheel:[^:]*:[^:]*:.*|&,${USER}|; s|:,,|:,|; s|:,|:|" "${TARGET}/etc/group"
   fi
+fi
+
+# shreed exposes the hardware socket to this dedicated group.  Allocate an
+# unused group ID when creating a rootfs that does not already contain it.
+if ! grep -q "^shree-hardware:" "${TARGET}/etc/group" 2>/dev/null; then
+  HARDWARE_GID=986
+  while awk -F: -v gid="$HARDWARE_GID" '$3 == gid { found=1 } END { exit !found }' "${TARGET}/etc/group"; do
+    HARDWARE_GID=$((HARDWARE_GID + 1))
+  done
+  echo "shree-hardware:x:${HARDWARE_GID}:${USER}" >> "${TARGET}/etc/group"
+elif ! awk -F: -v user="$USER" '$1 == "shree-hardware" { n=split($4, members, ","); for (i=1; i<=n; i++) if (members[i] == user) exit 0; exit 1 }' "${TARGET}/etc/group"; then
+  sed -i "/^shree-hardware:/ s/$/,${USER}/" "${TARGET}/etc/group"
 fi
 
 # 7. Write password hash to /etc/shadow

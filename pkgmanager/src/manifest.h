@@ -10,6 +10,7 @@
 #define LPM_REPOS_CONF "/etc/lpm/repos.conf"
 #define LPM_CACHE_DIR "/var/cache/lpm/pkg"
 #define LPM_LOCK_FILE LPM_DB "/lock"
+#define LPM_TRANSACTIONS LPM_DB "/transactions"
 
 /* Path buffer size: Linux PATH_MAX = 4096, ensure we match target */
 #ifndef LPM_PATH_MAX
@@ -97,5 +98,8 @@ int cmd_search(int argc, char **argv);
 int cmd_verify(int argc, char **argv);
 int cmd_update(int argc, char **argv);
 int cmd_info(int argc, char **argv);
+int cmd_history(int argc, char **argv);
+int cmd_rollback(int argc, char **argv);
+int cmd_repair(int argc, char **argv);
 
 #endif

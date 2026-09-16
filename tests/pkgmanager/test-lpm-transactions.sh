@@ -10,7 +10,7 @@ echo "==> Testing LPM Package Manager Behavioral Transactions & Safeguards"
 
 # 1. Compile LPM test harness if host compiler available
 if command -v gcc >/dev/null 2>&1; then
-  make -C "${ROOT_DIR}/pkgmanager/tests" test >/dev/null 2>&1 || true
+  make -C "${ROOT_DIR}/pkgmanager/tests" test
   echo "  [OK] LPM C unit test suite (manifest, SHA-256, semver) passed"
 fi
 

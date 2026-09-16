@@ -58,7 +58,7 @@ if [ -d "${ROOTFS_DIR}/skeleton/etc" ]; then
   done
 fi
 
-# 3. Compile and install init + services
+# 3. Compile and install init, hardware service, and services
 if [ "$SKIP_INIT" = false ]; then
   shreeos_step "Building custom init and initctl"
   export CROSS_COMPILE="${SHREEOS_TARGET_TRIPLET:-${LUMEN_TARGET_TRIPLET}}-"
@@ -92,6 +92,19 @@ if [ "$SKIP_INIT" = false ]; then
     shreeos_ok "Installed service definitions to /etc/services.d"
   fi
 
+  shreeos_step "Building ShreeOS hardware service"
+  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware" clean all
+  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreed" ]; then
+    mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreed" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
+    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreedctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
+    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
+    shreeos_ok "Installed shreed and shreedctl"
+  else
+    shreeos_die "shreed build failed"
+  fi
+
   # 3b. Compile and install LPM package manager
   shreeos_step "Building LPM package manager"
   make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src" clean all
@@ -115,6 +128,18 @@ if [ "$SKIP_INIT" = false ]; then
       chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/${tool}"
     fi
   done
+  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/shree-wifi" ]; then
+    mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/shree-wifi" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shree-wifi"
+    chmod 700 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shree-wifi"
+  fi
+  for helper in shree-bluetooth shree-audio shree-powerctl; do
+    if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/${helper}" ]; then
+      mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
+      cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/scripts/${helper}" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/${helper}"
+      chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/${helper}"
+    fi
+  done
 
   if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/shree-recovery.sh" ]; then
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/shree-recovery.sh" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-recovery"
@@ -124,6 +149,25 @@ else
   if [ ! -f "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init" ]; then
     shreeos_die "No init binary at ${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init (use --skip-init only if it already exists)"
   fi
+fi
+
+# Linux executes /init from an initramfs.  This must follow the custom-init
+# build/install step so a completely empty build directory is supported.
+if [ ! -x "${LUMEN_STAGE_ROOT}/sbin/init" ]; then
+  lumen_die "Custom ShreeOS init is missing or not executable."
+fi
+ln -sfn sbin/init "${LUMEN_STAGE_ROOT}/init"
+if [ ! -L "${LUMEN_STAGE_ROOT}/init" ] || [ "$(readlink "${LUMEN_STAGE_ROOT}/init")" != "sbin/init" ]; then
+  lumen_die "Could not create the required relative initramfs /init -> sbin/init link."
+fi
+
+# 4. Verify base system essentials
+if ! grep -q '^shree-hardware:' "${LUMEN_STAGE_ROOT}/etc/group" 2>/dev/null; then
+  shree_hardware_gid=986
+  while awk -F: -v gid="$shree_hardware_gid" '$3 == gid { found=1 } END { exit !found }' "${LUMEN_STAGE_ROOT}/etc/group"; do
+    shree_hardware_gid=$((shree_hardware_gid + 1))
+  done
+  printf 'shree-hardware:x:%s:\n' "$shree_hardware_gid" >> "${LUMEN_STAGE_ROOT}/etc/group"
 fi
 
 # 4. Verify base system essentials
@@ -140,11 +184,15 @@ bash "${SCRIPT_DIR}/populate-devices.sh" "${LUMEN_STAGE_ROOT}"
 # 6. Package as cpio archive for QEMU
 if [ "$SKIP_ARCHIVE" = false ]; then
   lumen_step "Packaging rootfs as cpio archive"
-  ROOTFS_ARCHIVE="${LUMEN_BUILD_DIR}/rootfs.cpio.gz"
+  ROOTFS_ARCHIVE="${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
   (
     cd "${LUMEN_STAGE_ROOT}"
     find . | cpio -o -H newc --quiet | gzip -n > "${ROOTFS_ARCHIVE}"
   )
+  if ! gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet | grep -qx './init' || \
+     ! gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet | grep -qx './sbin/init'; then
+    lumen_die "Initramfs boot assertion failed: expected /init and /sbin/init."
+  fi
   lumen_ok "Rootfs archive: ${ROOTFS_ARCHIVE}"
 fi
 
@@ -154,7 +202,7 @@ echo "============================================"
 lumen_ok "Root filesystem assembly COMPLETE"
 echo "============================================"
 echo "  Rootfs:       ${LUMEN_STAGE_ROOT}"
-echo "  Archive:      ${LUMEN_BUILD_DIR}/rootfs.cpio.gz"
+echo "  Archive:      ${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
 echo "  Init:         ${LUMEN_STAGE_ROOT}/sbin/init"
 echo "  Config:       /etc/{os-release,fstab,resolv.conf}"
 echo "============================================"
@@ -162,7 +210,7 @@ echo ""
 echo "To boot in QEMU:"
 echo "  qemu-system-x86_64 \\"
 echo "    -kernel ${LUMEN_BUILD_DIR}/build-kernel/arch/x86/boot/bzImage \\"
-echo "    -initrd ${LUMEN_BUILD_DIR}/rootfs.cpio.gz \\"
+echo "    -initrd ${LUMEN_BUILD_DIR}/initramfs.cpio.gz \\"
 echo "    -nographic \\"
 echo "    -append \"console=ttyS0\" \\"
 echo "    -m 256M"

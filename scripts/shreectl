@@ -24,7 +24,19 @@ shreectl — ShreeOS Central System Administration Interface
 Usage:
   shreectl info                        Display system summary and hardware specs
   shreectl services [list|start|stop|restart|status] Check and control supervised services
-  shreectl network [status|ip|restart] Manage network interfaces and connectivity
+  shreectl daemon <status|ping> [--json]  Query the ShreeOS hardware daemon
+  shreectl hardware [--json]              Show detected hardware summary
+  shreectl cpu|gpu|memory|disks|pci|usb [--json]  Query detected hardware
+  shreectl network [interfaces] [--json]     Show network state
+  shreectl ethernet [status] [--json]        Show wired Ethernet state
+  shreectl wifi <status|list|connect|disconnect|known|forget> [--json]
+  shreectl bluetooth <status|enable|disable|scan|devices> [--json]
+  shreectl audio <devices|status|volume|mute|unmute> [--json]
+  shreectl battery|power [--json]
+  shreectl brightness [0-100] [--json]
+  shreectl drivers [missing] [--json]
+  shreectl firmware [--json]
+  shreectl hardware diagnose [--json]
   shreectl update [check|apply]        Check and apply package updates
   shreectl doctor                      Run comprehensive system health diagnostics
   shreectl logs [service-name|kernel|system] View service and system supervisor logs
@@ -78,17 +90,75 @@ cmd_services() {
   esac
 }
 
-cmd_network() {
+cmd_daemon() {
   local sub="${1:-status}"
   shift 2>/dev/null || true
+
   case "$sub" in
-    status) shree-net status ;;
-    ip)     shree-net ip ;;
-    scan)   shree-net scan ;;
-    restart) shree-net restart ;;
-    *)      echo "Usage: shreectl network [status|ip|scan|restart]"; exit 1 ;;
+    status|ping)
+      if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--json" ]; }; then
+        echo "Usage: shreectl daemon <status|ping> [--json]" >&2
+        return 1
+      fi
+      shreedctl "$sub" "$@"
+      ;;
+    *)
+      echo "Usage: shreectl daemon <status|ping> [--json]" >&2
+      return 1
+      ;;
   esac
 }
+
+cmd_hardware() {
+  local action="$1"
+  shift
+  if [ "$action" = hardware ] && [ "${1:-}" = diagnose ]; then
+    shift
+    if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--json" ]; }; then
+      echo "Usage: shreectl hardware diagnose [--json]" >&2
+      return 1
+    fi
+    shreedctl diagnose "$@"
+    return
+  fi
+  if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--json" ]; }; then
+    echo "Usage: shreectl ${action} [--json]" >&2
+    return 1
+  fi
+  shreedctl "$action" "$@"
+}
+
+cmd_drivers() { if [ "${1:-}" = missing ]; then shift; shreedctl drivers_missing "$@"; else shreedctl drivers "$@"; fi; }
+
+cmd_network() {
+  local sub="network"
+  if [ "${1:-}" = "interfaces" ] || [ "${1:-}" = "status" ]; then
+    sub="$1"
+    shift
+  fi
+  case "$sub" in
+    network|status) shreedctl network "$@" ;;
+    interfaces) shreedctl interfaces "$@" ;;
+    *) echo "Usage: shreectl network [interfaces] [--json]" >&2; return 1 ;;
+  esac
+}
+
+cmd_ethernet() {
+  local sub="ethernet"
+  if [ "${1:-}" = "status" ]; then
+    sub="$1"
+    shift
+  fi
+  case "$sub" in
+    ethernet|status) shreedctl ethernet "$@" ;;
+    *) echo "Usage: shreectl ethernet [status] [--json]" >&2; return 1 ;;
+  esac
+}
+
+cmd_wifi() { /usr/sbin/shree-wifi "$@"; }
+cmd_bluetooth() { /usr/sbin/shree-bluetooth "$@"; }
+cmd_audio() { /usr/sbin/shree-audio "$@"; }
+cmd_powerctl() { /usr/sbin/shree-powerctl "$@"; }
 
 cmd_update() {
   local sub="${1:-apply}"
@@ -165,7 +235,17 @@ shift
 case "$COMMAND" in
   info)        cmd_info "$@" ;;
   services)    cmd_services "$@" ;;
+  daemon)      cmd_daemon "$@" ;;
+  hardware|cpu|gpu|memory|disks|pci|usb) cmd_hardware "$COMMAND" "$@" ;;
+  drivers)     cmd_drivers "$@" ;;
+  firmware)    shreedctl firmware "$@" ;;
   network)     cmd_network "$@" ;;
+  ethernet)    cmd_ethernet "$@" ;;
+  wifi)        cmd_wifi "$@" ;;
+  bluetooth)   cmd_bluetooth "$@" ;;
+  audio)       cmd_audio "$@" ;;
+  battery|power) cmd_powerctl "$COMMAND" "$@" ;;
+  brightness)  cmd_powerctl brightness "$@" ;;
   update)      cmd_update "$@" ;;
   doctor)      cmd_doctor "$@" ;;
   logs)        cmd_logs "$@" ;;

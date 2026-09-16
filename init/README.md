@@ -2,6 +2,9 @@
 
 Custom PID 1 service supervisor and init system written in C for ShreeOS.
 
+The default service set includes `shreed`, the foreground ShreeOS hardware
+service. It starts after early sysinit and is restarted by PID 1 if it exits.
+
 ## Features
 
 - **Essential Virtual Filesystems:** Mounts `/proc`, `/sys`, `/dev`, `/run`, `/dev/pts`, `/dev/shm`, `/tmp`.

@@ -40,9 +40,9 @@ get_net() {
   dev=$(ip route show default 2>/dev/null | awk '{print $5}' | head -n1 || echo "")
   if [ -n "$dev" ]; then
     case "$dev" in
-      wl*|wlan*|wifi*) echo "Wi-Fi" ;;
-      eth*|en*|eno*|enp*) echo "Ethernet" ;;
-      *) echo "Online" ;;
+      wl*|wifi*) echo "Wi-Fi" ;;
+      eth*|en*)  echo "Ethernet" ;;
+      *)         echo "Online" ;;
     esac
   else
     echo "Offline"
