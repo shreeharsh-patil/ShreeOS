@@ -37,6 +37,16 @@ if ! [[ "$USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
   exit 1
 fi
 
+# Never repurpose a privileged/system account through the primary-user helper.
+# Existing normal users (UID >= 1000) may still be updated intentionally.
+if [ -f "${TARGET}/etc/passwd" ]; then
+  EXISTING_UID="$(awk -F: -v user="$USER" '$1 == user { print $3; exit }' "${TARGET}/etc/passwd")"
+  if [ -n "$EXISTING_UID" ] && { ! [[ "$EXISTING_UID" =~ ^[0-9]+$ ]] || [ "$EXISTING_UID" -lt 1000 ]; }; then
+    echo "Error: Refusing to configure reserved/system account '${USER}'." >&2
+    exit 1
+  fi
+fi
+
 # 2. Read password securely (from 0600 file or stdin)
 PASSWORD=""
 if [ -n "$CRED_FILE" ]; then
@@ -56,6 +66,12 @@ fi
 
 if [ -z "$PASSWORD" ]; then
   echo "Error: Empty password provided for user '${USER}'. Aborting." >&2
+  exit 1
+fi
+if [ "${#PASSWORD}" -lt 8 ]; then
+  PASSWORD=""
+  unset PASSWORD
+  echo "Error: Password for user '${USER}' must be at least 8 characters." >&2
   exit 1
 fi
 
