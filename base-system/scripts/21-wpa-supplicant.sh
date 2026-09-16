@@ -76,8 +76,14 @@ CONFIG_EAP_TTLS=y
 CONFIG_EAP_GTC=y
 
 # Keep TLS/crypto self-contained until a target OpenSSL package exists.
+# CONFIG_CRYPTO=internal is explicit here because SAE/Dragonfly require the
+# bignum/EC implementation from crypto_internal.o; relying on an implicit
+# backend made the cross-build reach the link step without those symbols.
 CONFIG_TLS=internal
+CONFIG_CRYPTO=internal
+CONFIG_TLSV12=y
 CONFIG_INTERNAL_LIBTOMMATH=y
+CONFIG_INTERNAL_LIBTOMMATH_FAST=y
 EOF
 
 make CC="${LUMEN_TARGET_TRIPLET}-gcc" -j"${LUMEN_MAKE_JOBS}"
