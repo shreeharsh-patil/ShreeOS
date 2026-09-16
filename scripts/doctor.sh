@@ -77,6 +77,7 @@ echo "==> Core host build tools"
 check_cmd bash "GNU Bash" true
 check_cmd git "Git" true
 check_cmd python3 "Python 3" true
+check_cmd perl "Perl" true
 check_cmd make "GNU Make" true
 check_cmd gcc "C Compiler (gcc)" true
 check_cmd g++ "C++ Compiler (g++)" true

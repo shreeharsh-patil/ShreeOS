@@ -25,6 +25,12 @@ require_dir() {
   [ -d "$path" ] || shreeos_die "$stage cache is invalid: missing $desc ($path)"
 }
 
+require_glob() {
+  local pattern="$1" desc="$2"
+  compgen -G "$pattern" >/dev/null ||
+    shreeos_die "$stage cache is invalid: missing $desc ($pattern)"
+}
+
 case "$stage" in
   toolchain)
     require_exec "$SHREEOS_TOOLS/bin/$SHREEOS_TARGET_TRIPLET-gcc" "cross compiler"
@@ -35,6 +41,11 @@ case "$stage" in
     require_exec "$SHREEOS_STAGE_ROOT/bin/bash" "/bin/bash compatibility link"
     require_exec "$SHREEOS_STAGE_ROOT/usr/bin/ls" "/usr/bin/ls"
     require_exec "$SHREEOS_STAGE_ROOT/usr/bin/mount" "/usr/bin/mount"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/sbin/wpa_supplicant" "wpa_supplicant"
+    require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libcrypto.so*" "target libcrypto"
+    require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libssl.so*" "target libssl"
+    require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libnl-3.so*" "target libnl"
+    require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libnl-genl-3.so*" "target libnl-genl"
     ;;
   kernel)
     require_file "$SHREEOS_BUILD_DIR/build-kernel/arch/x86/boot/bzImage" "kernel bzImage"

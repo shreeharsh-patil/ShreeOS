@@ -44,10 +44,23 @@ build_libnl() {
 }
 
 # nl80211 is the modern Linux Wi-Fi control path and requires target libnl.
-# Build it here so wpa_supplicant never falls back to host headers/libraries.
-if ! pkg-config --exists libnl-3.0 libnl-genl-3.0; then
+# A cached compiler sysroot can outlive the staged rootfs, so require BOTH
+# pkg-config metadata and staged target libraries before reusing libnl.
+libnl_is_staged() {
+  compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/libnl-3.so*" >/dev/null &&
+    compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/libnl-genl-3.so*" >/dev/null
+}
+if ! pkg-config --exists libnl-3.0 libnl-genl-3.0 || ! libnl_is_staged; then
   build_libnl
 fi
+
+# WPA3 SAE/DPP require the bignum/ECC API provided by crypto_openssl.
+# The internal TLS backend in wpa_supplicant 2.11 does not implement the full
+# crypto_bignum/crypto_ec surface and fails at link time when SAE is enabled.
+[ -f "${LUMEN_SYSROOT}/usr/include/openssl/ssl.h" ] ||
+  lumen_die "Target OpenSSL headers are missing; build 21-openssl first"
+pkg-config --exists openssl ||
+  lumen_die "Target OpenSSL libraries are missing from the ShreeOS sysroot"
 
 VERSION=2.11
 ARCHIVE="${LUMEN_BUILD_DIR}/sources/wpa_supplicant-${VERSION}.tar.gz"
@@ -79,14 +92,11 @@ CONFIG_LIBNL32=y
 CONFIG_CTRL_IFACE=y
 CONFIG_SAE=y
 CONFIG_IEEE80211W=y
-# Keep the target build self-contained until a target OpenSSL package exists.
-# Internal TLS requires LibTomMath. Use wpa_supplicant's bundled minimal
-# implementation so the cross-build does not depend on host tommath headers.
-CONFIG_TLS=internal
-CONFIG_CRYPTO=internal
+# OpenSSL supplies the ECC/bignum primitives required by WPA3 SAE/DPP.
+# The library is target-built in 21-openssl.sh and resolved only via the
+# ShreeOS compiler sysroot; host OpenSSL must never be linked here.
+CONFIG_TLS=openssl
 CONFIG_ECC=y
-CONFIG_INTERNAL_LIBTOMMATH=y
-CONFIG_INTERNAL_LIBTOMMATH_FAST=y
 EOF
 
 # Assert that D-Bus stayed disabled and that target libnl is discoverable before
@@ -95,13 +105,16 @@ EOF
 if grep -Eq '^CONFIG_(CTRL_IFACE_DBUS|DBUS)' .config; then
   lumen_die "wpa_supplicant D-Bus support must remain disabled until target D-Bus is staged"
 fi
-if ! grep -qx 'CONFIG_CRYPTO=internal' .config; then
-  lumen_die "wpa_supplicant internal TLS requires CONFIG_CRYPTO=internal"
+if ! grep -qx 'CONFIG_TLS=openssl' .config; then
+  lumen_die "wpa_supplicant must use the target OpenSSL TLS/crypto backend"
+fi
+if grep -Eq '^CONFIG_(CRYPTO=internal|INTERNAL_LIBTOMMATH)' .config; then
+  lumen_die "wpa_supplicant internal crypto must stay disabled when WPA3 ECC is enabled"
 fi
 if ! grep -qx 'CONFIG_ECC=y' .config; then
-  lumen_die "WPA3 SAE/DPP support requires CONFIG_ECC=y with the internal crypto backend"
+  lumen_die "WPA3 SAE/DPP support requires CONFIG_ECC=y"
 fi
-pkg-config --exists libnl-3.0 libnl-genl-3.0
+pkg-config --exists libnl-3.0 libnl-genl-3.0 openssl
 
 make CC="${LUMEN_TARGET_TRIPLET}-gcc" -j"${LUMEN_MAKE_JOBS}"
 install -Dm755 wpa_supplicant "${LUMEN_STAGE_ROOT}/usr/sbin/wpa_supplicant"
