@@ -68,6 +68,7 @@ sed -i -E \
   -e '/^CONFIG_DRIVER_NL80211=/d' \
   -e '/^CONFIG_LIBNL(20|32)?=/d' \
   -e '/^CONFIG_TLS=/d' \
+  -e '/^CONFIG_CRYPTO=/d' \
   -e '/^CONFIG_INTERNAL_LIBTOMMATH(_FAST)?=/d' \
   .config
 
@@ -81,6 +82,7 @@ CONFIG_IEEE80211W=y
 # Internal TLS requires LibTomMath. Use wpa_supplicant's bundled minimal
 # implementation so the cross-build does not depend on host tommath headers.
 CONFIG_TLS=internal
+CONFIG_CRYPTO=internal
 CONFIG_INTERNAL_LIBTOMMATH=y
 CONFIG_INTERNAL_LIBTOMMATH_FAST=y
 EOF
@@ -90,6 +92,9 @@ EOF
 # early CI failure instead of a late missing-header error.
 if grep -Eq '^CONFIG_(CTRL_IFACE_DBUS|DBUS)' .config; then
   lumen_die "wpa_supplicant D-Bus support must remain disabled until target D-Bus is staged"
+fi
+if ! grep -qx 'CONFIG_CRYPTO=internal' .config; then
+  lumen_die "wpa_supplicant internal TLS requires CONFIG_CRYPTO=internal"
 fi
 pkg-config --exists libnl-3.0 libnl-genl-3.0
 
