@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="editor-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2C2C2E" />
+      <stop offset="100%" stop-color="#1C1C1E" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#editor-bg)" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+  <!-- Notepad sheet + Stylus / Pen -->
+  <rect x="34" y="32" width="60" height="64" rx="6" fill="#F5F5F7" opacity="0.9" />
+  <line x1="44" y1="46" x2="72" y2="46" stroke="#6E6E73" stroke-width="3" stroke-linecap="round" />
+  <line x1="44" y1="56" x2="84" y2="56" stroke="#6E6E73" stroke-width="3" stroke-linecap="round" />
+  <line x1="44" y1="66" x2="68" y2="66" stroke="#6E6E73" stroke-width="3" stroke-linecap="round" />
+  <!-- Precision Nib -->
+  <polygon points="76,82 88,70 94,76 82,88 74,90" fill="#2878FF" />
+</svg>

@@ -35,20 +35,20 @@ done
 
 lumen_require_cmd xorriso
 
-BZIMAGE="${LUMEN_BUILD_DIR}/build-kernel/arch/x86/boot/bzImage"
-INITRD="${LUMEN_BUILD_DIR}/rootfs.cpio.gz"
-ISO_STAGING="${LUMEN_BUILD_DIR}/iso-staging"
-ISO_OUT="${LUMEN_OUT}/${DISTRO_ID}-${DISTRO_VERSION}.iso"
+BZIMAGE="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/build-kernel/arch/x86/boot/bzImage"
+INITRD="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/rootfs.cpio.gz"
+ISO_STAGING="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/iso-staging"
+ISO_OUT="${SHREEOS_OUT:-${LUMEN_OUT}}/${DISTRO_ID}-${DISTRO_VERSION}.iso"
 
-lumen_step "Building bootable ISO: ${ISO_OUT}"
+shreeos_step "Building bootable ISO: ${ISO_OUT}"
 
 # 1. Verify prerequisites
 for f in "$BZIMAGE" "$INITRD"; do
   if [ ! -f "$f" ]; then
-    lumen_die "Missing: $f"
+    shreeos_die "Missing: $f"
   fi
 done
-lumen_ok "All build artifacts found"
+shreeos_ok "All build artifacts found"
 
 # 2. Create ISO staging directory
 rm -rf "$ISO_STAGING"
@@ -57,10 +57,10 @@ mkdir -p "${ISO_STAGING}/boot/grub"
 # 3. Copy kernel and initramfs
 cp "$BZIMAGE" "${ISO_STAGING}/boot/bzImage"
 cp "$INITRD" "${ISO_STAGING}/boot/rootfs.cpio.gz"
-lumen_ok "Kernel and rootfs copied to staging"
+shreeos_ok "Kernel and rootfs copied to staging"
 
 # 4. Install GRUB2
-bash "${LUMEN_ROOT_DIR}/bootloader/scripts/install-grub.sh" "$ISO_STAGING"
+bash "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/bootloader/scripts/install-grub-iso.sh" "$ISO_STAGING"
 
 # 5. Build hybrid ISO with xorriso
 lumen_step "Creating hybrid ISO with xorriso"

@@ -1,13 +1,29 @@
-# Base System
+# Base System & System Profiles
 
-**Status:** implemented — Phase 2 of the implementation plan.
-**Packages:** 19 packages from the LFS 12.3 stable release
+**Status:** implemented — Phase 2 of the implementation plan.  
+**Packages:** 19 packages from the LFS 12.3 stable release  
 
 ## Purpose
 
 Compiles the core userland (bash, coreutils, util-linux, and build tools)
 against the cross-compiler from Phase 1, producing a minimal chroot-able
-base system at `$LUMEN_STAGE_ROOT` (`build/rootfs/`).
+base system at `$SHREEOS_STAGE_ROOT` (`build/rootfs/`).
+
+## System Profiles
+
+ShreeOS defines 3 tiered installation profiles:
+
+1. **`minimal`** (`base-system/profiles/minimal.list`):
+   - Pure bootable core: init, bash, coreutils, sed, grep, tar, util-linux, and `lpm` package manager.
+   - Ideal for embedded environments, containers, and hypervisor appliances.
+
+2. **`server`** (`base-system/profiles/server.list`):
+   - Extends `minimal` with networking (`iproute2`, `dhcpcd`), TLS (`openssl`, `ca-certificates`), remote management (`openssh`), time synchronization (`chrony`), and storage tooling (`e2fsprogs`, `kmod`).
+   - Standard profile for headless server deployments.
+
+3. **`desktop`** (`base-system/profiles/desktop.list`):
+   - Extends `server` with lightweight graphical stack (`dwm`, `st`, `dmenu`, `Xorg`, `Mesa`, `libinput`, DejaVu fonts).
+   - Low-footprint, high-performance desktop workstation environment.
 
 ## Package List
 
@@ -33,26 +49,10 @@ base system at `$LUMEN_STAGE_ROOT` (`build/rootfs/`).
 | 18 | xz | 5.6.4 | LZMA compression |
 | 19 | util-linux | 2.40.4 | System utilities (mount, ps, etc.) |
 
-## Build Order
-
-Packages are built in dependency order: a package's dependencies are built
-before it. The key dependency chains are:
-
-```
-m4 → bison
-ncurses
-zlib
-bison → flex
-ncurses + readline → bash
-ncurses + zlib → util-linux
-```
-
-All others are standalone.
-
 ## Building
 
 ```bash
-# Prerequisites: Phase 1 cross-compiler in $LUMEN_TOOLS/bin/
+# Prerequisites: Phase 1 cross-compiler in $SHREEOS_TOOLS/bin/
 bash base-system/scripts/build-all.sh
 ```
 
@@ -63,7 +63,7 @@ bash base-system/scripts/build-all.sh
 
 ## Outputs
 
-All packages are installed to `$LUMEN_STAGE_ROOT/usr/`:
+All packages are installed to `$SHREEOS_STAGE_ROOT/usr/`:
 ```
 build/rootfs/
 ├── usr/
@@ -74,17 +74,4 @@ build/rootfs/
 └── bin/
     ├── bash          # Symlink to /usr/bin/bash
     └── sh            # Symlink to bash
-```
-
-## Testing
-
-```bash
-# Quick syntax check
-bash -n base-system/scripts/*.sh
-
-# Verify all expected binaries exist
-bash tests/smoke/test-base-system.sh
-
-# Full chroot test (requires root or QEMU user mode)
-# chroot $LUMEN_STAGE_ROOT /usr/bin/bash -c 'echo hello'
 ```

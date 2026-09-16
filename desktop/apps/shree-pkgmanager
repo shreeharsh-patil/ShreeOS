@@ -1,0 +1,33 @@
+#!/bin/sh
+# desktop/apps/shree-pkgmanager — ShreeOS Package Manager Frontend for lpm
+#
+# Clean, row-based package browser (Discover, Installed, Updates).
+
+st -g 85x26 -t "ShreeOS Package Manager" -e /bin/bash -c "
+  clear
+  echo '  ┌────────────────────────────────────────────────────────────┐'
+  echo '  │               ShreeOS Package Manager                      │'
+  echo '  └────────────────────────────────────────────────────────────┘'
+  echo ''
+  echo '    [1] Discover Available Packages'
+  echo '    [2] View Installed Packages'
+  echo '    [3] Check & Install Updates'
+  echo '    [4] Search Package Database'
+  echo '    [5] Verify Package Integrity'
+  echo '    [q] Quit'
+  echo ''
+  read -r -p '  Select action [1-5, q]: ' CHOICE
+
+  case \"\$CHOICE\" in
+    1) lpm update && lpm list ;;
+    2) lpm list ;;
+    3) lpm upgrade ;;
+    4) read -r -p '  Enter search term: ' QUERY; lpm search \"\$QUERY\" ;;
+    5) read -r -p '  Enter package name: ' PKG; lpm verify \"\$PKG\" ;;
+    q|Q) exit 0 ;;
+  esac
+  echo ''
+  echo '  ────────────────────────────────────────────────────────────'
+  echo '  Press Enter to close.'
+  read -r
+" &

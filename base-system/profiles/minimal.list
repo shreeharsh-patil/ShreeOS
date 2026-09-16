@@ -1,0 +1,24 @@
+# base-system/profiles/minimal.list — Minimal runtime userland profile
+# Focus: Smallest self-hosting/bootable system with init, shell, package manager, core tools
+
+# Build & Shell Essentials
+m4
+ncurses
+zlib
+bison
+flex
+readline
+bash
+coreutils
+diffutils
+file
+gawk
+grep
+gzip
+make
+patch
+sed
+tar
+xz
+util-linux
+lpm

@@ -2,9 +2,9 @@
 
 # 🐧 ShreeOS
 
-### Enterprise-Grade From-Scratch Linux Distribution, Custom Toolchain Engine & Reproducible Kernel Architecture
+### Experimental Independent Source-Built Linux Distribution with Custom Init, LPM Package Manager & Desktop Suite
 
-**ShreeOS** is an independent, source-built x86_64 Linux operating system engineered from the ground up without relying on prebuilt distributions like Debian, Arch, or Fedora. Inspired by the principles of Linux From Scratch (LFS), the platform automates the creation of a cross-compilation toolchain, a mainline Linux kernel, a custom PID 1 init system, and a native package manager (`lpm`), culminating in a bootable hybrid BIOS/UEFI ISO compiled entirely via CI/CD pipelines.
+**ShreeOS** is an independent, source-built x86_64 Linux operating system engineered from the ground up without relying on prebuilt binary distributions. It automates the compilation of a cross-toolchain, mainline Linux kernel, custom PID 1 init system with Unix socket IPC, and native package manager (`lpm`), providing a unified desktop environment and bootable hybrid BIOS/UEFI ISO.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Linux_Kernel-Mainline-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux Kernel" />
@@ -26,16 +26,16 @@
 
 ## 🏛️ Operating System Architecture & Compilation Topology
 
-Building a distribution from source requires complete isolation between the host environment and the target userland. **ShreeOS** enforces strict build isolation using a **Three-Stage Bootstrap Process**:
+Building ShreeOS from source uses a three-stage bootstrap process:
 
-1. **Stage 1 (Host Toolchain):** Compiles cross-binutils, cross-GCC, and target C library headers natively on the host platform.
-2. **Stage 2 (Isolated Chroot Environment):** Re-compiles a native compiler targeting `x86_64-shreeos-linux-gnu` inside a clean `chroot` sandbox.
-3. **Stage 3 (System Assembly):** Compiles the mainline Linux kernel, system utilities, custom PID 1 init, and native `lpm` package management binaries to construct the final bootable ISO file system.
+1. **Stage 1 (Cross-Toolchain):** Compiles cross-binutils, cross-GCC, and Linux kernel headers targeting `x86_64-shreeos-linux-gnu`.
+2. **Stage 2 (Base Userland):** Compiles base packages (Coreutils, Bash, Util-Linux, Glibc runtime) inside an isolated build staging root.
+3. **Stage 3 (Desktop, Init & Packaging):** Compiles the mainline Linux kernel, PID 1 supervisor, `lpm` package manager, desktop suite, and hybrid BIOS/UEFI bootloader image.
 
 ```mermaid
 graph TD
     subgraph Host Infrastructure Layer
-        A["💻 Linux Host System <br><i>(Ubuntu 22.04 / 24.04 LTS / CI Container)</i>"]
+        A["💻 Linux Host System <br><i>(Ubuntu 22.04 / 24.04 LTS / CI)</i>"]
         B["⚙️ Global Config Manager <br><i>(build.conf / Global Vars)</i>"]
     end
 
@@ -44,7 +44,7 @@ graph TD
         D["📚 Kernel Headers & Glibc <br><i>(Target System C Runtime)</i>"]
     end
 
-    subgraph Stage 2: Base System Chroot Sandbox
+    subgraph Stage 2: Base System Assembly
         E["📦 Core Userland Assembly <br><i>(Coreutils, Bash, Util-Linux)</i>"]
         F["🧠 Custom Init System <br><i>(PID 1 Service Supervisor)</i>"]
         G["⚡ Package Manager Engine <br><i>(lpm / lpm-build Suite)</i>"]
@@ -59,7 +59,7 @@ graph TD
     A <-->|Inject Config Parameters| B
     B --> C
     C --> D
-    D -->|Mount Clean Chroot Environment| E
+    D -->|Mount Clean Staging Environment| E
     E --> F & G
     F & G --> H
     H --> I
@@ -77,12 +77,7 @@ graph TD
     style J fill:#2ecc71,stroke:#27ae60,stroke-width:2px,color:#fff
 ```
 
-> [!NOTE]
-> **Dynamic Rebranding Design:** The entire system architecture uses a centralized config interface (`build.conf`). All binaries, directory flags, package indicators, and system scripts reference the `DISTRO_NAME` variable directly, enabling full system rebranding with a single configuration edit.
-
 ### 🔄 System Initialization & Service Lifecycle
-
-The sequence blueprint below shows the complete system startup process, starting from hardware initialization to PID 1 handoff and userland desktop rendering:
 
 ```mermaid
 sequenceDiagram
@@ -102,115 +97,86 @@ sequenceDiagram
     rect rgb(20, 30, 20)
         note over Init,Service: System Initialization Lifecycle
         Init->>Init: Mount /proc, /sys, /dev Pseudo Filesystems
-        Init->>Service: Parse Service Manifests (/etc/init.d/*)
-        Service->>Service: Resolve Startup Dependencies & Spawn Daemons
+        Init->>Service: Parse Service Descriptors (/etc/services.d/*.conf)
+        Service->>Service: Start Daemons & Open Socket IPC (/run/init.sock)
     end
 
     rect rgb(30, 20, 40)
         note over Service,Desktop: Userland Presentation Layer
-        Service->>Desktop: Launch Display Server & Window Manager
-        Desktop-->>User: Present Minimal Responsive Graphical Environment
+        Service->>Desktop: Authenticate User (shree-auth) & Start Session
+        Desktop-->>User: Present Restrained Desktop Environment
     end
 ```
 
-## 🛠️ Custom Subsystems & Tooling Specifications
+## 🛠️ Subsystems & Specifications
 
-| Subsystem Component | Technical Challenge | ShreeOS Architectural Solution |
-|---|---|---|
-| 🛠️ Native Toolchain | Preventing host system contamination during stage-1 package compilation. | Builds isolated, cross-compiled GNU Binutils and GCC binaries targeting `x86_64-shreeos-linux-gnu` with restricted search paths. |
-| 🧠 Custom Init (PID 1) | Managing process supervision, signal handling, and service order without systemd complexity. | Features a lightweight C-based init daemon that manages zombie process reaping (`waitpid`), signal trapping, and dependency ordering. |
-| 📦 lpm Package Manager | Handling updates, metadata tracking, and dependency resolution on a custom distribution. | Implements a custom package management utility with dependency tree calculation, SHA-256 verification, and atomic package extraction. |
-| 💿 Hybrid ISO Builder | Booting reliably across both legacy BIOS and modern UEFI hardware architectures. | Generates an isohybrid disk image with dual GRUB2 boot paths (`i386-pc` for BIOS and `x86_64-efi` for UEFI systems). |
+| Subsystem Component | Architecture & Purpose |
+|---|---|
+| 🛠️ Native Toolchain | Cross-compiled GNU Binutils and GCC targeting `x86_64-shreeos-linux-gnu` with isolated search paths. |
+| 🧠 Custom Init (PID 1) | C-based init daemon with non-blocking zombie reaping (`waitpid`), process group signal routing, service logging (`/var/log/shreeos/services/`), and Unix socket IPC (`/run/init.sock`). |
+| 📦 lpm Package Manager | Custom package manager with SHA-256 integrity verification, transactional staging, file conflict detection, and `/var/lib/lpm/lock` locking. |
+| 💿 Hybrid ISO Builder | Isohybrid image with dual GRUB2 boot paths (`i386-pc` for BIOS and `x86_64-efi` for UEFI). |
 
-## 🎨 Interface & Build Pipeline Showcase
+## 🚀 Build Guide & Local Execution
 
-### 🚀 Build Guide & Local Execution
+### Prerequisites
 
-#### Prerequisites & Host Tooling
+- **Host System:** Linux (Ubuntu 22.04 / 24.04 LTS or equivalent)
+- **Core Dependencies:** `git`, `make`, `gcc`, `g++`, `bash`, `bison`, `flex`, `gawk`, `texinfo`, `wget`, `curl`, `xorriso`, `qemu-system-x86_64`
+- **Storage:** ~30 GB free disk space.
 
-- **Recommended Host System:** Ubuntu 22.04 LTS or 24.04 LTS (64-bit)
-- **Core Tooling Dependencies:** `git`, `make`, `gcc`, `g++`, `bash`, `bison`, `flex`, `gawk`, `texinfo`, `wget`, `curl`, `xorriso`, `qemu-system-x86_64`
-- **Hardware Storage Bounds:** Minimum ~30 GB free disk space and 4+ CPU cores recommended for fast toolchain compilation.
-
-#### Step-by-Step Compilation
-
-**1. Repository Setup & Configuration**
-
-Clone the repository and inspect system parameters:
+### Building ShreeOS
 
 ```bash
 git clone https://github.com/shreeharsh-patil/shreeos.git
 cd shreeos
 
-# Review core variables (Target Arch, Toolchain Versions, Name Parameters)
-cat build.conf
+# Build full desktop ISO profile
+make PROFILE=desktop iso
+
+# Or build minimal headless profile
+make PROFILE=minimal iso
 ```
 
-**2. Query Pipeline Targets**
-
-Review the available automated targets managed through the root build framework:
+### Testing & Validation
 
 ```bash
-make help
-```
+# Run all test suites (unit tests + security + auth + installer + desktop)
+make test-all
 
-**3. Execute Toolchain & System Build**
-
-Run the automated build sequence to construct the toolchain, kernel, base system, and package manager:
-
-```bash
-# Compile Stage-1 & Stage-2 Toolchain Ecosystems
-make toolchain
-
-# Build Core Base System, Kernel, and Utilities inside Sandbox
-make base-system
-
-# Assemble the RootFS and Package the Bootable ISO
-make iso
-```
-
-**4. Emulate Bootable ISO via QEMU**
-
-Validate the final build using the integrated QEMU test suite:
-
-```bash
+# Launch built ISO in QEMU (UEFI mode)
 make qemu
+
+# Launch built ISO in QEMU (BIOS mode)
+make qemu-bios
 ```
 
 ## 📁 Repository Directory Architecture
 
 ```
 shreeos/
-├─ build.conf                       (Central Configuration File: Flags, Paths, and DISTRO_NAME)
-├─ Makefile                         (Root Build Script Orchestrating Stage 1-3 Targets)
+├─ build.conf                       (Central Configuration File)
+├─ Makefile                         (Root Build Script Orchestration)
 ├─ toolchain/                       (Cross-compilation toolchain: binutils, gcc, glibc)
-├─ base-system/                     (Core userland compilation specs: coreutils, bash, util-linux)
-├─ kernel/                          (Mainline Linux kernel configs, patches, and build hooks)
-├─ rootfs/                          (Root filesystem structure and layout scripts)
-├─ init/                            (Custom C-based PID 1 init system and service scripts)
-├─ pkgmanager/                      (Native lpm package manager source code)
-├─ repo-tools/                      (Package packaging tooling: lpm-build & index generators)
-├─ installer/                       (Guided terminal-based system disk installer)
+├─ base-system/                     (Core userland: coreutils, bash, util-linux)
+├─ kernel/                          (Linux kernel configs, patches, and build scripts)
+├─ rootfs/                          (Root filesystem assembly and skeleton scripts)
+├─ init/                            (Custom C-based PID 1 init system and service configs)
+├─ pkgmanager/                      (Native lpm package manager source and test suites)
+├─ repo-tools/                      (Package indexing & archive tooling)
+├─ installer/                       (Target disk installer and partitioning safeguards)
 ├─ iso-builder/                     (Hybrid BIOS/UEFI ISO generation framework)
-├─ desktop/                         (Minimal desktop environment, window manager, & themes)
-├─ branding/                        (Logos, wallpapers, system release parameters)
-├─ update/                          (System update mechanism)
-├─ tests/                           (Smoke tests, automated QEMU boot validation, & unit tests)
-├─ .github/workflows/               (CI/CD pipelines for automated ISO builds and testing)
-├─ docs/                            (Architecture design decisions, build guides, and roadmaps)
-└─ scripts/                         (Shared shell helpers used across all build stages)
+├─ desktop/                         (Window manager, control center, launcher, file manager)
+├─ branding/                        (Design system tokens, vector icons, wallpapers)
+├─ tests/                           (Security, authentication, installer, and smoke tests)
+└─ scripts/                         (shreectl, shree-doctor, shreeinfo utilities)
 ```
 
-## ⚖️ Legal Guidelines & Licensing
+## ⚖️ License & Attribution
 
-> [!WARNING]
-> This operating system platform is distributed under the terms of the MIT License. Third-party components built from source (including the mainline Linux kernel, GNU toolchain utilities, and core libraries) retain their respective upstream software licenses (GPLv2, GPLv3, LGPL, etc.). See the `docs/design-decisions/` directory for detailed licensing and attribution notes.
+Distributed under the terms of the MIT License. Third-party components built from source (Linux kernel, GNU toolchain, core libraries) retain their respective upstream software licenses (GPLv2, GPLv3, LGPL, etc.).
 
 ## 👤 Project Author
 
 **Developed and Maintained by Shreeharsh Patil.**
-
-Feel free to contact me or submit issues via:
-
-- **Email:** shreeharsh.dev@gmail.com
-- **GitHub Profile:** [github.com/shreeharsh-patil](https://github.com/shreeharsh-patil)
+- **GitHub:** [github.com/shreeharsh-patil](https://github.com/shreeharsh-patil)

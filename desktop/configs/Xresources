@@ -1,0 +1,48 @@
+! ShreeOS Desktop X11 Resource Configuration
+! Typography, Subpixel Antialiasing & System Colors
+
+! --- Subpixel Rendering & Hinting ---------------------------------------
+Xft.antialias:  1
+Xft.autohint:   0
+Xft.hinting:    1
+Xft.hintstyle:  hintslight
+Xft.rgba:       rgb
+Xft.lcdfilter:  lcddefault
+Xft.dpi:        96
+
+! --- System Monospace Terminal Colors (ShreeOS Dark Neutral) ------------
+*.foreground:   #F5F5F7
+*.background:   #1C1C1E
+*.cursorColor:  #2878FF
+
+! Black / Dark Gray
+*.color0:       #1C1C1E
+*.color8:       #38383A
+
+! Red
+*.color1:       #E54D2E
+*.color9:       #EC6D53
+
+! Green
+*.color2:       #30A46C
+*.color10:      #46B880
+
+! Yellow / Amber
+*.color3:       #F7B955
+*.color11:      #F8CA7B
+
+! Blue (ShreeOS Accent)
+*.color4:       #2878FF
+*.color12:      #5E9BFF
+
+! Magenta
+*.color5:       #8E4EC6
+*.color13:      #A56DD8
+
+! Cyan
+*.color6:       #12A594
+*.color14:      #30C0B0
+
+! White / Light Gray
+*.color7:       #A1A1A6
+*.color15:      #F5F5F7

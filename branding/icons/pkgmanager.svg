@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="pkg-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2C2C2E" />
+      <stop offset="100%" stop-color="#1C1C1E" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#pkg-bg)" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+  <!-- Isometric Package Box in Clean Minimal Silhouette -->
+  <!-- Top Flap -->
+  <polygon points="64,32 94,48 64,64 34,48" fill="#3A88FF" opacity="0.9" />
+  <!-- Left Side -->
+  <polygon points="34,48 64,64 64,96 34,80" fill="#2878FF" />
+  <!-- Right Side -->
+  <polygon points="64,64 94,48 94,80 64,96" fill="#1A62E8" />
+  <polyline points="64,64 64,96" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" />
+</svg>

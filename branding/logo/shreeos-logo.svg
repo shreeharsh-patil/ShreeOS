@@ -1,8 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- ShreeOS minimal logo: stylized 'S' with leaf motif -->
-  <rect width="256" height="256" rx="32" fill="#1a1a2e"/>
-  <circle cx="128" cy="128" r="96" fill="none" stroke="#e94560" stroke-width="8"/>
-  <path d="M80 128 Q104 80 128 96 Q152 112 176 80" fill="none" stroke="#0f3460" stroke-width="12" stroke-linecap="round"/>
-  <path d="M80 128 Q104 176 128 160 Q152 144 176 176" fill="none" stroke="#e94560" stroke-width="12" stroke-linecap="round"/>
-  <circle cx="128" cy="128" r="8" fill="#e94560"/>
+  <defs>
+    <linearGradient id="shreeos-surface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#242426" />
+      <stop offset="100%" stop-color="#1C1C1E" />
+    </linearGradient>
+    <linearGradient id="shreeos-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3A88FF" />
+      <stop offset="100%" stop-color="#2878FF" />
+    </linearGradient>
+    <filter id="subtle-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Base Squircle Container (macOS/desktop-inspired continuous curve) -->
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#shreeos-surface)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" filter="url(#subtle-shadow)" />
+
+  <!-- ShreeOS Symbol: Architectural geometric 'S' ligature with continuous rhythm -->
+  <!-- Top Arch -->
+  <path d="M 82 88 C 82 72 96 60 128 60 C 160 60 174 72 174 88 C 174 104 156 114 128 124 C 100 134 82 144 82 164 C 82 184 98 196 128 196 C 160 196 174 180 174 168"
+        fill="none"
+        stroke="url(#shreeos-accent)"
+        stroke-width="18"
+        stroke-linecap="round"
+        stroke-linejoin="round" />
+
+  <!-- Core Equilibrium Ring -->
+  <circle cx="128" cy="128" r="7" fill="#F5F5F7" />
 </svg>

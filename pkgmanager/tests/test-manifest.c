@@ -1,4 +1,5 @@
 #include "manifest.h"
+#include "sha256.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -53,7 +54,7 @@ static void test_manifest_with_deps(void) {
 }
 
 static void test_manifest_save_load(void) {
-    const char *json = "{\"name\":\"test-pkg\",\"version\":\"0.1\",\"files\":[\"/usr/bin/test\"]}";
+    const char *json = "{\"name\":\"test-pkg\",\"version\":\"0.1\",\"files\":[\"/usr/bin/test\"],\"checksums\":{\"/usr/bin/test\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}}";
     manifest *m1 = manifest_parse(json);
 
 #ifdef _WIN32
@@ -71,6 +72,7 @@ static void test_manifest_save_load(void) {
         TEST("name preserved", strcmp(m2->name, "test-pkg") == 0);
         TEST("version preserved", strcmp(m2->version, "0.1") == 0);
         TEST("file preserved", m2->nfiles == 1 && strcmp(m2->files[0], "/usr/bin/test") == 0);
+        TEST("checksum preserved", m2->nchecksums == 1 && strcmp(m2->checksums[0].path, "/usr/bin/test") == 0);
         manifest_free(m2);
     }
 
@@ -81,14 +83,35 @@ static void test_manifest_save_load(void) {
 
 static void test_manifest_sha256(void) {
     const char *json =
-        "{\"name\":\"sec-pkg\",\"version\":\"1.0\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"files\":[\"/usr/bin/sec\"]}";
+        "{\"name\":\"sec-pkg\",\"version\":\"1.0\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"files\":[\"/usr/bin/sec\"],\"checksums\":{\"/usr/bin/sec\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}}";
 
     manifest *m = manifest_parse(json);
     TEST("parse sha256", m != NULL && m->sha256 != NULL);
     if (m && m->sha256) {
         TEST("sha256 matches", strcmp(m->sha256, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") == 0);
     }
+    const char *csum = manifest_get_checksum(m, "/usr/bin/sec");
+    TEST("get checksum by path", csum != NULL && strcmp(csum, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") == 0);
     manifest_free(m);
+}
+
+static void test_sha256_hashing(void) {
+    char hex[65];
+    /* SHA-256 of empty string is e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 */
+    lpm_sha256_buffer("", 0, hex);
+    TEST("sha256 empty string", strcmp(hex, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") == 0);
+
+    /* SHA-256 of "abc" is ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad */
+    lpm_sha256_buffer("abc", 3, hex);
+    TEST("sha256 'abc'", strcmp(hex, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") == 0);
+}
+
+static void test_version_comparison(void) {
+    TEST("1.0.0 == 1.0.0", lpm_version_cmp("1.0.0", "1.0.0") == 0);
+    TEST("1.0.0 < 1.0.1", lpm_version_cmp("1.0.0", "1.0.1") < 0);
+    TEST("1.2.0 > 1.1.9", lpm_version_cmp("1.2.0", "1.1.9") > 0);
+    TEST("2.0.0 > 1.99.99", lpm_version_cmp("2.0.0", "1.99.99") > 0);
+    TEST("1.10.0 > 1.9.0", lpm_version_cmp("1.10.0", "1.9.0") > 0);
 }
 
 static void test_manifest_check_deps(void) {
@@ -113,6 +136,8 @@ int main(void) {
     test_manifest_with_deps();
     test_manifest_save_load();
     test_manifest_sha256();
+    test_sha256_hashing();
+    test_version_comparison();
     test_manifest_check_deps();
 
     printf("\n%d failures\n", failures);

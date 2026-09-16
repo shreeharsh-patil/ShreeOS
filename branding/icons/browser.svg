@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="globe-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#242426" />
+      <stop offset="100%" stop-color="#1C1C1E" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#globe-bg)" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+  <!-- Minimalist Geodesic Globe -->
+  <circle cx="64" cy="64" r="32" fill="none" stroke="#2878FF" stroke-width="4" />
+  <ellipse cx="64" cy="64" rx="14" ry="32" fill="none" stroke="#60A0FF" stroke-width="3" />
+  <line x1="32" y1="64" x2="96" y2="64" stroke="#A1A1A6" stroke-width="3" />
+</svg>

@@ -1,0 +1,40 @@
+#!/bin/sh
+# desktop/apps/shree-about — About ShreeOS System Information dialog
+#
+# Minimalist, elegant system specs and identity dialog.
+
+DISTRO_NAME="ShreeOS"
+DISTRO_VERSION="0.1.0-dev"
+KERNEL_VER=$(uname -r 2>/dev/null || echo "6.18")
+ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+UPTIME=$(uptime -p 2>/dev/null || echo "recently booted")
+CPU_MODEL=$(awk -F': ' '/model name/ {print $2; exit}' /proc/cpuinfo 2>/dev/null || echo "x86_64 Processor")
+MEM_TOTAL=$(awk '/MemTotal:/ {printf "%.1f GB", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo "4.0 GB")
+
+if command -v zenity >/dev/null 2>&1; then
+  zenity --info \
+    --title="About ${DISTRO_NAME}" \
+    --width=420 \
+    --height=280 \
+    --text="<big><b>${DISTRO_NAME}</b></big>\nVersion ${DISTRO_VERSION} (64-bit)\n\n<b>Processor:</b> ${CPU_MODEL}\n<b>Memory:</b> ${MEM_TOTAL}\n<b>Kernel:</b> Linux ${KERNEL_VER} (${ARCH})\n<b>Uptime:</b> ${UPTIME}\n\n<i>Designed with precision for performance and restraint.</i>"
+else
+  # Clean terminal dialog fallback
+  st -g 60x18 -t "About ${DISTRO_NAME}" -e /bin/bash -c "
+    clear
+    echo ''
+    echo '     ┌────────────────────────────────────────────────┐'
+    echo '     │                  ShreeOS                       │'
+    echo '     │             Version ${DISTRO_VERSION}                  │'
+    echo '     └────────────────────────────────────────────────┘'
+    echo ''
+    echo '       OS:          ${DISTRO_NAME} ${DISTRO_VERSION}'
+    echo '       Kernel:      Linux ${KERNEL_VER} (${ARCH})'
+    echo '       Processor:   ${CPU_MODEL}'
+    echo '       Memory:      ${MEM_TOTAL}'
+    echo '       Uptime:      ${UPTIME}'
+    echo ''
+    echo '     ──────────────────────────────────────────────────'
+    echo '       Press Enter or q to close.'
+    read -r -n 1
+  " &
+fi
