@@ -27,12 +27,12 @@ cd "$SOURCE"
 # --cross-compile-prefix applies that prefix itself; leaving those variables in
 # the environment would produce a double-prefixed compiler name.
 env -u CC -u CXX -u AR -u AS -u RANLIB -u LD -u STRIP \
-  perl ./Configure linux-x86_64 \
+  CC="${LUMEN_TARGET_TRIPLET}-gcc" AR="${LUMEN_TARGET_TRIPLET}-ar" RANLIB="${LUMEN_TARGET_TRIPLET}-ranlib" \
+perl ./Configure linux-x86_64 \
     --prefix=/usr \
     --openssldir=/etc/ssl \
     --libdir=lib \
-    --cross-compile-prefix="${LUMEN_TARGET_TRIPLET}-" \
-    --sysroot="${LUMEN_SYSROOT}" \
+      --sysroot="${LUMEN_SYSROOT}" \
     shared \
     no-tests
 
