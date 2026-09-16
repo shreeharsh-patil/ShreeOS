@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Tools for building, indexing, and serving a Lumen package repository that `lpm` can pull from.
+Tools for building, indexing, and serving a ShreeOS package repository that `lpm` can pull from.
 
 ## Layout
 

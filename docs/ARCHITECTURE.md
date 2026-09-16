@@ -2,7 +2,7 @@
 
 ## Overview
 
-Lumen Linux is built in seven sequential stages. Each stage consumes the
+ShreeOS is built in seven sequential stages. Each stage consumes the
 output of the previous one and produces an artifact that is independently
 testable.
 

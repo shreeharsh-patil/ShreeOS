@@ -1,6 +1,6 @@
-# Lumen Linux
+# ShreeOS
 
-Lumen Linux is a Linux distribution built from source: a custom cross-compilation
+ShreeOS is a Linux distribution built from source: a custom cross-compilation
 toolchain, mainline Linux kernel, from-scratch root filesystem, custom init
 system, custom package manager, installer, and a minimal desktop environment —
 assembled into a bootable ISO and released through CI.
@@ -8,14 +8,14 @@ assembled into a bootable ISO and released through CI.
 > **Status:** early scaffold. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
 > milestone plan and current progress.
 
-`Lumen` is a placeholder codename — every reference to it lives behind the
+`ShreeOS` is the distro name — every reference to it lives behind the
 `DISTRO_NAME` variable in [`build.conf`](build.conf), so renaming the project
 is a one-line change.
 
 ## Why build a distro from source
 
 Package-manager-based distros (Debian, Fedora, Arch) assemble prebuilt
-components. Lumen instead builds its own toolchain, compiles its own kernel,
+components. ShreeOS instead builds its own toolchain, compiles its own kernel,
 and writes its own init and package manager — closer in spirit to
 [Linux From Scratch](https://www.linuxfromscratch.org/), but organized as a
 reproducible, scripted, CI-driven engineering project rather than a manual
@@ -57,8 +57,8 @@ documenting what it does and how to build/test it in isolation.
 ## Quick start
 
 ```bash
-git clone <this-repo> lumen-linux
-cd lumen-linux
+git clone <this-repo> shreeos
+cd shreeos
 cat build.conf        # review target arch, versions, paths
 make help             # list available build targets (added in Milestone 2)
 ```

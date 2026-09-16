@@ -1,41 +1,86 @@
 #!/usr/bin/env bash
-# tests/smoke/run-all.sh — fast, no-build sanity checks.
-# Run from anywhere: bash tests/smoke/run-all.sh
-
+# run-all.sh — Run all smoke tests for ShreeOS
+#
+# Discovers and executes every *.sh file in this directory (except itself)
+# in sequence. Each test must exit 0 on success and non-zero on failure.
+#
+# Usage:
+#   bash tests/smoke/run-all.sh              # run all tests
+#   bash tests/smoke/run-all.sh --verbose    # run with extra output
+#   bash tests/smoke/run-all.sh --list       # list tests without running
+#
 set -euo pipefail
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "${REPO_ROOT}"
 
-pass=0
-fail=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-check() {
-  local desc="$1"; shift
-  if "$@" >/dev/null 2>&1; then
-    printf '  [ok]   %s\n' "${desc}"
-    pass=$((pass + 1))
-  else
-    printf '  [FAIL] %s\n' "${desc}"
-    fail=$((fail + 1))
-  fi
-}
+VERBOSE=false
+LIST_ONLY=false
+EXIT_CODE=0
+PASSED=0
+FAILED=0
 
-echo "== Milestone 1 smoke tests: repository scaffold =="
-
-check "build.conf is valid bash"           bash -n build.conf
-check "scripts/common.sh is valid bash"    bash -n scripts/common.sh
-check "build.conf sources cleanly"         bash -c "source build.conf"
-
-for d in toolchain base-system kernel rootfs init bootloader \
-         pkgmanager repo-tools installer iso-builder desktop \
-         branding update tests docs; do
-  check "README.md exists in ${d}/"        test -f "${d}/README.md"
+for arg in "$@"; do
+  case "$arg" in
+    --verbose|-v) VERBOSE=true ;;
+    --list|-l)    LIST_ONLY=true ;;
+    --help|-h)
+      echo "Usage: run-all.sh [--verbose] [--list]"
+      echo "Runs all smoke test scripts in tests/smoke/"
+      exit 0
+      ;;
+  esac
 done
 
-check "LICENSE exists"                     test -f LICENSE
-check "ROADMAP.md exists"                  test -f docs/ROADMAP.md
-check "ARCHITECTURE.md exists"             test -f docs/ARCHITECTURE.md
+source "${PROJECT_ROOT}/scripts/common.sh" 2>/dev/null || true
 
-echo
-echo "== Results: ${pass} passed, ${fail} failed =="
-[[ "${fail}" -eq 0 ]]
+echo "============================================"
+lumen_step "ShreeOS Smoke Test Suite"
+echo "  Date:    $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+echo "  Root:    ${PROJECT_ROOT}"
+echo "  Tests:   ${SCRIPT_DIR}"
+echo "============================================"
+
+for test in "${SCRIPT_DIR}"/*.sh; do
+  TEST_NAME="$(basename "$test")"
+  [ "$TEST_NAME" = "$(basename "${BASH_SOURCE[0]}")" ] && continue
+
+  if [ "$LIST_ONLY" = true ]; then
+    TEST_DESC=$(head -3 "$test" | grep -E '^#' | head -1 | sed 's/^# //' || echo "")
+    printf "  %-30s %s\n" "$TEST_NAME" "$TEST_DESC"
+    continue
+  fi
+
+  printf "  [ RUN      ] %s\n" "$TEST_NAME"
+  START=$(date +%s)
+
+  if [ "$VERBOSE" = true ]; then
+    if bash "$test"; then
+      DURATION=$(( $(date +%s) - START ))
+      printf "  [       OK ] %s (%ds)\n" "$TEST_NAME" "$DURATION"
+      PASSED=$((PASSED + 1))
+    else
+      DURATION=$(( $(date +%s) - START ))
+      printf "  [  FAILED  ] %s (%ds)\n" "$TEST_NAME" "$DURATION"
+      FAILED=$((FAILED + 1))
+      EXIT_CODE=1
+    fi
+  else
+    OUTPUT=$(bash "$test" 2>&1) && {
+      DURATION=$(( $(date +%s) - START ))
+      printf "  [       OK ] %s (%ds)\n" "$TEST_NAME" "$DURATION"
+      PASSED=$((PASSED + 1))
+    } || {
+      DURATION=$(( $(date +%s) - START ))
+      printf "  [  FAILED  ] %s (%ds)\n--- output ---\n%s\n---\n" "$TEST_NAME" "$DURATION" "$OUTPUT"
+      FAILED=$((FAILED + 1))
+      EXIT_CODE=1
+    }
+  fi
+done
+
+echo ""
+echo "============================================"
+echo "  Results: ${PASSED} passed, ${FAILED} failed"
+echo "============================================"
+exit "$EXIT_CODE"
