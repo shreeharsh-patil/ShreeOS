@@ -228,7 +228,14 @@ while true; do
     echo "Invalid timezone format."
     continue
   fi
-  if [ -d /usr/share/zoneinfo ] && [ ! -f "/usr/share/zoneinfo/$USER_TZ" ]; then
+  # Validate against the target rootfs when it is already built; this avoids
+  # accepting a host timezone that cannot be installed into ShreeOS.
+  if [ -d "${SHREEOS_STAGE_ROOT:-}/usr/share/zoneinfo" ]; then
+    if [ ! -f "${SHREEOS_STAGE_ROOT}/usr/share/zoneinfo/$USER_TZ" ]; then
+      echo "Timezone '$USER_TZ' was not found in the built ShreeOS rootfs."
+      continue
+    fi
+  elif [ -d /usr/share/zoneinfo ] && [ ! -f "/usr/share/zoneinfo/$USER_TZ" ]; then
     echo "Timezone '$USER_TZ' was not found on this system."
     continue
   fi
@@ -260,6 +267,18 @@ fi
 CREDS_FILE=$(mktemp /tmp/shreeos-creds-XXXXXX)
 chmod 600 "$CREDS_FILE"
 printf "%s\n%s\n" "$ROOT_PW" "$USER_PW" > "$CREDS_FILE"
+
+# install-to-disk.sh verifies that a credential file belongs to the original
+# sudo user. mktemp runs as root in this TUI, so transfer only this private
+# 0600 file back to that invoking user before handing it to the core installer.
+if [ -n "${SUDO_UID:-}" ]; then
+  if [ -n "${SUDO_GID:-}" ]; then
+    chown "${SUDO_UID}:${SUDO_GID}" "$CREDS_FILE"
+  else
+    chown "${SUDO_UID}" "$CREDS_FILE"
+  fi
+fi
+
 ROOT_PW=""; ROOT_PW_CONFIRM=""; USER_PW=""; USER_PW_CONFIRM=""
 unset ROOT_PW ROOT_PW_CONFIRM USER_PW USER_PW_CONFIRM
 
@@ -284,6 +303,6 @@ echo ""
 echo "┌──────────────────────────────────────────────────────────────────────────┐"
 echo "│                    INSTALLATION COMPLETED SUCCESSFULLY                   │"
 echo "│                                                                          │"
-echo "│   You may now reboot your computer into your new ShreeOS desktop.        │"
+echo "│   You may now reboot your computer into your new ShreeOS system.         │"
 echo "└──────────────────────────────────────────────────────────────────────────┘"
 echo ""
