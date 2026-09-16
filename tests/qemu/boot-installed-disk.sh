@@ -9,6 +9,7 @@ source "$PROJECT_ROOT/scripts/common.sh"
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
+ROOT_HANDOFF_MARKER="${ROOT_HANDOFF_MARKER:-ShreeOS initramfs: switching to installed root}"
 TIMEOUT="${TIMEOUT:-60}"
 MEMORY="${MEMORY:-256M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
@@ -85,14 +86,18 @@ FOUND=false
 while [ "$WAITED" -lt "$TIMEOUT" ]; do
   sleep 1
   WAITED=$((WAITED + 1))
-  if grep -Fq "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then FOUND=true; break; fi
+  if grep -Fq "$ROOT_HANDOFF_MARKER" "$LOG_FILE" 2>/dev/null &&
+     grep -Fq "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then
+    FOUND=true
+    break
+  fi
   kill -0 "$QEMU_PID" 2>/dev/null || break
 done
 cleanup_qemu
 QEMU_PID=""
 
 if [ "$FOUND" = true ]; then
-  shreeos_ok "Disk boot test PASSED — init marker found after ${WAITED}s"
+  shreeos_ok "Disk boot test PASSED — installed-root handoff and init marker found after ${WAITED}s"
   rm -f "$LOG_FILE"
   exit 0
 fi
