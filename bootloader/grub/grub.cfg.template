@@ -1,0 +1,35 @@
+# bootloader/grub/grub.cfg.template — GRUB2 configuration for ShreeOS
+# Templated with DISTRO_NAME and DISTRO_VERSION at ISO build time.
+# Uses loopback so GRUB can find its files when booting from ISO.
+
+set default="${DISTRO_NAME}"
+set timeout=5
+
+# Load graphics and font for a cleaner menu
+if loadfont $prefix/fonts/unicode.pf2; then
+  set gfxmode=auto
+  insmod efi_gop
+  insmod efi_uga
+  insmod gfxterm
+  terminal_output gfxterm
+fi
+
+menuentry "${DISTRO_NAME} ${DISTRO_VERSION}" --id="${DISTRO_NAME}" {
+  loopback loop /boot/rootfs.squashfs
+  linux /boot/bzImage root=/dev/sr0 console=ttyS0 quiet
+  initrd /boot/initramfs.cpio.gz
+}
+
+menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (recovery mode)" --id="recovery" {
+  loopback loop /boot/rootfs.squashfs
+  linux /boot/bzImage root=/dev/sr0 console=ttyS0 single quiet
+  initrd /boot/initramfs.cpio.gz
+}
+
+menuentry "Reboot" --id="reboot" {
+  reboot
+}
+
+menuentry "Shutdown" --id="shutdown" {
+  halt
+}
