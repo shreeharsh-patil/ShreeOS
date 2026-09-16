@@ -18,6 +18,10 @@ CONFIG_SAE=y
 CONFIG_IEEE80211W=y
 # Keep the target build self-contained until a target OpenSSL package exists.
 CONFIG_TLS=internal
+# The internal TLS implementation still needs big-number arithmetic. Use the
+# bundled minimal LibTomMath implementation so the target build does not leak a
+# host libtommath dependency into the ShreeOS cross-build.
+CONFIG_INTERNAL_LIBTOMMATH=y
 EOF
 make CC="${LUMEN_TARGET_TRIPLET}-gcc" -j"${LUMEN_MAKE_JOBS}"
 install -Dm755 wpa_supplicant "${LUMEN_STAGE_ROOT}/usr/sbin/wpa_supplicant"
