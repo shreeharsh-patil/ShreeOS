@@ -34,6 +34,8 @@ TIMEOUT=60
 MEMORY="512M"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
+ROOT_HANDOFF_MARKER="ShreeOS initramfs: switching to installed root"
+READY_MARKER="ShreeOS init: critical services ready"
 FAILURES=0
 
 for arg in "$@"; do
@@ -164,7 +166,8 @@ while [ "$WAITED" -lt "$TIMEOUT" ]; do
 
   # Check serial output for boot markers
   if [ -f "$BIOS_SERIAL" ]; then
-    if grep -Fq "ShreeOS init: critical services ready" "$BIOS_SERIAL"; then
+    if grep -Fq "$ROOT_HANDOFF_MARKER" "$BIOS_SERIAL" &&
+       grep -Fq "$READY_MARKER" "$BIOS_SERIAL"; then
       BIOS_SUCCESS=true
       break
     fi
@@ -220,7 +223,8 @@ if [ -n "$OVMF_PATH" ]; then
     WAITED=$((WAITED + 1))
 
     if [ -f "$UEFI_SERIAL" ]; then
-      if grep -Fq "ShreeOS init: critical services ready" "$UEFI_SERIAL"; then
+      if grep -Fq "$ROOT_HANDOFF_MARKER" "$UEFI_SERIAL" &&
+         grep -Fq "$READY_MARKER" "$UEFI_SERIAL"; then
         UEFI_SUCCESS=true
         break
       fi
@@ -235,7 +239,7 @@ if [ -n "$OVMF_PATH" ]; then
   wait "$QEMU_PID" 2>/dev/null || true
 
   if [ "$UEFI_SUCCESS" = true ]; then
-    shreeos_ok "UEFI boot test PASSED (${WAITED}s) — system initialized successfully"
+    shreeos_ok "UEFI boot test PASSED (${WAITED}s) — installed root handoff and services verified"
   else
     shreeos_warn "UEFI boot test FAILED. Serial log saved to ${UEFI_SERIAL}"
     [ -f "$UEFI_SERIAL" ] && tail -n 25 "$UEFI_SERIAL" || true
