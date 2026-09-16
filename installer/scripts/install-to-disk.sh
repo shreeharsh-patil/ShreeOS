@@ -27,13 +27,13 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
 
 for arg in "$@"; do
   if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
-    echo "Usage: install-to-disk.sh <disk-device> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...] [--boot-mode=both|uefi|bios]"
+    echo "Usage: install-to-disk.sh <disk-device> [--yes] [--hostname=...] [--timezone=...] --credentials-file=... [--username=...] [--boot-mode=both|uefi|bios]"
     exit 0
   fi
 done
 
 if [ $# -lt 1 ]; then
-  shreeos_die "Usage: install-to-disk.sh <disk-device> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...]"
+  shreeos_die "Usage: install-to-disk.sh <disk-device> [--yes] [--hostname=...] [--timezone=...] --credentials-file=... [--username=...] [--boot-mode=both|uefi|bios]"
 fi
 
 DISK="$1"
@@ -55,7 +55,7 @@ for arg in "$@"; do
     --credentials-file=*) CREDS_FILE="${arg#*=}" ;;
     --username=*) USERNAME="${arg#*=}" ;;
     --boot-mode=*) BOOT_MODE="${arg#*=}" ;;
-    --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--timezone=...] [--credentials-file=...] [--username=...]"; exit 0 ;;
+    --help|-h) echo "Usage: install-to-disk.sh <disk> [--yes] [--hostname=...] [--timezone=...] --credentials-file=... [--username=...] [--boot-mode=both|uefi|bios]"; exit 0 ;;
     *) shreeos_die "Unknown installer option: ${arg}" ;;
   esac
 done
@@ -99,6 +99,18 @@ if [[ "$TIMEZONE" == *".."* ]] || [[ "$TIMEZONE" == /* ]] || ! [[ "$TIMEZONE" =~
   shreeos_die "Invalid timezone specification '${TIMEZONE}'."
 fi
 
+# A fresh ShreeOS rootfs intentionally ships with a locked root account.
+# Require credentials before any destructive disk operation so a scripted
+# installation cannot silently produce a system with no usable login.
+if [ -z "$CREDS_FILE" ]; then
+  shreeos_die "A secure --credentials-file is required for installation. Use installer-tui.sh for the guided flow."
+fi
+
+# Validate an optional primary username before partitioning/formatting.
+if [ -n "$USERNAME" ] && ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+  shreeos_die "Invalid username '${USERNAME}'. Must match ^[a-z_][a-z0-9_-]{0,31}$."
+fi
+
 if [ -n "$CREDS_FILE" ]; then
   if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
     shreeos_die "Credentials file must be a regular, non-symlink file."
@@ -117,7 +129,23 @@ if [ -n "$CREDS_FILE" ]; then
     CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
     shreeos_die "Credentials file has an empty root password."
   fi
+  if [ "${#CREDS_ROOT_CHECK}" -lt 8 ]; then
+    CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
+    shreeos_die "Root password must be at least 8 characters."
+  fi
   CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
+
+  if [ -n "$USERNAME" ]; then
+    if [ "$CREDS_LINE_COUNT" -ne 2 ]; then
+      shreeos_die "A user password on line 2 is required when --username is specified."
+    fi
+    CREDS_USER_CHECK=$(sed -n '2p' "$CREDS_FILE")
+    if [ "${#CREDS_USER_CHECK}" -lt 8 ]; then
+      CREDS_USER_CHECK=""; unset CREDS_USER_CHECK
+      shreeos_die "User password must be at least 8 characters."
+    fi
+    CREDS_USER_CHECK=""; unset CREDS_USER_CHECK
+  fi
 fi
 
 # If UEFI requested, require FAT formatting utility
@@ -152,7 +180,7 @@ elif [ ! -s "${ROOTFS_CPIO}" ]; then
 fi
 if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"; fi
 if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
-shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip
+shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip od
 if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
     shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
@@ -287,7 +315,10 @@ if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
   USER_PW=$(sed -n '2p' "$CREDS_FILE")
 
   if [ -n "$ROOT_PW" ]; then
-    SALT="$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)"
+    SALT="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+    if ! [[ "$SALT" =~ ^[0-9a-fA-F]{16}$ ]]; then
+      shreeos_die "Failed to generate a secure password salt."
+    fi
     HASHED_PW=""
     if command -v openssl >/dev/null 2>&1; then
       HASHED_PW=$(printf "%s" "$ROOT_PW" | openssl passwd -6 -salt "$SALT" -stdin 2>/dev/null || echo "")
