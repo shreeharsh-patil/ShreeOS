@@ -25,6 +25,47 @@ else
   exit 1
 fi
 
+# 1b. Destructive installs must require a secure credential file before any
+# disk validation/partitioning occurs.
+NO_CREDS_OUTPUT="$(bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" /dev/nonexistent_shreeos_disk --yes 2>&1 || true)"
+if grep -q -- "--credentials-file is required" <<<"$NO_CREDS_OUTPUT"; then
+  echo "  [OK] Missing credentials are rejected before disk operations"
+else
+  echo "  [FAIL] Installer did not fail closed when credentials were omitted" >&2
+  exit 1
+fi
+
+# 1c. The removed plaintext password CLI must remain unsupported.
+if bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" /dev/nonexistent_shreeos_disk --root-password=changeme >/dev/null 2>&1; then
+  echo "  [FAIL] Legacy plaintext --root-password option was accepted" >&2
+  exit 1
+else
+  echo "  [OK] Plaintext password command-line option is rejected"
+fi
+
+# 1d. Credential strength and user-line validation happen before disk access.
+TMP_CREDS="$(mktemp /tmp/shreeos-installer-validation-XXXXXX)"
+trap 'rm -f "$TMP_CREDS" "${TEST_DISK:-}"' EXIT
+chmod 600 "$TMP_CREDS"
+printf 'short\n' > "$TMP_CREDS"
+SHORT_OUTPUT="$(bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" /dev/nonexistent_shreeos_disk --yes --credentials-file="$TMP_CREDS" 2>&1 || true)"
+if grep -q "Root password must be at least 8 characters" <<<"$SHORT_OUTPUT"; then
+  echo "  [OK] Short root passwords are rejected before disk operations"
+else
+  echo "  [FAIL] Short root password preflight did not trigger" >&2
+  exit 1
+fi
+
+printf 'strongrootpass\n' > "$TMP_CREDS"
+USER_OUTPUT="$(bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" /dev/nonexistent_shreeos_disk --yes --username=shree --credentials-file="$TMP_CREDS" 2>&1 || true)"
+if grep -q "user password on line 2 is required" <<<"$USER_OUTPUT"; then
+  echo "  [OK] Username requires a second credential line before disk operations"
+else
+  echo "  [FAIL] Missing user credential line was not rejected" >&2
+  exit 1
+fi
+rm -f "$TMP_CREDS"
+
 # 2. Partition disk validation test
 if bash "${ROOT_DIR}/installer/scripts/partition-disk.sh" --help >/dev/null 2>&1; then
   echo "  [OK] partition-disk.sh responds to --help"
@@ -112,7 +153,7 @@ echo "  [OK] Username validation correctly enforced"
 if command -v sfdisk >/dev/null 2>&1; then
   TEST_DISK=$(mktemp /tmp/shreeos-part-test-XXXXXX.img)
   truncate -s 100M "$TEST_DISK"
-  trap 'rm -f "$TEST_DISK"' EXIT
+  trap 'rm -f "$TEST_DISK" "${TMP_CREDS:-}"' EXIT
 
   if bash "${ROOT_DIR}/installer/scripts/partition-disk.sh" "$TEST_DISK" --yes >/dev/null 2>&1; then
     # Verify GPT partitions were created
