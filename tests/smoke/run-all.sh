@@ -39,6 +39,7 @@ echo "============================================"
 TEST_FILES=(
   "${PROJECT_ROOT}/hardware/tests/run-tests.sh"
   "${PROJECT_ROOT}/init/tests/test-init-v2.sh"
+  "${PROJECT_ROOT}/tests/smoke/test-initramfs-handoff.sh"
   "${PROJECT_ROOT}/tests/smoke/test-desktop-suite.sh"
   "${PROJECT_ROOT}/tests/security/test-security.sh"
   "${PROJECT_ROOT}/tests/auth/test-auth.sh"
