@@ -64,6 +64,7 @@ case "$stage" in
     fi
     ;;
   rootfs)
+    require_exec "$SHREEOS_STAGE_ROOT/init" "initramfs installed-root handoff"
     require_exec "$SHREEOS_STAGE_ROOT/sbin/init" "rootfs PID 1"
     require_file "$SHREEOS_BUILD_DIR/initramfs.cpio.gz" "rootfs initramfs"
     ;;
