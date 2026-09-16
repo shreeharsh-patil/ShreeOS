@@ -69,6 +69,7 @@ sed -i -E \
   -e '/^CONFIG_LIBNL(20|32)?=/d' \
   -e '/^CONFIG_TLS=/d' \
   -e '/^CONFIG_CRYPTO=/d' \
+  -e '/^CONFIG_ECC=/d' \
   -e '/^CONFIG_INTERNAL_LIBTOMMATH(_FAST)?=/d' \
   .config
 
@@ -83,6 +84,7 @@ CONFIG_IEEE80211W=y
 # implementation so the cross-build does not depend on host tommath headers.
 CONFIG_TLS=internal
 CONFIG_CRYPTO=internal
+CONFIG_ECC=y
 CONFIG_INTERNAL_LIBTOMMATH=y
 CONFIG_INTERNAL_LIBTOMMATH_FAST=y
 EOF
@@ -95,6 +97,9 @@ if grep -Eq '^CONFIG_(CTRL_IFACE_DBUS|DBUS)' .config; then
 fi
 if ! grep -qx 'CONFIG_CRYPTO=internal' .config; then
   lumen_die "wpa_supplicant internal TLS requires CONFIG_CRYPTO=internal"
+fi
+if ! grep -qx 'CONFIG_ECC=y' .config; then
+  lumen_die "WPA3 SAE/DPP support requires CONFIG_ECC=y with the internal crypto backend"
 fi
 pkg-config --exists libnl-3.0 libnl-genl-3.0
 
