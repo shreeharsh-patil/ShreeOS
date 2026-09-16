@@ -64,7 +64,7 @@ daemon:*::0:::::
 bin:*::0:::::
 nobody:*::0:::::
 EOF
-chmod 640 "${LUMEN_STAGE_ROOT}/etc/shadow"
+chmod 600 "${LUMEN_STAGE_ROOT}/etc/shadow"
 
 cat > "${LUMEN_STAGE_ROOT}/etc/os-release" <<EOF
 NAME="${DISTRO_NAME}"
