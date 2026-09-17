@@ -36,7 +36,9 @@ bash kernel/scripts/build-kernel.sh
 ```
 
 **Options:**
-- `--skip-init`: Skip rebuilding the initramfs (use if you already have one)
+- `--skip-init`: Skip the dedicated test-initramfs rebuild when using the
+  `qemu-kernel-test` profile (production profiles always use the external
+  rootfs archive)
 - `--help`: Show usage
 
 ## Outputs
@@ -46,7 +48,7 @@ bash kernel/scripts/build-kernel.sh
 | Kernel binary | `build/build-kernel/arch/x86/boot/bzImage` |
 | Kernel config | `build/build-kernel/.config` |
 | Kernel modules | `build/rootfs/lib/modules/` (installed) |
-| Initramfs | `kernel/initramfs/initramfs.cpio.gz` |
+| Kernel-test initramfs | `kernel/initramfs/initramfs.cpio.gz` (built on demand by the kernel-only QEMU test) |
 
 ## Testing
 

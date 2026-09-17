@@ -18,7 +18,7 @@ installer/
 
 ```bash
 # Interactive:
-sudo bash installer/scripts/install-to-disk.sh /dev/sda
+sudo bash installer/scripts/installer-tui.sh
 
 # Non-interactive (for testing). Passwords are read from a private file and
 # are never accepted as command-line arguments:

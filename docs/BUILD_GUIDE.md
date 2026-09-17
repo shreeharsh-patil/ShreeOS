@@ -91,9 +91,13 @@ bash tests/qemu/boot-iso-uefi.sh          # ISO (UEFI)
 ## Installing to Disk
 
 ```bash
-# After building the ISO, install to a target disk:
-sudo bash installer/scripts/install-to-disk.sh /dev/sda --yes
+# Guided installation after building the system:
+sudo bash installer/scripts/installer-tui.sh
 ```
+
+For automation, use `install-to-disk.sh` with a mode-0600
+`--credentials-file`; see `installer/README.md`. The installer intentionally
+does not accept passwords on the command line.
 
 ## Rebuilding
 
