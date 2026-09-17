@@ -27,8 +27,13 @@ require_dir() {
 
 require_glob() {
   local pattern="$1" desc="$2"
-  compgen -G "$pattern" >/dev/null ||
-    shreeos_die "$stage cache is invalid: missing $desc ($pattern)"
+  local match
+  while IFS= read -r match; do
+    # -s follows shared-library symlinks and rejects both empty regular files
+    # and dangling links left behind by interrupted package installations.
+    [ -s "$match" ] && return 0
+  done < <(compgen -G "$pattern")
+  shreeos_die "$stage cache is invalid: missing/empty $desc ($pattern)"
 }
 
 case "$stage" in

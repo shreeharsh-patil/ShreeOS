@@ -69,13 +69,25 @@ pkg_builddir() {
 # Base packages are installed into the target rootfs via DESTDIR, while later
 # packages must link against those same target libraries through the sysroot.
 base_sync_sysroot() {
-  local subdir src dst
+  local subdir src dst libdir
   for subdir in include lib lib64; do
     src="${LUMEN_STAGE_ROOT}/usr/${subdir}"
     [ -d "$src" ] || continue
     dst="${LUMEN_SYSROOT}/usr/${subdir}"
     mkdir -p "$dst"
     cp -a "$src/." "$dst/"
+  done
+
+  # Libtool archives installed through DESTDIR retain absolute /usr/lib
+  # dependency paths.  Reusing them from the cross sysroot can therefore make
+  # later target packages search the host filesystem (alsa-utils is one such
+  # consumer).  Shared objects and pkg-config files are the supported target
+  # link metadata, so remove the non-runtime .la files from both copies.
+  for libdir in \
+    "${LUMEN_STAGE_ROOT}/usr/lib" "${LUMEN_STAGE_ROOT}/usr/lib64" \
+    "${LUMEN_SYSROOT}/usr/lib" "${LUMEN_SYSROOT}/usr/lib64"; do
+    [ -d "$libdir" ] || continue
+    find "$libdir" -type f -name '*.la' -delete
   done
 }
 

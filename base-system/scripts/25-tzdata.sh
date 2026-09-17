@@ -21,7 +21,9 @@ tar -xzf "$DATA_ARCHIVE" -C "$DATA_SOURCE"
 
 # zic is a build-host executable. Do not use the target cross compiler and
 # do not install this host binary in the target filesystem.
-make -C "$CODE_SOURCE" zic CC="${HOSTCC:-cc}"
+env -u CC -u CXX -u AR -u AS -u RANLIB -u LD -u STRIP \
+    -u CPPFLAGS -u CFLAGS -u LDFLAGS \
+  make -C "$CODE_SOURCE" zic CC="${HOSTCC:-cc}"
 install -d "${LUMEN_STAGE_ROOT}/usr/share/zoneinfo"
 "${CODE_SOURCE}/zic" -b fat -d "${LUMEN_STAGE_ROOT}/usr/share/zoneinfo" \
   "${DATA_SOURCE}/africa" "${DATA_SOURCE}/antarctica" "${DATA_SOURCE}/asia" \

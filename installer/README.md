@@ -18,11 +18,16 @@ installer/
 
 ```bash
 # Interactive:
-bash installer/scripts/install-to-disk.sh /dev/sda
+sudo bash installer/scripts/install-to-disk.sh /dev/sda
 
-# Non-interactive (for testing):
-bash installer/scripts/install-to-disk.sh /dev/sda --yes \
-  --hostname=shreeos --root-password=changeme
+# Non-interactive (for testing). Passwords are read from a private file and
+# are never accepted as command-line arguments:
+umask 077
+printf '%s\n%s\n' 'root-password' 'optional-user-password' > /tmp/shreeos-credentials
+sudo bash installer/scripts/install-to-disk.sh /dev/sda --yes \
+  --hostname=shreeos --username=shree \
+  --credentials-file=/tmp/shreeos-credentials
+rm -f /tmp/shreeos-credentials
 ```
 
 ## Testing
