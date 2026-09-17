@@ -26,6 +26,10 @@ grep -Fq 'CROSS_COMPILE="$CROSS_COMPILE"' <<<"$DRY_RUN" || {
   echo "  [FAIL] Recursive package builds did not receive CROSS_COMPILE" >&2
   exit 1
 }
+grep -Fq "bash -c 'set -e; source build.conf" <<<"$DRY_RUN" || {
+  echo "  [FAIL] Package-stage shell can mask an earlier component failure" >&2
+  exit 1
+}
 
 if grep -Eq 'PATH="HREEOS_TOOLS|:ATH"|CROSS_COMPILE="(HREEOS_TARGET_TRIPLET|ROSS_COMPILE)' <<<"$DRY_RUN"; then
   echo "  [FAIL] Dry-run contains a Make-stripped shell variable" >&2

@@ -27,7 +27,7 @@ $(ARCHIVE): $(INIT_BIN)
 	@command -v gzip >/dev/null 2>&1 || { echo "initramfs: gzip is required" >&2; exit 1; }
 	bash -o pipefail -c 'printf "%s\n" init | cpio -o -H newc --quiet | gzip -n > "$(ARCHIVE)"'
 	@gzip -t "$(ARCHIVE)"
-	@gzip -dc "$(ARCHIVE)" | cpio -t --quiet | grep -Fxq init || { \
+	@bash -o pipefail -c 'gzip -dc "$(ARCHIVE)" | cpio -t --quiet | grep -Fx init >/dev/null' || { \
 		echo "initramfs: archive does not contain /init" >&2; \
 		exit 1; \
 	}
