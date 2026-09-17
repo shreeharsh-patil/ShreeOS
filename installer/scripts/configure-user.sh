@@ -92,6 +92,12 @@ fi
 # 4. Prepare system account databases
 mkdir -p "${TARGET}/etc"
 touch "${TARGET}/etc/passwd" "${TARGET}/etc/group" "${TARGET}/etc/shadow"
+# Establish safe modes before any later operation can fail.  In particular,
+# a restricted user namespace may reject the home-directory chown; the
+# partially configured target must never be left with a world-readable shadow
+# database in that case.
+chmod 644 "${TARGET}/etc/passwd" "${TARGET}/etc/group"
+chmod 600 "${TARGET}/etc/shadow"
 
 # 5. Allocate the first available UID & GID independently (1000-64999).
 # Reusing holes scales better on long-lived installations than max+1 allocation.

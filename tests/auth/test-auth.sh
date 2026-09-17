@@ -21,6 +21,15 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 fi
 
+# Some rootless containers report UID 0 while their user namespace forbids
+# changing ownership to unmapped target IDs.  Probe the operation the test
+# actually needs instead of treating an effective UID of zero as sufficient.
+OWNERSHIP_PROBE="${TMP_ROOT}/ownership-probe"
+mkdir -p "$OWNERSHIP_PROBE"
+if ! "${PRIV_PREFIX[@]}" chown 1000:1000 "$OWNERSHIP_PROBE" 2>/dev/null; then
+  CAN_PRIVILEGED_TEST=0
+fi
+
 cleanup() {
   rm -f "${CREDS_FILE:-}" >/dev/null 2>&1 || true
   if [ "${#PRIV_PREFIX[@]}" -gt 0 ]; then
