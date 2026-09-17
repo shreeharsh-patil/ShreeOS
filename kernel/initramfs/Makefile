@@ -23,7 +23,14 @@ $(INIT_BIN): $(INIT_SRC)
 	$(CC) $(CFLAGS) -o $@ $<
 
 $(ARCHIVE): $(INIT_BIN)
-	echo init | cpio -o -H newc --quiet | gzip -n > $(ARCHIVE)
+	@command -v cpio >/dev/null 2>&1 || { echo "initramfs: cpio is required" >&2; exit 1; }
+	@command -v gzip >/dev/null 2>&1 || { echo "initramfs: gzip is required" >&2; exit 1; }
+	bash -o pipefail -c 'printf "%s\n" init | cpio -o -H newc --quiet | gzip -n > "$(ARCHIVE)"'
+	@gzip -t "$(ARCHIVE)"
+	@gzip -dc "$(ARCHIVE)" | cpio -t --quiet | grep -Fxq init || { \
+		echo "initramfs: archive does not contain /init" >&2; \
+		exit 1; \
+	}
 	@echo "  initramfs: $(ARCHIVE)"
 
 clean:
