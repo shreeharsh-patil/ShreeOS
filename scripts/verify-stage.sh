@@ -46,6 +46,8 @@ case "$stage" in
     require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libssl.so*" "target libssl"
     require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libnl-3.so*" "target libnl"
     require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libnl-genl-3.so*" "target libnl-genl"
+    require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libpanel.so*" "ncurses panel compatibility library"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/amixer" "ALSA mixer utility"
     ;;
   kernel)
     require_file "$SHREEOS_BUILD_DIR/build-kernel/arch/x86/boot/bzImage" "kernel bzImage"

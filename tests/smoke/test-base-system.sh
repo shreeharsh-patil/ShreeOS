@@ -66,13 +66,15 @@ fi
 
 echo ""
 echo "  --- Checking libraries ---"
-if [ -f "${LUMEN_STAGE_ROOT}/usr/lib/libncursesw.so" ]; then
-  lumen_ok "Found: libncursesw.so"
-  PASSED=$((PASSED + 1))
-else
-  lumen_warn "Missing: libncursesw.so"
-  FAILED=$((FAILED + 1))
-fi
+for library in libncursesw.so libncurses.so libpanel.so libmenu.so libform.so; do
+  if [ -e "${LUMEN_STAGE_ROOT}/usr/lib/${library}" ]; then
+    lumen_ok "Found: ${library}"
+    PASSED=$((PASSED + 1))
+  else
+    lumen_warn "Missing: ${library}"
+    FAILED=$((FAILED + 1))
+  fi
+done
 
 echo ""
 echo "============================================"

@@ -41,7 +41,29 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 make -j"${LUMEN_MAKE_JOBS}"
 make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
-# Create symlink for non-widec compatibility (some packages expect libncurses not libncursesw)
-ln -sf libncursesw.so "${LUMEN_STAGE_ROOT}/usr/lib/libncurses.so" 2>/dev/null || true
+# ncurses is built only with the wide-character ABI.  A number of otherwise
+# wide-character-safe packages (notably alsa-utils) still probe the historical
+# non-wide library names directly instead of using pkg-config.  Provide the
+# complete compatibility set so configure checks cannot fall back to host
+# libraries or fail at the first -lpanel/-lmenu/-lform probe.
+for lib in ncurses curses panel menu form; do
+  case "$lib" in
+    curses) target="libncursesw.so" ;;
+    *)      target="lib${lib}w.so" ;;
+  esac
+  if [ ! -e "${LUMEN_STAGE_ROOT}/usr/lib/${target}" ]; then
+    lumen_die "ncurses installation is missing required wide library: ${target}"
+  fi
+  ln -sfn "$target" "${LUMEN_STAGE_ROOT}/usr/lib/lib${lib}.so"
+done
+
+# Keep pkg-config consumers on the same target ABI.  ncurses installs the
+# wide-character .pc files but intentionally omits these compatibility names.
+for lib in ncurses panel menu form; do
+  wide_pc="${LUMEN_STAGE_ROOT}/usr/lib/pkgconfig/${lib}w.pc"
+  if [ -f "$wide_pc" ]; then
+    ln -sfn "${lib}w.pc" "${LUMEN_STAGE_ROOT}/usr/lib/pkgconfig/${lib}.pc"
+  fi
+done
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
