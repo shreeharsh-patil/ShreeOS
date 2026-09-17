@@ -44,8 +44,8 @@ done
 if [ ! -d "$TARGET" ]; then
   shreeos_die "Target mount directory '${TARGET}' does not exist."
 fi
-if [ ! -s "${TARGET}/boot/bzImage" ] || [ ! -s "${TARGET}/boot/initramfs.cpio.gz" ]; then
-  shreeos_die "Target is missing /boot/bzImage or /boot/initramfs.cpio.gz; refusing to generate an unbootable GRUB configuration."
+if [ ! -s "${TARGET}/boot/bzImage" ]; then
+  shreeos_die "Target is missing /boot/bzImage; refusing to generate an unbootable GRUB configuration."
 fi
 
 shreeos_require_cmd grub-install blkid
@@ -120,21 +120,25 @@ shreeos_log "Discovering root filesystem UUID for ${TARGET}..."
 
 TARGET_DEV=$(findmnt -n -o SOURCE "$TARGET" 2>/dev/null || echo "")
 ROOT_UUID=""
+ROOT_PARTUUID=""
 
 if [ -n "$TARGET_DEV" ]; then
   ROOT_UUID=$(blkid -s UUID -o value "$TARGET_DEV" 2>/dev/null || echo "")
+  ROOT_PARTUUID=$(blkid -s PARTUUID -o value "$TARGET_DEV" 2>/dev/null || echo "")
 fi
 
-if [ -z "$ROOT_UUID" ]; then
+if [ -z "$ROOT_UUID" ] || [ -z "$ROOT_PARTUUID" ]; then
   if [ -b "${DISK}p3" ]; then
     ROOT_UUID=$(blkid -s UUID -o value "${DISK}p3" 2>/dev/null || echo "")
+    ROOT_PARTUUID=$(blkid -s PARTUUID -o value "${DISK}p3" 2>/dev/null || echo "")
   elif [ -b "${DISK}3" ]; then
     ROOT_UUID=$(blkid -s UUID -o value "${DISK}3" 2>/dev/null || echo "")
+    ROOT_PARTUUID=$(blkid -s PARTUUID -o value "${DISK}3" 2>/dev/null || echo "")
   fi
 fi
 
-if [ -z "$ROOT_UUID" ]; then
-  shreeos_die "CRITICAL BOOT ERROR: Could not determine filesystem UUID for root partition. Refusing to install unbootable fallback."
+if [ -z "$ROOT_UUID" ] || [ -z "$ROOT_PARTUUID" ]; then
+  shreeos_die "CRITICAL BOOT ERROR: Could not determine filesystem UUID and GPT PARTUUID for the root partition."
 fi
 
 cat > "${TARGET}/boot/grub/grub.cfg" <<EOF
@@ -159,24 +163,20 @@ insmod fat
 menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.2.0-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet ${CMDLINE_EXTRA}
-    echo "Loading initramfs..."
-    initrd /boot/initramfs.cpio.gz
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait quiet ${CMDLINE_EXTRA}
     echo "Booting ${DISTRO_NAME:-ShreeOS}..."
 }
 
 menuentry "${DISTRO_NAME:-ShreeOS} (Recovery Mode)" {
     echo "Loading Linux kernel in single-user recovery mode..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.mode=recovery ${CMDLINE_EXTRA}
-    initrd /boot/initramfs.cpio.gz
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.mode=recovery ${CMDLINE_EXTRA}
 }
 
 menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State (SafeUpdate Rollback)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.rollback=1 ${CMDLINE_EXTRA}
-    initrd /boot/initramfs.cpio.gz
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.rollback=1 ${CMDLINE_EXTRA}
 }
 EOF
 
-shreeos_ok "Generated ${TARGET}/boot/grub/grub.cfg with Root UUID ${ROOT_UUID}"
+shreeos_ok "Generated ${TARGET}/boot/grub/grub.cfg with root PARTUUID ${ROOT_PARTUUID}"

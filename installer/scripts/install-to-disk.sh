@@ -333,10 +333,14 @@ bash "${SHREEOS_ROOT_DIR}/bootloader/scripts/install-grub-disk.sh" "$TARGET" "$W
 
 # 7. Generate fstab with UUIDs
 ROOT_UUID=$(blkid -s UUID -o value "$PART_ROOT" 2>/dev/null || echo "")
+ROOT_PARTUUID=$(blkid -s PARTUUID -o value "$PART_ROOT" 2>/dev/null || echo "")
 ESP_UUID=$(blkid -s UUID -o value "$PART_ESP" 2>/dev/null || echo "")
 
 if [ -z "$ROOT_UUID" ]; then
   shreeos_die "CRITICAL: Could not discover filesystem UUID for root partition (${PART_ROOT})."
+fi
+if [ -z "$ROOT_PARTUUID" ]; then
+  shreeos_die "CRITICAL: Could not discover GPT PARTUUID for root partition (${PART_ROOT})."
 fi
 
 cat > "${TARGET}/etc/fstab" <<FSTAB
@@ -370,6 +374,12 @@ if [ ! -s "${TARGET}/boot/grub/grub.cfg" ]; then
 elif ! grep -q "${ROOT_UUID}" "${TARGET}/boot/grub/grub.cfg"; then
   shreeos_warn "Verification failure: Root UUID ${ROOT_UUID} not present in /boot/grub/grub.cfg"
   VERIFY_FAILED=true
+elif ! grep -Fq "root=PARTUUID=${ROOT_PARTUUID} rw" "${TARGET}/boot/grub/grub.cfg"; then
+  shreeos_warn "Verification failure: installed GRUB entry does not boot the ext4 root by PARTUUID"
+  VERIFY_FAILED=true
+elif grep -Eq '^[[:space:]]*initrd[[:space:]]' "${TARGET}/boot/grub/grub.cfg"; then
+  shreeos_warn "Verification failure: installed GRUB entry still boots the live rootfs initramfs"
+  VERIFY_FAILED=true
 fi
 
 if [ ! -s "${TARGET}/etc/fstab" ]; then
@@ -390,7 +400,7 @@ if [ "$VERIFY_FAILED" = true ]; then
   shreeos_die "CRITICAL: Completed installation verification failed! System may not boot cleanly."
 fi
 
-shreeos_ok "Completed installation successfully verified (kernel, initramfs, GRUB, fstab, and security credentials OK)"
+shreeos_ok "Completed installation successfully verified (kernel, direct-root GRUB, fstab, and security credentials OK)"
 
 sync
 shreeos_ok "${DISTRO_NAME:-ShreeOS} successfully installed to ${DISK}"

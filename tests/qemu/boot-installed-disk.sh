@@ -9,6 +9,7 @@ source "$PROJECT_ROOT/scripts/common.sh"
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
+ROOT_MARKER_STRING="${ROOT_MARKER_STRING:-ShreeOS init: installed ext4 root mounted}"
 TIMEOUT="${TIMEOUT:-60}"
 MEMORY="${MEMORY:-256M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
@@ -85,17 +86,18 @@ FOUND=false
 while [ "$WAITED" -lt "$TIMEOUT" ]; do
   sleep 1
   WAITED=$((WAITED + 1))
-  if grep -Fq "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then FOUND=true; break; fi
+  if grep -Fq "$MARKER_STRING" "$LOG_FILE" 2>/dev/null &&
+     grep -Fq "$ROOT_MARKER_STRING" "$LOG_FILE" 2>/dev/null; then FOUND=true; break; fi
   kill -0 "$QEMU_PID" 2>/dev/null || break
 done
 cleanup_qemu
 QEMU_PID=""
 
 if [ "$FOUND" = true ]; then
-  shreeos_ok "Disk boot test PASSED — init marker found after ${WAITED}s"
+  shreeos_ok "Disk boot test PASSED — installed ext4 root and init markers found after ${WAITED}s"
   rm -f "$LOG_FILE"
   exit 0
 fi
-shreeos_warn "Disk boot test FAILED — marker not found"
+shreeos_warn "Disk boot test FAILED — installed ext4 root/init markers not both found"
 echo "Log: $LOG_FILE"
 exit 1

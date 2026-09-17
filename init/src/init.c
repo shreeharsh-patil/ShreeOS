@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/vfs.h>
 #include <sys/reboot.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -41,6 +42,7 @@
 #define DEFAULT_LOG_DIR "/var/log/shreeos/services"
 #define MAX_LOG_CAPTURE_BYTES 8192
 #define MAX_LOG_FILE_BYTES (5 * 1024 * 1024) /* 5 MB per log before truncation */
+#define EXT4_SUPER_MAGIC 0xEF53
 
 typedef enum {
     SVC_STOPPED = 0,
@@ -197,6 +199,15 @@ static void mount_essential_filesystems(void) {
     mount_fs("devpts",   "/dev/pts",  "devpts",   MS_NOSUID | MS_NOEXEC, "gid=5,mode=620");
     mount_fs("tmpfs",    "/dev/shm",  "tmpfs",    MS_NOSUID | MS_NODEV, "mode=1777");
     mount_fs("tmpfs",    "/tmp",      "tmpfs",    MS_NOSUID | MS_NODEV, "mode=1777");
+}
+
+static void report_root_filesystem(void) {
+    struct statfs rootfs;
+    if (statfs("/", &rootfs) == 0 &&
+        (unsigned long)rootfs.f_type == (unsigned long)EXT4_SUPER_MAGIC) {
+        printf("ShreeOS init: installed ext4 root mounted\n");
+        fflush(stdout);
+    }
 }
 
 static service_t *find_service(const char *name) {
@@ -1261,6 +1272,7 @@ int main(int argc, char **argv) {
     printf("=========================================\n\n");
 
     mount_essential_filesystems();
+    report_root_filesystem();
 
     /* Check for kernel recovery / single user mode */
     if (check_recovery_mode()) {

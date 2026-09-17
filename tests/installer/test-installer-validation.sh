@@ -108,7 +108,20 @@ validate_user "dev_user01" || { echo "  [FAIL] Valid username with underscore/di
 ! validate_user "root:evil" || { echo "  [FAIL] Username with colon accepted"; exit 1; }
 echo "  [OK] Username validation correctly enforced"
 
-# 9. Behavioral test: Partition a virtual disk image using GPT layout
+# 9. Installed systems must boot the ext4 partition itself. Loading the full
+# live initramfs here would hide installed credentials and filesystem changes.
+GRUB_INSTALLER="${ROOT_DIR}/bootloader/scripts/install-grub-disk.sh"
+grep -Fq 'root=PARTUUID=${ROOT_PARTUUID} rw' "$GRUB_INSTALLER" || {
+  echo "  [FAIL] Installed GRUB configuration does not use the root GPT PARTUUID" >&2
+  exit 1
+}
+if grep -Eq '^[[:space:]]+initrd /boot/initramfs' "$GRUB_INSTALLER"; then
+  echo "  [FAIL] Installed GRUB configuration still boots the live initramfs" >&2
+  exit 1
+fi
+echo "  [OK] Installed GRUB configuration boots the persistent ext4 root directly"
+
+# 10. Behavioral test: Partition a virtual disk image using GPT layout
 if command -v sfdisk >/dev/null 2>&1; then
   TEST_DISK=$(mktemp /tmp/shreeos-part-test-XXXXXX.img)
   truncate -s 100M "$TEST_DISK"

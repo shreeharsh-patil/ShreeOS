@@ -164,7 +164,8 @@ while [ "$WAITED" -lt "$TIMEOUT" ]; do
 
   # Check serial output for boot markers
   if [ -f "$BIOS_SERIAL" ]; then
-    if grep -Fq "ShreeOS init: critical services ready" "$BIOS_SERIAL"; then
+    if grep -Fq "ShreeOS init: critical services ready" "$BIOS_SERIAL" &&
+       grep -Fq "ShreeOS init: installed ext4 root mounted" "$BIOS_SERIAL"; then
       BIOS_SUCCESS=true
       break
     fi
@@ -179,7 +180,7 @@ kill "$QEMU_PID" 2>/dev/null || true
 wait "$QEMU_PID" 2>/dev/null || true
 
 if [ "$BIOS_SUCCESS" = true ]; then
-  shreeos_ok "BIOS boot test PASSED (${WAITED}s) — system initialized successfully"
+    shreeos_ok "BIOS boot test PASSED (${WAITED}s) — installed ext4 root initialized successfully"
 else
   shreeos_warn "BIOS boot test FAILED. Serial log saved to ${BIOS_SERIAL}"
   [ -f "$BIOS_SERIAL" ] && tail -n 25 "$BIOS_SERIAL" || true
@@ -220,7 +221,8 @@ if [ -n "$OVMF_PATH" ]; then
     WAITED=$((WAITED + 1))
 
     if [ -f "$UEFI_SERIAL" ]; then
-      if grep -Fq "ShreeOS init: critical services ready" "$UEFI_SERIAL"; then
+      if grep -Fq "ShreeOS init: critical services ready" "$UEFI_SERIAL" &&
+         grep -Fq "ShreeOS init: installed ext4 root mounted" "$UEFI_SERIAL"; then
         UEFI_SUCCESS=true
         break
       fi
@@ -235,7 +237,7 @@ if [ -n "$OVMF_PATH" ]; then
   wait "$QEMU_PID" 2>/dev/null || true
 
   if [ "$UEFI_SUCCESS" = true ]; then
-    shreeos_ok "UEFI boot test PASSED (${WAITED}s) — system initialized successfully"
+    shreeos_ok "UEFI boot test PASSED (${WAITED}s) — installed ext4 root initialized successfully"
   else
     shreeos_warn "UEFI boot test FAILED. Serial log saved to ${UEFI_SERIAL}"
     [ -f "$UEFI_SERIAL" ] && tail -n 25 "$UEFI_SERIAL" || true

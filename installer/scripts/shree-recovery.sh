@@ -142,13 +142,17 @@ while true; do
       ;;
     5)
       echo "==> Running Bootloader Repair:"
-      ROOT_UUID=$(blkid -s UUID -o value "$(findmnt -n -o SOURCE / 2>/dev/null || echo '')" 2>/dev/null || echo "")
-      if [ -z "$ROOT_UUID" ]; then
-        ROOT_UUID=$(blkid -s UUID -o value /dev/sda3 2>/dev/null || blkid -s UUID -o value /dev/vda3 2>/dev/null || blkid -s UUID -o value /dev/nvme0n1p3 2>/dev/null || echo "")
+      ROOT_DEVICE=$(findmnt -n -o SOURCE / 2>/dev/null || echo '')
+      if [ -z "$ROOT_DEVICE" ] || [ ! -b "$ROOT_DEVICE" ]; then
+        for candidate in /dev/sda3 /dev/vda3 /dev/nvme0n1p3; do
+          if [ -b "$candidate" ]; then ROOT_DEVICE="$candidate"; break; fi
+        done
       fi
+      ROOT_UUID=$(blkid -s UUID -o value "$ROOT_DEVICE" 2>/dev/null || echo "")
+      ROOT_PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEVICE" 2>/dev/null || echo "")
 
-      if [ -n "$ROOT_UUID" ] && [ -d /boot/grub ]; then
-        echo "Detected Root UUID: ${ROOT_UUID}"
+      if [ -n "$ROOT_UUID" ] && [ -n "$ROOT_PARTUUID" ] && [ -d /boot/grub ]; then
+        echo "Detected Root UUID: ${ROOT_UUID}; PARTUUID: ${ROOT_PARTUUID}"
         cat > /boot/grub/grub.cfg <<GRUBEOF
 # GRUB Configuration — Repaired by ShreeOS Emergency Recovery
 set default=0
@@ -168,26 +172,23 @@ insmod fat
 
 menuentry "ShreeOS (Repaired Boot)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro quiet
-    initrd /boot/initramfs.cpio.gz
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait quiet
 }
 
 menuentry "ShreeOS (Recovery Mode)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.mode=recovery
-    initrd /boot/initramfs.cpio.gz
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.mode=recovery
 }
 
 menuentry "ShreeOS Previous Working State (SafeUpdate Rollback)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=UUID=${ROOT_UUID} ro single shreeos.rollback=1
-    initrd /boot/initramfs.cpio.gz
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.rollback=1
 }
 GRUBEOF
         chmod 0644 /boot/grub/grub.cfg
-        echo "Successfully regenerated /boot/grub/grub.cfg with Root UUID ${ROOT_UUID}"
+        echo "Successfully regenerated /boot/grub/grub.cfg with root PARTUUID ${ROOT_PARTUUID}"
       else
-        echo "WARNING: Could not automatically detect Root UUID. GRUB configuration unchanged."
+        echo "WARNING: Could not detect the root filesystem UUID/PARTUUID. GRUB configuration unchanged."
       fi
       read -r -p "Press Enter to return to menu..." _
       ;;
