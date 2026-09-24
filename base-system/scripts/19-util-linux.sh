@@ -40,8 +40,18 @@ lumen_log "Target ncurses flags: $(pkg-config --libs ncursesw)"
 # Minimize build: only what we need for a chroot base system.
 # ShreeOS currently builds ncurses with terminfo inside libncursesw, so do not
 # ask util-linux to link a separate libtinfo target library.
+#
+# util-linux rewrites the default bindir/sbindir/libdir to /bin, /sbin and /lib
+# as soon as configure sees --prefix=/usr without an explicit exec-prefix
+# ("Default --exec-prefix detected" in configure.ac). ShreeOS keeps programs
+# under /usr with compatibility links in /bin, and the base-system
+# postconditions require /usr/bin/mount, so pin these directories to literal
+# paths that configure will not rewrite.
 "${SRCDIR}/configure" \
   --prefix=/usr \
+  --bindir=/usr/bin \
+  --sbindir=/usr/sbin \
+  --libdir=/usr/lib \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
   --target="${LUMEN_TARGET_TRIPLET}" \
