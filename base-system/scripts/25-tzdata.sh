@@ -21,6 +21,16 @@ tar -xzf "$DATA_ARCHIVE" -C "$DATA_SOURCE"
 
 # zic is a build-host executable. Do not use the target cross compiler and
 # do not install this host binary in the target filesystem.
+#
+# IANA ships code and data in separate tarballs, but the tzcode Makefile
+# generates version.h from the data files (the 'version' target depends on
+# africa/asia/...). The data files must therefore be visible inside the
+# code tree before building zic. Copy every data file so future zone splits
+# cannot reintroduce "No rule to make target 'africa'" failures.
+for data_path in "${DATA_SOURCE}/"*; do
+  [ -f "$data_path" ] || continue
+  cp -f "$data_path" "${CODE_SOURCE}/"
+done
 env -u CC -u CXX -u AR -u AS -u RANLIB -u LD -u STRIP \
     -u CPPFLAGS -u CFLAGS -u LDFLAGS \
   make -C "$CODE_SOURCE" zic CC="${HOSTCC:-cc}"
