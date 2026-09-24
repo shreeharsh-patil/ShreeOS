@@ -33,7 +33,7 @@ for data_path in "${DATA_SOURCE}/"*; do
 done
 env -u CC -u CXX -u AR -u AS -u RANLIB -u LD -u STRIP \
     -u CPPFLAGS -u CFLAGS -u LDFLAGS \
-  make -C "$CODE_SOURCE" zic CC="${HOSTCC:-cc}"
+  make -C "$CODE_SOURCE" VERSION="$VERSION" VERSION_DEPS= zic CC="${HOSTCC:-cc}"
 install -d "${LUMEN_STAGE_ROOT}/usr/share/zoneinfo"
 "${CODE_SOURCE}/zic" -b fat -d "${LUMEN_STAGE_ROOT}/usr/share/zoneinfo" \
   "${DATA_SOURCE}/africa" "${DATA_SOURCE}/antarctica" "${DATA_SOURCE}/asia" \
