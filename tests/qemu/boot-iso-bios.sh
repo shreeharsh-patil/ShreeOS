@@ -10,8 +10,13 @@ source "$PROJECT_ROOT/scripts/common.sh"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 ISO="${ISO:-${PROJECT_ROOT}/out/${DISTRO_ID}-${DISTRO_VERSION}.iso}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
-TIMEOUT="${TIMEOUT:-60}"
-MEMORY="${MEMORY:-256M}"
+# The live ISO boots the assembled rootfs directly as its initramfs. That
+# archive is ~180 MB compressed and unpacks into the initrd tmpfs, so the
+# emulated machine needs about 1 GB of RAM before userspace can even start.
+# The timeout also covers TCG-only runners, where unpacking a rootfs-sized
+# cpio costs tens of seconds of emulated CPU time.
+TIMEOUT="${TIMEOUT:-180}"
+MEMORY="${MEMORY:-2048M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
 NO_CLEANUP=false
 

@@ -9,7 +9,11 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$ROOT_DIR/build.conf"
 source "$ROOT_DIR/scripts/common.sh"
 
-TIMEOUT=60
+# Leave TIMEOUT empty by default so every boot test applies its own budget. The
+# live ISO path boots a rootfs-sized initramfs and needs a much larger window
+# than the kernel-only or installed-disk tests, so a single global default here
+# would either waste minutes or fail the slow paths.
+TIMEOUT=""
 STRICT=false
 for arg in "$@"; do
   case "$arg" in
@@ -32,7 +36,7 @@ if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-shreeos_step "Running QEMU Boot Test Suite (timeout: ${TIMEOUT}s, strict: ${STRICT})"
+shreeos_step "Running QEMU Boot Test Suite (timeout: ${TIMEOUT:-per-test default}, strict: ${STRICT})"
 
 TESTS=(
   "boot-kernel-only.sh"
@@ -61,7 +65,11 @@ for t in "${TESTS[@]}"; do
 
   shreeos_step "Executing QEMU test: $t"
   set +e
-  REQUIRE_ARTIFACTS="$([ "$STRICT" = true ] && echo 1 || echo 0)"     TIMEOUT="$TIMEOUT" bash "$test_path"
+  if [ -n "$TIMEOUT" ]; then
+    REQUIRE_ARTIFACTS="$([ "$STRICT" = true ] && echo 1 || echo 0)" TIMEOUT="$TIMEOUT" bash "$test_path"
+  else
+    REQUIRE_ARTIFACTS="$([ "$STRICT" = true ] && echo 1 || echo 0)" bash "$test_path"
+  fi
   rc=$?
   set -e
 

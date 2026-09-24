@@ -11,8 +11,10 @@ QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 KERNEL_IMAGE="${KERNEL_IMAGE:-${PROJECT_ROOT}/build/build-kernel/arch/x86/boot/bzImage}"
 INITRD="${INITRD:-${PROJECT_ROOT}/build/initramfs.cpio.gz}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
-TIMEOUT="${TIMEOUT:-60}"
-MEMORY="${MEMORY:-256M}"
+# Direct kernel boot feeds the same rootfs-sized initramfs as the live ISO, so
+# mirror the ISO boot-test memory and timeout budgets.
+TIMEOUT="${TIMEOUT:-180}"
+MEMORY="${MEMORY:-2048M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
 NO_CLEANUP=false
 

@@ -4,7 +4,9 @@ set -Eeuo pipefail
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
-MEMORY="${MEMORY:-256M}"
+# Live ShreeOS boot paths carry the assembled rootfs as the initramfs, which
+# needs roughly 1 GB of guest RAM once unpacked.
+MEMORY="${MEMORY:-2048M}"
 
 qemu_find() {
   if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then

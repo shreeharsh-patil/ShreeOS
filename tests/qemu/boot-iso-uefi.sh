@@ -11,8 +11,11 @@ QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 ISO="${ISO:-${PROJECT_ROOT}/out/${DISTRO_ID}-${DISTRO_VERSION}.iso}"
 UEFI_FIRMWARE="${UEFI_FIRMWARE:-}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
-TIMEOUT="${TIMEOUT:-90}"
-MEMORY="${MEMORY:-256M}"
+# UEFI firmware emulation is slower than BIOS and the live initramfs is
+# rootfs-sized, so allow extra time on top of the larger memory budget used by
+# the BIOS live-ISO test.
+TIMEOUT="${TIMEOUT:-240}"
+MEMORY="${MEMORY:-2048M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
 NO_CLEANUP=false
 
