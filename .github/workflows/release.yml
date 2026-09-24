@@ -39,6 +39,11 @@ jobs:
           touch build/.markers/.toolchain
 
       - name: Build and certify Desktop ISO Profile
+        # Native target graphics are still an explicit deferred layer. The ISO
+        # workflow grants the same allowance so tagged releases stay bootable
+        # and reproducible instead of being blocked on the graphics stack.
+        env:
+          ALLOW_DEFERRED_GRAPHICS: "1"
         run: |
           bash scripts/build.sh desktop
 

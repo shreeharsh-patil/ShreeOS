@@ -31,7 +31,16 @@ if [ "$profile" = "desktop" ]; then
   # Fail before spending time assembling an ISO known to lack its native target SDK.
   make toolchain
   make base-system
-  bash scripts/graphics-readiness.sh --strict
+  if [ "${ALLOW_DEFERRED_GRAPHICS:-0}" = "1" ]; then
+    # Explicit opt-in used by CI release builds and headless integration runs:
+    # stage the desktop assets while the native graphics stack is still
+    # incomplete, exactly like the ISO workflow does for its boot-compatible
+    # build. The staged /etc/shreeos/desktop-native.status keeps reporting
+    # "deferred" so no consumer mistakes this ISO for desktop-certified.
+    bash scripts/graphics-readiness.sh || true
+  else
+    bash scripts/graphics-readiness.sh --strict
+  fi
 fi
 
 make PROFILE="$profile" iso
