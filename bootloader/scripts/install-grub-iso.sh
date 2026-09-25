@@ -119,16 +119,25 @@ TEMPLATE="$SHREEOS_ROOT_DIR/bootloader/grub/grub.cfg.template"
 [ -f "$TEMPLATE" ] || shreeos_die "GRUB template not found: $TEMPLATE"
 
 if command -v envsubst >/dev/null 2>&1; then
-  ENVSUBST_VARS="\${DISTRO_NAME} \${DISTRO_VERSION} \${CMDLINE_EXTRA}"
+  ENVSUBST_VARS="\${DISTRO_NAME} \${DISTRO_VERSION} \${CMDLINE_EXTRA} \${GRUB_SERIAL_CONSOLE}"
   DISTRO_NAME="${DISTRO_NAME:-ShreeOS}" \
   DISTRO_VERSION="${DISTRO_VERSION:-0.2.0-dev}" \
   CMDLINE_EXTRA="$CMDLINE_EXTRA" \
+  GRUB_SERIAL_CONSOLE="${GRUB_SERIAL_CONSOLE:-1}" \
     envsubst "$ENVSUBST_VARS" \
       < "$TEMPLATE" > "${STAGING}/boot/grub/grub.cfg"
 else
   # CMDLINE_EXTRA may contain sed-significant characters, so require envsubst
   # rather than silently producing a corrupted boot configuration.
   shreeos_die "envsubst is required to generate the GRUB configuration safely (install gettext-base)"
+fi
+
+# Stage the standard GRUB font so grub.cfg can enable gfxterm for physical
+# consoles; serial-based QEMU boot tests are unaffected by this cosmetic path.
+GRUB_FONT="${GRUB_FONT:-/usr/share/grub/unicode.pf2}"
+if [ -f "$GRUB_FONT" ]; then
+  mkdir -p "${STAGING}/boot/grub/fonts"
+  cp "$GRUB_FONT" "${STAGING}/boot/grub/fonts/unicode.pf2"
 fi
 
 # Hard postconditions: never allow ISO generation to continue with partial boot files.
