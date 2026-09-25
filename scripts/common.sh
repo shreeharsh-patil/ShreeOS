@@ -33,6 +33,13 @@ else
   shreeos_die()  { printf '[ fail  ] %s\n' "$*" >&2; exit 1; }
 fi
 
+# Compatibility aliases retained for older stage scripts while the project
+# migrates from the former Lumen naming to ShreeOS helpers.
+lumen_log()  { shreeos_log "$@"; }
+lumen_ok()   { shreeos_ok "$@"; }
+lumen_warn() { shreeos_warn "$@"; }
+lumen_die()  { shreeos_die "$@"; }
+
 # shreeos_source_candidates <url>
 # Prints trusted HTTPS candidates for a pinned upstream source. GNU archives get
 # redundant mirrors because ftp.gnu.org can occasionally be unreachable from CI.
