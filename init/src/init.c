@@ -510,9 +510,22 @@ static int load_and_reconcile_services(void) {
     service_config_errors = 0;
 
     DIR *dir = opendir(g_service_dir);
-    if (dir) {
+    if (!dir) {
+        log_warn(g_service_dir, "Unable to open service directory; reload rejected");
+        if (num_services > 0) return -1;
+    } else {
         struct dirent *ent;
-        while ((ent = readdir(dir))) {
+        for (;;) {
+            errno = 0;
+            ent = readdir(dir);
+            if (ent == NULL) {
+                if (errno != 0) {
+                    log_warn(g_service_dir, "readdir failed while loading service configuration");
+                    closedir(dir);
+                    return -1;
+                }
+                break;
+            }
             if (ent->d_name[0] == '.') continue;
             size_t len = strlen(ent->d_name);
             if (len > 5 && strcmp(ent->d_name + len - 5, ".conf") == 0) {
@@ -932,22 +945,36 @@ static void handle_ipc_connections(void) {
     }
 #endif
 
-    struct pollfd client_poll = { .fd = client_fd, .events = POLLIN, .revents = 0 };
-    int poll_result;
-    do {
-        poll_result = poll(&client_poll, 1, 250);
-    } while (poll_result < 0 && errno == EINTR);
-    if (poll_result <= 0 || !(client_poll.revents & (POLLIN | POLLHUP))) {
-        close(client_fd);
-        return;
-    }
-
     char req[512] = {0};
-    ssize_t n;
-    do {
-        n = read(client_fd, req, sizeof(req) - 1);
-    } while (n < 0 && errno == EINTR);
-    if (n <= 0) { close(client_fd); return; }
+    size_t req_len = 0;
+    bool complete_request = false;
+    for (int attempt = 0; attempt < 8 && !complete_request; attempt++) {
+        struct pollfd client_poll = { .fd = client_fd, .events = POLLIN, .revents = 0 };
+        int poll_result;
+        do {
+            poll_result = poll(&client_poll, 1, 250);
+        } while (poll_result < 0 && errno == EINTR);
+        if (poll_result < 0 || (poll_result == 0 && !(client_poll.revents & (POLLIN | POLLHUP)))) {
+            if (poll_result == 0) continue;
+            close(client_fd);
+            return;
+        }
+        if (poll_result > 0 && (client_poll.revents & (POLLIN | POLLHUP))) {
+            ssize_t n = recv(client_fd, req + req_len, sizeof(req) - req_len - 1, 0);
+            if (n > 0) {
+                req_len += (size_t)n;
+                req[req_len] = '\0';
+                if (memchr(req, '\n', req_len) != NULL) complete_request = true;
+            } else if (n == 0) {
+                close(client_fd);
+                return;
+            } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                close(client_fd);
+                return;
+            }
+        }
+    }
+    if (req_len == 0) { close(client_fd); return; }
 
     char res[32768] = {0};
     char *cmd = req;
@@ -1267,6 +1294,7 @@ int main(int argc, char **argv) {
     sigaction(SIGUSR1, &sa, NULL);
     sigaction(SIGUSR2, &sa, NULL);
     sigaction(SIGHUP,  &sa, NULL);
+    signal(SIGPIPE, SIG_IGN);
 
     printf("\n");
     printf("=========================================\n");

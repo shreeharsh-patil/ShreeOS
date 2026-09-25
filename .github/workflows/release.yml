@@ -101,7 +101,7 @@ jobs:
           touch build/.markers/.toolchain
 
       - name: Save validated toolchain cache
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        if: steps.cache-toolchain.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
         uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: |
@@ -151,7 +151,8 @@ jobs:
             awk -v expected="$iso_name" '$2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' "$iso_name.sha256"
             sha256sum -c "$iso_name.sha256"
           )
-          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" python3 - "$iso_path" "$manifest_path" <<'PY'
+          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" EXPECTED_PROFILE=minimal EXPECTED_COMMIT="$GITHUB_SHA" python3 - "$iso_path" "$manifest_path" <<'PY'
+          import hashlib
           import json
           import os
           import pathlib
@@ -168,11 +169,18 @@ jobs:
               raise SystemExit("manifest name does not match build.conf")
           if manifest.get("version") != os.environ["EXPECTED_VERSION"]:
               raise SystemExit("manifest version does not match build.conf")
+          if manifest.get("profile") != os.environ["EXPECTED_PROFILE"]:
+              raise SystemExit("manifest profile does not match the release profile")
+          if manifest.get("commit") != os.environ["EXPECTED_COMMIT"]:
+              raise SystemExit("manifest commit does not match GITHUB_SHA")
           if manifest.get("iso") != iso.name:
               raise SystemExit("manifest ISO name does not match the generated ISO")
           size = manifest.get("size_bytes")
           if isinstance(size, bool) or not isinstance(size, int) or size != iso.stat().st_size:
               raise SystemExit("manifest ISO size does not match the generated ISO")
+          digest = hashlib.sha256(iso.read_bytes()).hexdigest()
+          if manifest.get("sha256") != digest:
+              raise SystemExit("manifest ISO digest does not match the generated ISO")
           print(f"Manifest validated: {iso.name}")
           PY
           rm -rf release-assets
@@ -285,7 +293,8 @@ jobs:
             awk -v expected="$iso_name" '$2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' "$iso_checksum_name"
             sha256sum -c "$iso_checksum_name"
           )
-          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" python3 - "release-assets/$iso_name" "release-assets/$manifest_name" <<'PY'
+          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" EXPECTED_PROFILE=minimal EXPECTED_COMMIT="$GITHUB_SHA" python3 - "release-assets/$iso_name" "release-assets/$manifest_name" <<'PY'
+          import hashlib
           import json
           import os
           import pathlib
@@ -302,11 +311,18 @@ jobs:
               raise SystemExit("downloaded manifest name does not match build.conf")
           if manifest.get("version") != os.environ["EXPECTED_VERSION"]:
               raise SystemExit("downloaded manifest version does not match build.conf")
+          if manifest.get("profile") != os.environ["EXPECTED_PROFILE"]:
+              raise SystemExit("downloaded manifest profile does not match the release profile")
+          if manifest.get("commit") != os.environ["EXPECTED_COMMIT"]:
+              raise SystemExit("manifest commit does not match GITHUB_SHA")
           if manifest.get("iso") != iso.name:
               raise SystemExit("downloaded manifest ISO name does not match")
           size = manifest.get("size_bytes")
           if isinstance(size, bool) or not isinstance(size, int) or size != iso.stat().st_size:
               raise SystemExit("downloaded manifest ISO size does not match")
+          digest = hashlib.sha256(iso.read_bytes()).hexdigest()
+          if manifest.get("sha256") != digest:
+              raise SystemExit("downloaded manifest ISO digest does not match")
           print(f"Downloaded manifest validated: {iso.name}")
           PY
           ISO="$GITHUB_WORKSPACE/release-assets/$iso_name" PROFILE=minimal BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M bash scripts/verify-iso.sh
@@ -322,6 +338,14 @@ jobs:
           set -Eeuo pipefail
           exec > >(tee -a build-logs/publish.log) 2>&1
           cd release-assets
+          tag_commit="$(git ls-remote "https://github.com/${GH_REPO}.git" "refs/tags/${RELEASE_TAG}^{}" | awk 'NR == 1 {print $1}')"
+          if [ -z "$tag_commit" ]; then
+            tag_commit="$(git ls-remote "https://github.com/${GH_REPO}.git" "refs/tags/${RELEASE_TAG}" | awk 'NR == 1 {print $1}')"
+          fi
+          if [ "$tag_commit" != "$GITHUB_SHA" ]; then
+            printf 'Release tag %s does not resolve to the validated commit %s (got %s)\\n' "$RELEASE_TAG" "$GITHUB_SHA" "$tag_commit" >&2
+            exit 1
+          fi
           mapfile -t iso_names < <(find . -maxdepth 1 -type f -name '*.iso' -printf '%f\n' | sort)
           if [[ "${#iso_names[@]}" -ne 1 ]]; then
             printf 'Expected exactly one validated ISO at publication\n' >&2
@@ -351,6 +375,10 @@ jobs:
             release_is_prerelease="$(gh release view "$RELEASE_TAG" --json isPrerelease --jq '.isPrerelease')"
             release_name="$(gh release view "$RELEASE_TAG" --json name --jq '.name')"
             release_body="$(gh release view "$RELEASE_TAG" --json body --jq '.body')"
+            if [ "$release_is_draft" != "true" ]; then
+              printf 'Refusing to modify already-public release %s; publish a new immutable tag instead.\\n' "$RELEASE_TAG" >&2
+              exit 1
+            fi
           else
             create_args=("$RELEASE_TAG" --verify-tag --target "$GITHUB_SHA" --title "ShreeOS $RELEASE_TAG" --notes-file release-notes.md --draft)
             if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
@@ -430,6 +458,15 @@ jobs:
             printf 'Published release state is incorrect\n' >&2
             exit 1
           fi
+          rm -rf "$remote_dir"
+          mkdir -p "$remote_dir"
+          for name in "${expected_assets[@]}"; do
+            gh release download "$RELEASE_TAG" --pattern "$name" --dir "$remote_dir"
+            cmp -s "$name" "$remote_dir/$name" || {
+              printf 'Published asset bytes differ from the validated bundle: %s\\n' "$name" >&2
+              exit 1
+            }
+          done
           if [[ "$release_exists" == "true" && "$release_is_draft" == "true" ]]; then
             printf 'Published existing draft %s\n' "$RELEASE_TAG"
           else

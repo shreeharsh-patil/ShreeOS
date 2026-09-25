@@ -8,7 +8,7 @@ source "$ROOT_DIR/build.conf"
 source "$ROOT_DIR/scripts/common.sh"
 
 stage="${1:-}"
-profile="${PROFILE:-desktop}"
+profile="${PROFILE:-minimal}"
 
 require_file() {
   local path="$1" desc="$2"
@@ -46,6 +46,10 @@ case "$stage" in
     require_exec "$SHREEOS_STAGE_ROOT/bin/bash" "/bin/bash compatibility link"
     require_exec "$SHREEOS_STAGE_ROOT/usr/bin/ls" "/usr/bin/ls"
     require_exec "$SHREEOS_STAGE_ROOT/usr/bin/mount" "/usr/bin/mount"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/false" "/usr/bin/false"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/busybox" "BusyBox"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/ip" "ip utility"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/udhcpc" "DHCP client"
     require_exec "$SHREEOS_STAGE_ROOT/usr/sbin/wpa_supplicant" "wpa_supplicant"
     require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libcrypto.so*" "target libcrypto"
     require_glob "$SHREEOS_STAGE_ROOT/usr/lib/libssl.so*" "target libssl"
@@ -56,6 +60,9 @@ case "$stage" in
     ;;
   kernel)
     require_file "$SHREEOS_BUILD_DIR/build-kernel/arch/x86/boot/bzImage" "kernel bzImage"
+    require_file "$SHREEOS_BUILD_DIR/build-kernel/.shreeos-profile" "kernel profile marker"
+    [ "$(tr -d '\r\n' < "$SHREEOS_BUILD_DIR/build-kernel/.shreeos-profile")" = "$profile" ] || \
+      shreeos_die "kernel profile marker does not match active profile: $profile"
     require_dir "$SHREEOS_STAGE_ROOT/lib/modules" "installed kernel modules"
     ;;
   packages)
@@ -84,11 +91,24 @@ case "$stage" in
   rootfs)
     require_exec "$SHREEOS_STAGE_ROOT/sbin/init" "rootfs PID 1"
     require_file "$SHREEOS_BUILD_DIR/initramfs.cpio.gz" "rootfs initramfs"
+    require_file "$SHREEOS_STAGE_ROOT/etc/shreeos/profile" "rootfs profile marker"
+    [ "$(tr -d '\r\n' < "$SHREEOS_STAGE_ROOT/etc/shreeos/profile")" = "$profile" ] || \
+      shreeos_die "rootfs profile marker does not match active profile: $profile"
     ;;
   iso)
-    iso="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION.iso"
+    if [ "$profile" = "minimal" ]; then
+      iso="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION.iso"
+    else
+      iso="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION-$profile.iso"
+    fi
     require_file "$iso" "ISO image"
     require_file "$iso.sha256" "ISO checksum"
+    manifest="${iso%.iso}-manifest.json"
+    require_file "$manifest" "ISO manifest"
+    grep -Fq '"profile": "'"$profile"'"' "$manifest" || \
+      shreeos_die "ISO manifest profile does not match active profile: $profile"
+    grep -Fq '"commit": "' "$manifest" || shreeos_die "ISO manifest has no commit provenance"
+    grep -Fq '"sha256": "' "$manifest" || shreeos_die "ISO manifest has no SHA-256 provenance"
     ;;
   *)
     shreeos_die "Usage: verify-stage.sh <toolchain|base-system|kernel|packages|desktop|rootfs|iso>"

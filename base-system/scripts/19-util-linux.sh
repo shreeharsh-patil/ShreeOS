@@ -72,4 +72,19 @@ lumen_log "Target ncurses flags: $(pkg-config --libs ncursesw)"
 make -j"${LUMEN_MAKE_JOBS}"
 make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
+# util-linux must consume the target ncursesw library, never a host helper's
+# multiarch -ltinfo flags.  Inspect installed ELF metadata before allowing any
+# later package to link against this stage.
+if command -v readelf >/dev/null 2>&1; then
+  while IFS= read -r -d '' binary; do
+    dynamic="$(readelf -d "$binary" 2>/dev/null || true)"
+    if grep -Eq 'NEEDED.*libtinfo\.so' <<<"$dynamic"; then
+      lumen_die "util-linux output has an unexpected libtinfo dependency: $binary"
+    fi
+    if grep -Eq '(RPATH|RUNPATH).*(/usr/lib/x86_64-linux-gnu|/lib/x86_64-linux-gnu)' <<<"$dynamic"; then
+      lumen_die "util-linux output contains a host multiarch runtime path: $binary"
+    fi
+  done < <(find "${LUMEN_STAGE_ROOT}/usr/bin" "${LUMEN_STAGE_ROOT}/usr/sbin" -type f -perm /111 -print0 2>/dev/null)
+fi
+
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

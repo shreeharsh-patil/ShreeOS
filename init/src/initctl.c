@@ -200,11 +200,8 @@ int main(int argc, char **argv) {
         if (send_ipc_command("LIST", resp, sizeof(resp)) == 0) {
             printf("initctl: PID 1 active. Supervised services:\n\n%s", resp);
             return 0;
-        } else if (kill(1, 0) == 0) {
-            printf("initctl: PID 1 is running (socket IPC unavailable)\n");
-            return 0;
         } else {
-            fprintf(stderr, "initctl: PID 1 not reachable: %s\n", strerror(errno));
+            fprintf(stderr, "initctl: PID 1 socket IPC unavailable: %s\n", strerror(errno));
             return 1;
         }
     } else if (strcmp(cmd, "reload") == 0) {
@@ -221,21 +218,21 @@ int main(int argc, char **argv) {
         printf("initctl: requesting system reboot...\n");
         if (send_ipc_command("SHUTDOWN REBOOT", resp, sizeof(resp)) == 0) {
             printf("%s", resp);
-            return 0;
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
         }
         return kill(1, SIGTERM) == 0 ? 0 : 1;
     } else if (strcmp(cmd, "poweroff") == 0) {
         printf("initctl: requesting system poweroff...\n");
         if (send_ipc_command("SHUTDOWN POWEROFF", resp, sizeof(resp)) == 0) {
             printf("%s", resp);
-            return 0;
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
         }
         return kill(1, SIGUSR1) == 0 ? 0 : 1;
     } else if (strcmp(cmd, "halt") == 0) {
         printf("initctl: requesting system halt...\n");
         if (send_ipc_command("SHUTDOWN HALT", resp, sizeof(resp)) == 0) {
             printf("%s", resp);
-            return 0;
+            return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
         }
         return kill(1, SIGUSR2) == 0 ? 0 : 1;
     }

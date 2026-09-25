@@ -28,6 +28,9 @@
 #   qemu-bios       — Launch built ISO in QEMU (BIOS)
 
 PROFILE ?= minimal
+ifeq ($(filter minimal desktop server,$(PROFILE)),)
+$(error Unsupported PROFILE '$(PROFILE)'; expected minimal, desktop, or server)
+endif
 BUILD_DIR := build
 MARKER_DIR := $(BUILD_DIR)/.markers
 SHELL := /usr/bin/env bash
@@ -163,6 +166,10 @@ $(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR) check-toolchain-cach
 toolchain-test:
 	bash tests/smoke/test-toolchain.sh
 
+.PHONY: test-toolchain
+test-toolchain:
+	bash tests/smoke/test-toolchain.sh
+
 # -- Phase 2: Base System --------------------------------------------
 .PHONY: base-system
 base-system: $(FORCE_TARGET) $(MARKER_DIR)/.base-system
@@ -279,6 +286,10 @@ test-desktop:
 test-hardware:
 	$(MAKE) -C hardware test
 
+.PHONY: test-base-system
+test-base-system:
+	bash tests/smoke/test-base-system.sh
+
 .PHONY: test-smoke
 test-smoke:
 	bash tests/smoke/run-all.sh
@@ -288,7 +299,7 @@ test-qemu:
 	bash tests/qemu/run-all-qemu-tests.sh --strict
 
 .PHONY: test-all
-test-all: test-unit test-init test-security test-auth test-installer test-pkgmanager test-desktop test-hardware test-qemu
+test-all: test-toolchain test-unit test-init test-security test-auth test-installer test-pkgmanager test-desktop test-base-system test-hardware test-qemu
 
 .PHONY: tests
 tests: test-smoke
@@ -312,7 +323,7 @@ clean-toolchain:
 
 .PHONY: clean-base
 clean-base:
-	rm -rf $(BUILD_DIR)/base-system
+	rm -rf $(BUILD_DIR)/base-system $(BUILD_DIR)/rootfs $(BUILD_DIR)/initramfs.cpio.gz
 	rm -f $(MARKER_DIR)/.base-system $(MARKER_DIR)/.packages
 	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
 

@@ -201,7 +201,7 @@ oneshot=false
 restart=never
 EOF
 
-RELOAD_RES=$("$INITCTL_BIN" reload)
+RELOAD_RES=$("$INITCTL_BIN" reload 2>&1 || true)
 echo "  [OK] Configuration reloaded: $RELOAD_RES"
 sleep 0.5
 
@@ -213,6 +213,47 @@ else
   cat "${TEST_TMP}/init.stderr"
   exit 1
 fi
+
+# ---------------------------------------------------------
+# Test 5b: Reload must fail closed and IPC framing must be complete
+# ---------------------------------------------------------
+echo ""
+echo "==> Test 5b: Reload Safety and Fragmented IPC"
+mv "$SERVICES_DIR" "${SERVICES_DIR}.unavailable"
+RELOAD_RES=$("$INITCTL_BIN" reload 2>&1 || true)
+sleep 0.3
+if grep -q "Unable to open service directory; reload rejected" "${TEST_TMP}/init.stderr" && \
+   "$INITCTL_BIN" list | grep -q "first"; then
+  echo "  [OK] Missing service directory was rejected without replacing the active graph"
+else
+  echo "FAIL: Reload replaced the active graph after a read failure"
+  echo "$RELOAD_RES"
+  exit 1
+fi
+mv "${SERVICES_DIR}.unavailable" "$SERVICES_DIR"
+python3 - "$SOCKET_PATH" <<'PY'
+import socket
+import sys
+import time
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(3)
+sock.connect(sys.argv[1])
+sock.sendall(b"LI")
+time.sleep(0.05)
+sock.sendall(b"ST\n")
+chunks = []
+while True:
+    data = sock.recv(4096)
+    if not data:
+        break
+    chunks.append(data)
+sock.close()
+response = b"".join(chunks)
+if b"SERVICE" not in response:
+    raise SystemExit("fragmented LIST request did not receive a complete response")
+PY
+echo "  [OK] Fragmented IPC requests are framed and answered"
 
 # ---------------------------------------------------------
 # Test 6: Crash Detection & Restart Policies

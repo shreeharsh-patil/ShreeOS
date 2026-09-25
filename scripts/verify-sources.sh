@@ -42,6 +42,13 @@ VERIFIED=0
 FAILED=0
 MISSING=0
 
+require_source_list() {
+  local path="$1" component="$2"
+  [ -s "$path" ] || shreeos_die "Missing or empty $component source list: $path"
+  grep -Eq '^[[:space:]]*[^#[:space:]]' "$path" || \
+    shreeos_die "$component source list contains no definitions: $path"
+}
+
 verify_entry() {
   local comp="$1" name="$2" version="$3" url="$4" expected_sha="$5"
   TOTAL=$((TOTAL + 1))
@@ -68,10 +75,27 @@ verify_entry() {
   archive_path="$SOURCES_DIR/$filename"
   tmp_path="$archive_path.tmp.${BASHPID}"
 
-  if [ ! -f "$archive_path" ] && [ "$FETCH_MISSING" = true ]; then
+  local needs_fetch=false
+  if [ -L "$archive_path" ]; then
+    shreeos_warn "Discarding symlink source cache entry: $filename"
+    rm -f -- "$archive_path"
+    needs_fetch=true
+  elif [ ! -f "$archive_path" ]; then
+    needs_fetch=true
+  elif [ "$FETCH_MISSING" = true ]; then
+    local cached_sha
+    cached_sha="$(sha256sum "$archive_path" | awk '{print $1}')"
+    if [ "$cached_sha" != "$expected_sha" ]; then
+      shreeos_warn "Discarding corrupt cached source before refetch: $filename"
+      rm -f -- "$archive_path"
+      needs_fetch=true
+    fi
+  fi
+
+  if [ "$needs_fetch" = true ] && [ "$FETCH_MISSING" = true ]; then
     printf "  [FETCH]   [%-11s] %s\n" "$comp" "$filename"
     rm -f "$tmp_path"
-    if curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 -o "$tmp_path" "$url"; then
+    if curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 600 --proto '=https' --proto-redir '=https' -o "$tmp_path" "$url"; then
       local fetched_sha
       fetched_sha="$(sha256sum "$tmp_path" | awk '{print $1}')"
       if [ "$fetched_sha" != "$expected_sha" ]; then
@@ -115,7 +139,8 @@ echo "========================================================"
 echo " ShreeOS Pinned Upstream Sources Verification"
 echo "========================================================"
 
-if component_enabled toolchain && [ -f "$REPO_ROOT/toolchain/scripts/sources.list" ]; then
+if component_enabled toolchain; then
+  require_source_list "$REPO_ROOT/toolchain/scripts/sources.list" toolchain
   # shellcheck disable=SC1091
   source "$REPO_ROOT/toolchain/scripts/sources.list"
   verify_entry toolchain binutils "${VER_BINUTILS:-2.43.1}" "$BINUTILS_URL" "$BINUTILS_SHA256"
@@ -124,13 +149,15 @@ if component_enabled toolchain && [ -f "$REPO_ROOT/toolchain/scripts/sources.lis
   verify_entry toolchain linux-headers "${VER_LINUX_KERNEL:-6.18}" "$KERNEL_URL" "$KERNEL_SHA256"
 fi
 
-if component_enabled kernel && [ -f "$REPO_ROOT/kernel/sources.list" ]; then
+if component_enabled kernel; then
+  require_source_list "$REPO_ROOT/kernel/sources.list" kernel
   # shellcheck disable=SC1091
   source "$REPO_ROOT/kernel/sources.list"
   verify_entry kernel linux "${VER_LINUX_KERNEL:-6.18}" "$KERNEL_URL" "$KERNEL_SHA256"
 fi
 
-if component_enabled base-system && [ -f "$REPO_ROOT/base-system/packages.list" ]; then
+if component_enabled base-system; then
+  require_source_list "$REPO_ROOT/base-system/packages.list" base-system
   while IFS=$'\t' read -r name ver url sha _rest || [ -n "${name:-}" ]; do
     [[ "${name:-}" =~ ^[[:space:]]*# ]] && continue
     [ -z "${name:-}" ] && continue
@@ -138,7 +165,8 @@ if component_enabled base-system && [ -f "$REPO_ROOT/base-system/packages.list" 
   done < "$REPO_ROOT/base-system/packages.list"
 fi
 
-if component_enabled desktop && [ -f "$REPO_ROOT/desktop/wm/sources.list" ]; then
+if component_enabled desktop; then
+  require_source_list "$REPO_ROOT/desktop/wm/sources.list" desktop
   # shellcheck disable=SC1091
   source "$REPO_ROOT/desktop/wm/sources.list"
   verify_entry desktop dwm 6.5 "$DWM_URL" "$DWM_SHA256"

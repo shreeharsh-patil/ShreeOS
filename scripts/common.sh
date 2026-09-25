@@ -50,6 +50,11 @@ shreeos_fetch() {
     shreeos_die "Invalid SHA-256 pin for $(basename "${dest}"): ${expected_sha}"
   fi
 
+  if [[ -L "${dest}" ]]; then
+    shreeos_warn "Discarding symlink source cache: ${dest}"
+    rm -f -- "${dest}"
+  fi
+
   if [[ -f "${dest}" ]]; then
     actual_sha="$(sha256sum "${dest}" | awk '{print $1}')"
     if [[ "${actual_sha}" == "${expected_sha}" ]]; then
@@ -67,7 +72,20 @@ shreeos_fetch() {
 
   for attempt in 1 2; do
     shreeos_log "Fetching $(basename "${dest}") (attempt ${attempt}/2) ..."
-    if ! curl -fL --retry 3 --retry-all-errors --connect-timeout 20 -o "${tmp}" "${url}"; then
+    local -a curl_args=(--fail --location --retry 3 --retry-all-errors --connect-timeout 20 --max-time 600 --output "${tmp}")
+    if [[ "${url}" == file://* ]]; then
+      if [[ "${SHREEOS_ALLOW_FILE_FETCH:-0}" != "1" ]]; then
+        rm -f -- "${tmp}"
+        shreeos_die "file:// source URLs are allowed only in isolated tests"
+      fi
+    else
+      if [[ "${url}" != https://* ]]; then
+        rm -f -- "${tmp}"
+        shreeos_die "Only HTTPS source URLs are allowed: ${url}"
+      fi
+      curl_args+=(--proto '=https' --proto-redir '=https')
+    fi
+    if ! curl "${curl_args[@]}" "${url}"; then
       rm -f -- "${tmp}"
       if (( attempt < 2 )); then
         shreeos_warn "Download failed; retrying source fetch from ${url}"

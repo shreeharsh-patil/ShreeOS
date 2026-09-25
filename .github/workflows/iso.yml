@@ -76,7 +76,7 @@ jobs:
           touch build/.markers/.toolchain
 
       - name: Save validated toolchain cache
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        if: steps.cache-toolchain.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
         uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: |
@@ -126,7 +126,8 @@ jobs:
             awk -v expected="$iso_name" '$2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' "$iso_name.sha256"
             sha256sum -c "$iso_name.sha256"
           )
-          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" python3 - "$iso_path" "$manifest_path" <<'PY'
+          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" EXPECTED_PROFILE="$BUILD_PROFILE" EXPECTED_COMMIT="$GITHUB_SHA" python3 - "$iso_path" "$manifest_path" <<'PY'
+          import hashlib
           import json
           import os
           import pathlib
@@ -143,11 +144,18 @@ jobs:
               raise SystemExit("manifest name does not match build.conf")
           if manifest.get("version") != os.environ["EXPECTED_VERSION"]:
               raise SystemExit("manifest version does not match build.conf")
+          if manifest.get("profile") != os.environ["EXPECTED_PROFILE"]:
+              raise SystemExit("manifest profile does not match the build profile")
+          if manifest.get("commit") != os.environ["EXPECTED_COMMIT"]:
+              raise SystemExit("manifest commit does not match GITHUB_SHA")
           if manifest.get("iso") != iso.name:
               raise SystemExit("manifest ISO name does not match the generated ISO")
           size = manifest.get("size_bytes")
           if isinstance(size, bool) or not isinstance(size, int) or size != iso.stat().st_size:
               raise SystemExit("manifest ISO size does not match the generated ISO")
+          digest = hashlib.sha256(iso.read_bytes()).hexdigest()
+          if manifest.get("sha256") != digest:
+              raise SystemExit("manifest ISO digest does not match the generated ISO")
           print(f"Manifest validated: {iso.name}")
           PY
           rm -rf release-assets

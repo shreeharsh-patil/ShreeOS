@@ -49,11 +49,11 @@ mkdir -p   "${STAGING}/boot/grub/i386-pc"   "${STAGING}/boot/grub/x86_64-efi"   
 
 BIOS_MODULES=(
   biosdisk iso9660 part_msdos part_gpt normal configfile search search_fs_file
-  loopback ext2 fat linux font gettext serial terminal test all_video gfxterm gzio gfxterm all_video
+  loopback ext2 fat linux font gettext serial terminal test gzio gfxterm all_video
 )
 UEFI_MODULES=(
   iso9660 part_msdos part_gpt normal configfile search search_fs_file
-  loopback ext2 fat linux efi_gop font gettext serial terminal test all_video gfxterm gzio gfxterm all_video
+  loopback ext2 fat linux efi_gop font gettext serial terminal test gzio gfxterm all_video
 )
 
 verify_grub_image() {
@@ -119,17 +119,19 @@ TEMPLATE="$SHREEOS_ROOT_DIR/bootloader/grub/grub.cfg.template"
 [ -f "$TEMPLATE" ] || shreeos_die "GRUB template not found: $TEMPLATE"
 
 if command -v envsubst >/dev/null 2>&1; then
-  ENVSUBST_VARS="\${DISTRO_NAME} \${DISTRO_VERSION} \${CMDLINE_EXTRA} \${GRUB_SERIAL_CONSOLE}"
+  ENVSUBST_VARS="\${DISTRO_NAME} \${DISTRO_VERSION} \${CMDLINE_EXTRA}"
   DISTRO_NAME="${DISTRO_NAME:-ShreeOS}" \
   DISTRO_VERSION="${DISTRO_VERSION:-0.2.0-dev}" \
   CMDLINE_EXTRA="$CMDLINE_EXTRA" \
-  GRUB_SERIAL_CONSOLE="${GRUB_SERIAL_CONSOLE:-1}" \
     envsubst "$ENVSUBST_VARS" \
       < "$TEMPLATE" > "${STAGING}/boot/grub/grub.cfg"
 else
   # CMDLINE_EXTRA may contain sed-significant characters, so require envsubst
   # rather than silently producing a corrupted boot configuration.
   shreeos_die "envsubst is required to generate the GRUB configuration safely (install gettext-base)"
+fi
+if grep -Eq '\$\{[A-Za-z_][A-Za-z0-9_]*\}' "${STAGING}/boot/grub/grub.cfg"; then
+  shreeos_die "Generated GRUB configuration contains an unsubstituted variable"
 fi
 
 # Stage the standard GRUB font so grub.cfg can enable gfxterm for physical

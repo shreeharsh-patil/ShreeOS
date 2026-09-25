@@ -38,6 +38,13 @@ PKG="linux-${VER_LINUX_KERNEL}"
 ARCHIVE="${PKG}.tar.xz"
 SRCDIR="$(kernel_srcdir)"
 
+PROFILE="${PROFILE:-minimal}"
+case "$PROFILE" in
+  minimal|desktop|server|qemu|qemu-kernel-test) ;;
+  *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
+esac
+export PROFILE
+
 lumen_step "Building kernel ${VER_LINUX_KERNEL} for ${LUMEN_ARCH}"
 
 # 1. Download and extract kernel source
@@ -52,7 +59,7 @@ fi
 # to the dedicated qemu-kernel-test profile. Production profiles boot with an
 # external ShreeOS initramfs and must never embed this test payload.
 EMBED_TEST_INITRAMFS=false
-if [ "${PROFILE:-desktop}" = "qemu-kernel-test" ]; then
+if [ "$PROFILE" = "qemu-kernel-test" ]; then
   EMBED_TEST_INITRAMFS=true
 fi
 if [ "$EMBED_TEST_INITRAMFS" = true ] && [ "$SKIP_INIT" = false ]; then
@@ -73,13 +80,18 @@ make -C "$SRCDIR" ARCH="${LUMEN_ARCH}" mrproper >/dev/null
 
 lumen_step "Configuring kernel (defconfig + minimal overrides)"
 mkdir -p "$KERNEL_BUILDDIR"
+KERNEL_PROFILE_MARKER="$KERNEL_BUILDDIR/.shreeos-profile"
+if [ -s "$KERNEL_PROFILE_MARKER" ] && [ "$(cat "$KERNEL_PROFILE_MARKER")" != "$PROFILE" ]; then
+  lumen_die "Kernel build directory belongs to profile $(cat "$KERNEL_PROFILE_MARKER"), refusing cross-profile reuse; clean the kernel build first"
+fi
+printf '%s\n' "$PROFILE" > "$KERNEL_PROFILE_MARKER"
 cd "$KERNEL_BUILDDIR"
 
 make -C "$SRCDIR" O="$KERNEL_BUILDDIR" ARCH="${LUMEN_ARCH}" defconfig
 
 # Determine kernel config profile based on active PROFILE
 KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/generic.config"
-if [ "${PROFILE:-desktop}" = "desktop" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/desktop.config" ]; then
+if [ "$PROFILE" = "desktop" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/desktop.config" ]; then
   KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/desktop.config"
 elif [ "${PROFILE:-}" = "qemu" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/qemu.config" ]; then
   KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/qemu.config"
@@ -106,6 +118,31 @@ fi
 
 # Resolve any new dependencies
 make -C "$SRCDIR" O="$KERNEL_BUILDDIR" ARCH="${LUMEN_ARCH}" olddefconfig
+
+required_kernel_config=(
+  CONFIG_64BIT
+  CONFIG_BLK_DEV_INITRD
+  CONFIG_BLOCK
+  CONFIG_PCI
+  CONFIG_VIRTIO_PCI
+  CONFIG_VIRTIO_BLK
+  CONFIG_VIRTIO_NET
+  CONFIG_BLK_DEV_NVME
+  CONFIG_ATA
+  CONFIG_SATA_AHCI
+  CONFIG_MMC
+  CONFIG_MMC_BLOCK
+  CONFIG_EXT4_FS
+  CONFIG_VFAT_FS
+  CONFIG_DEVTMPFS
+  CONFIG_DEVTMPFS_MOUNT
+  CONFIG_SERIAL_8250_CONSOLE
+  CONFIG_BINFMT_ELF
+)
+for symbol in "${required_kernel_config[@]}"; do
+  grep -q "^${symbol}=y$" "$KERNEL_BUILDDIR/.config" || \
+    lumen_die "Required kernel configuration is not built in: ${symbol}"
+done
 
 lumen_ok "Kernel configured"
 

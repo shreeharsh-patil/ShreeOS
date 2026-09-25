@@ -10,8 +10,8 @@ source "$PROJECT_ROOT/scripts/common.sh"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
 ROOT_MARKER_STRING="${ROOT_MARKER_STRING:-ShreeOS init: installed ext4 root mounted}"
-TIMEOUT="${TIMEOUT:-60}"
-MEMORY="${MEMORY:-256M}"
+TIMEOUT="${TIMEOUT:-${BIOS_TIMEOUT:-180}}"
+MEMORY="${MEMORY:-2048M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
 DISK_IMAGE="${1:-}"
 TEMP_DISK=""
@@ -81,7 +81,7 @@ trap cleanup_all EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-"$QEMU_BIN"   -drive file="$DISK_IMAGE",format=raw   -m "$MEMORY"   -nographic   -no-reboot   > "$LOG_FILE" 2>&1 &
+"$QEMU_BIN"   -drive file="$DISK_IMAGE",format=raw   -m "$MEMORY"   -nographic   -no-reboot   -nic none   > "$LOG_FILE" 2>&1 &
 QEMU_PID=$!
 
 WAITED=0

@@ -7,14 +7,20 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$REPO_ROOT/build.conf"
 source "$REPO_ROOT/scripts/common.sh"
 
-ISO="${ISO:-$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION.iso}"
+if [ -z "${ISO:-}" ]; then
+  if [ "${PROFILE:-minimal}" = "minimal" ]; then
+    ISO="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION.iso"
+  else
+    ISO="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION-${PROFILE:-minimal}.iso"
+  fi
+fi
 SKIP_QEMU="${SKIP_QEMU:-0}"
 ALLOW_DEFERRED_GRAPHICS="${ALLOW_DEFERRED_GRAPHICS:-0}"
 
 shreeos_require_cmd sha256sum xorriso
 
 desktop_deferred=false
-if [ "${PROFILE:-desktop}" = "desktop" ]; then
+if [ "${PROFILE:-minimal}" = "desktop" ]; then
   status_file="$SHREEOS_STAGE_ROOT/etc/shreeos/desktop-native.status"
   if [ ! -f "$status_file" ] || [ "$(cat "$status_file" 2>/dev/null || true)" != "ready" ]; then
     desktop_deferred=true
@@ -26,19 +32,22 @@ if [ "${PROFILE:-desktop}" = "desktop" ]; then
   fi
 fi
 
-[ -f "$ISO" ] || shreeos_die "ISO not found: $ISO"
+[ -f "$ISO" ] && [ ! -L "$ISO" ] || shreeos_die "ISO must be a regular, non-symlink file: $ISO"
 [ -s "$ISO" ] || shreeos_die "ISO is empty: $ISO"
 
 shreeos_step "Verifying ISO checksum"
 checksum_file="$ISO.sha256"
-if [ -f "$checksum_file" ]; then
-  (
-    cd "$(dirname "$ISO")"
-    sha256sum -c "$(basename "$checksum_file")"
-  )
-else
-  sha256sum "$ISO"
-fi
+[ -f "$checksum_file" ] && [ ! -L "$checksum_file" ] || \
+  shreeos_die "ISO checksum file is missing or unsafe: $checksum_file"
+iso_name="$(basename "$ISO")"
+[ "$(wc -l < "$checksum_file")" -eq 1 ] || \
+  shreeos_die "ISO checksum file must contain exactly one line: $checksum_file"
+awk -v expected="$iso_name" 'NF == 2 && $1 ~ /^[0-9A-Fa-f]{64}$/ && $2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' "$checksum_file" || \
+  shreeos_die "ISO checksum file does not match ${iso_name}: $checksum_file"
+(
+  cd "$(dirname "$ISO")"
+  sha256sum -c "$(basename "$checksum_file")"
+)
 
 shreeos_step "Inspecting ISO filesystem"
 required_paths=(

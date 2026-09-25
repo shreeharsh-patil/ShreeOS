@@ -46,6 +46,8 @@ CREDS_FILE=""
 CREDS_FILE_OWNED=false
 USERNAME=""
 BOOT_MODE="both"
+HASHED_ROOT_PW=""
+HASHED_USER_PW=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -61,15 +63,19 @@ for arg in "$@"; do
 done
 
 TARGET=""
+ESP_MOUNT=""
 LOOP_DEV=""
 USER_TMP_CRED=""
 
 cleanup() {
   if [ -n "$TARGET" ] && [ -d "$TARGET" ]; then
     shreeos_log "Unmounting target filesystems..."
-    umount "${TARGET}/boot/efi" 2>/dev/null || true
     umount "$TARGET" 2>/dev/null || true
     rmdir "$TARGET" 2>/dev/null || true
+  fi
+  if [ -n "$ESP_MOUNT" ] && [ -d "$ESP_MOUNT" ]; then
+    umount "$ESP_MOUNT" 2>/dev/null || true
+    rmdir "$ESP_MOUNT" 2>/dev/null || true
   fi
   if [ -n "$LOOP_DEV" ]; then
     shreeos_log "Detaching loop device ${LOOP_DEV}..."
@@ -101,14 +107,36 @@ fi
 
 if [ -n "$USERNAME" ]; then
   if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
-    shreeos_die "Invalid username '${USERNAME}'. Must match ^[a-z_][a-z0-9_-]{0,31}$."
+    shreeos_die "Invalid username '${USERNAME}'. Must match ^[a-z_][a-z0-9_-]{0,31}\$."
   fi
+  case "$USERNAME" in
+    root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|_apt|nobody|systemd-*|messagebus|sshd|shree-hardware)
+      shreeos_die "Reserved system username '${USERNAME}' cannot be used."
+      ;;
+  esac
   if [ -z "$CREDS_FILE" ]; then
     shreeos_die "A username requires a credentials file with a non-empty user password."
   fi
 fi
 
+hash_password() {
+  local password="$1"
+  local salt
+  salt="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+  if ! [[ "$salt" =~ ^[a-zA-Z0-9]{16}$ ]]; then
+    shreeos_die "Failed to generate a password salt."
+  fi
+  local hashed
+  hashed="$(printf '%s' "$password" | openssl passwd -6 -salt "$salt" -stdin 2>/dev/null || true)"
+  password=""
+  if ! [[ "$hashed" =~ ^\$6\$[a-zA-Z0-9]{1,16}\$[./A-Za-z0-9]+$ ]]; then
+    shreeos_die "Failed to securely hash the supplied password with SHA-512."
+  fi
+  printf '%s\n' "$hashed"
+}
+
 if [ -n "$CREDS_FILE" ]; then
+  shreeos_require_cmd openssl
   if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
     shreeos_die "Credentials file must be a regular, non-symlink file."
   fi
@@ -140,6 +168,17 @@ if [ -n "$CREDS_FILE" ]; then
   elif [ -n "$USERNAME" ]; then
     shreeos_die "A username requires a second, non-empty user password line."
   fi
+
+  ROOT_PW="$(sed -n '1p' "$CREDS_FILE")"
+  HASHED_ROOT_PW="$(hash_password "$ROOT_PW")"
+  ROOT_PW=""
+  unset ROOT_PW
+  if [ -n "$USERNAME" ]; then
+    USER_PW="$(sed -n '2p' "$CREDS_FILE")"
+    HASHED_USER_PW="$(hash_password "$USER_PW")"
+    USER_PW=""
+    unset USER_PW
+  fi
 fi
 
 if [ -n "$USERNAME" ] && [ ! -f "${SCRIPT_DIR}/configure-user.sh" ]; then
@@ -160,6 +199,9 @@ fi
 # Complete every non-destructive preflight before creating a loop device,
 # partitioning, formatting, or mounting the requested disk.
 STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
+if [ -n "$USERNAME" ] && [ -f "${STAGE_ROOT}/etc/passwd" ] && grep -q "^${USERNAME}:" "${STAGE_ROOT}/etc/passwd"; then
+  shreeos_die "Account '${USERNAME}' already exists in the staged root filesystem."
+fi
 ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/initramfs.cpio.gz"
 BZIMAGE="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/build-kernel/arch/x86/boot/bzImage"
 if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
@@ -173,9 +215,12 @@ if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"
 if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
 shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip chown du lsblk realpath stat
 if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
-  if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
+  TIMEZONE_ARCHIVE_LIST="$(gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet)"
+  if ! grep -Fxq "./usr/share/zoneinfo/${TIMEZONE}" <<<"$TIMEZONE_ARCHIVE_LIST" && \
+     ! grep -Fxq "usr/share/zoneinfo/${TIMEZONE}" <<<"$TIMEZONE_ARCHIVE_LIST"; then
     shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
   fi
+  unset TIMEZONE_ARCHIVE_LIST
 fi
 
 if ! CANONICAL_DISK="$(realpath -- "$DISK" 2>/dev/null)"; then
@@ -188,7 +233,15 @@ if [ -f "$CANONICAL_DISK" ] && [ ! -b "$CANONICAL_DISK" ]; then
   if [ -n "$EXISTING_LOOPS" ]; then
     shreeos_die "Target disk image ${DISK} already has a loop association; refusing to reuse overlapping media."
   fi
+elif [ -b "$CANONICAL_DISK" ] && [[ "$CANONICAL_DISK" =~ ^/dev/loop[0-9]+$ ]]; then
+  if ! LOOP_BACKING="$(losetup -n -O BACK-FILE -- "$CANONICAL_DISK" 2>/dev/null)"; then
+    shreeos_die "Unable to verify whether ${DISK} is an attached loop device."
+  fi
+  if [ -n "$LOOP_BACKING" ]; then
+    shreeos_die "Attached loop device ${DISK} is not accepted; provide its backing disk image instead."
+  fi
 fi
+DISK="$CANONICAL_DISK"
 
 if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if ! ROOTFS_PAYLOAD_KB=$(du -sk -- "${STAGE_ROOT}" | awk '{print $1}'); then
@@ -236,6 +289,10 @@ if [ "$TARGET_BYTES" -lt "$MIN_TARGET_BYTES" ]; then
   shreeos_die "Target media is too small: ${TARGET_BYTES} bytes; at least ${MIN_TARGET_BYTES} bytes are required for the 512MiB ESP, rootfs payload, and safety margin."
 fi
 
+if [ -z "$CREDS_FILE" ]; then
+  shreeos_die "A credentials file is required for installation; use --credentials-file with a 0600 file containing the root password and optional user password."
+fi
+
 if [ "$(id -u)" -ne 0 ]; then
   shreeos_die "Installation requires root privileges. Re-run with sudo: sudo bash installer/scripts/install-to-disk.sh ..."
 fi
@@ -281,6 +338,19 @@ PART_BIOS=$(get_partition_dev "$WORKING_DISK" 1)
 PART_ESP=$(get_partition_dev "$WORKING_DISK" 2)
 PART_ROOT=$(get_partition_dev "$WORKING_DISK" 3)
 
+verify_child_partition() {
+  local partition="$1"
+  local parent
+  parent="$(lsblk -ndo PKNAME -- "$partition" 2>/dev/null | awk 'NR == 1 {print $1}')"
+  if [ -z "$parent" ] || [ "$parent" != "$(basename -- "$WORKING_DISK")" ]; then
+    shreeos_die "Partition ${partition} is not a child of ${WORKING_DISK}."
+  fi
+}
+verify_child_partition "$PART_ROOT"
+if [ "$BOOT_MODE" != "bios" ]; then
+  verify_child_partition "$PART_ESP"
+fi
+
 # Partition nodes can appear asynchronously after sfdisk/loop partition scans.
 # Ask the kernel/udev to settle, then fail explicitly instead of racing mkfs.
 if command -v partprobe >/dev/null 2>&1; then
@@ -320,6 +390,10 @@ mkfs.ext4 -F -L "${DISTRO_ID:-shreeos}-root" "$PART_ROOT"
 shreeos_log "Mounting target filesystems"
 TARGET=$(mktemp -d /tmp/shreeos-target-XXXXXX)
 mount "$PART_ROOT" "$TARGET"
+if [ "$BOOT_MODE" != "bios" ]; then
+  ESP_MOUNT=$(mktemp -d /tmp/shreeos-esp-XXXXXX)
+  mount "$PART_ESP" "$ESP_MOUNT"
+fi
 
 # 4. Copy rootfs payload
 shreeos_log "Copying root filesystem contents..."
@@ -337,6 +411,7 @@ fi
 
 # The installed boot configuration is independent of the copied rootfs tree.
 # Install the exact validated build artifacts before GRUB is invoked.
+[ ! -L "${TARGET}/boot" ] || shreeos_die "Unsafe /boot symlink in staged rootfs."
 mkdir -p "${TARGET}/boot"
 cp "${BZIMAGE}" "${TARGET}/boot/bzImage"
 cp "${ROOTFS_CPIO}" "${TARGET}/boot/initramfs.cpio.gz"
@@ -345,10 +420,16 @@ if [ ! -s "${TARGET}/boot/bzImage" ] || [ ! -s "${TARGET}/boot/initramfs.cpio.gz
 fi
 
 chown -R root:root "${TARGET}"
-
-if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "uefi" ]; then
+for auth_binary in "${TARGET}/usr/bin/shree-auth" "${TARGET}/sbin/shree-auth"; do
+  [ -f "$auth_binary" ] && [ ! -L "$auth_binary" ] || \
+    shreeos_die "Installed authentication helper is missing or unsafe: $auth_binary"
+  chown 0:0 "$auth_binary"
+  chmod 4755 "$auth_binary"
+done
+if [ -n "$ESP_MOUNT" ]; then
+  [ ! -L "${TARGET}/boot" ] || shreeos_die "Unsafe /boot symlink in staged rootfs."
   mkdir -p "${TARGET}/boot/efi"
-  mount "$PART_ESP" "${TARGET}/boot/efi"
+  [ ! -L "${TARGET}/boot/efi" ] || shreeos_die "Unsafe /boot/efi symlink in staged rootfs."
 fi
 
 # 5. Configure system identity, timezone and credentials
@@ -362,58 +443,34 @@ if [ ! -f "${TARGET}/usr/share/zoneinfo/${TIMEZONE}" ]; then
 fi
 ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${TARGET}/etc/localtime"
 
-# Read root & user passwords from secure credential file if provided
-if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
-  ROOT_PW=$(sed -n '1p' "$CREDS_FILE")
-  USER_PW=""
-  if [ "$CREDS_LINE_COUNT" -ge 2 ]; then
-    USER_PW=$(sed -n '2p' "$CREDS_FILE")
+if [ -n "$HASHED_ROOT_PW" ]; then
+  if [ -f "${TARGET}/etc/shadow" ]; then
+    sed -i "s|^root:[^:]*:|root:${HASHED_ROOT_PW}:|" "${TARGET}/etc/shadow"
+  else
+    echo "root:${HASHED_ROOT_PW}:19000:0:99999:7:::" > "${TARGET}/etc/shadow"
   fi
-
-  if [ -n "$ROOT_PW" ]; then
-    SALT="$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)"
-    HASHED_PW=""
-    if command -v openssl >/dev/null 2>&1; then
-      HASHED_PW=$(printf "%s" "$ROOT_PW" | openssl passwd -6 -salt "$SALT" -stdin 2>/dev/null || echo "")
-    elif command -v mkpasswd >/dev/null 2>&1; then
-      HASHED_PW=$(printf "%s" "$ROOT_PW" | mkpasswd -m sha-512 -S "$SALT" -s 2>/dev/null || echo "")
-    fi
-
-    # Wipe ROOT_PW immediately
-    ROOT_PW=""
-    unset ROOT_PW
-
-    if [ -z "$HASHED_PW" ]; then
-      shreeos_die "Failed to securely hash root administrator password. Installation aborted."
-    fi
-
-    if [ -f "${TARGET}/etc/shadow" ]; then
-      sed -i "s|^root:[^:]*:|root:${HASHED_PW}:|" "${TARGET}/etc/shadow"
-    else
-      echo "root:${HASHED_PW}:19000:0:99999:7:::" > "${TARGET}/etc/shadow"
-    fi
-    chmod 600 "${TARGET}/etc/shadow"
-  fi
-
-  if [ -n "${USERNAME}" ]; then
-    USER_TMP_CRED=$(mktemp /tmp/user-cred-XXXXXX)
-    chmod 600 "$USER_TMP_CRED"
-    printf "%s" "$USER_PW" > "$USER_TMP_CRED"
-    USER_PW=""
-    unset USER_PW
-
-    bash "${SCRIPT_DIR}/configure-user.sh" "$TARGET" "$USERNAME" "$USER_TMP_CRED"
-    rm -f "$USER_TMP_CRED"
-    USER_TMP_CRED=""
-  fi
-
-  USER_PW=""
-  unset USER_PW
+  chmod 600 "${TARGET}/etc/shadow"
 fi
+
+if [ -n "${USERNAME}" ]; then
+  SHREEOS_PREHASHED_USER_PASSWORD="$HASHED_USER_PW" \
+    bash "${SCRIPT_DIR}/configure-user.sh" "$TARGET" "$USERNAME"
+fi
+
+HASHED_ROOT_PW=""
+HASHED_USER_PW=""
+unset HASHED_ROOT_PW HASHED_USER_PW
 
 # 6. Install Bootloader (UEFI & BIOS)
 shreeos_log "Installing GRUB bootloader to ${WORKING_DISK}"
-bash "${SHREEOS_ROOT_DIR}/bootloader/scripts/install-grub-disk.sh" "$TARGET" "$WORKING_DISK" --boot-mode="$BOOT_MODE"
+GRUB_EFI_ARGS=()
+# The ESP is mounted outside the target tree, so point grub-install at the
+# real FAT mount; otherwise it would write the UEFI loader into the empty
+# ${TARGET}/boot/efi directory on the ext4 root and leave the ESP empty.
+if [ -n "$ESP_MOUNT" ]; then
+  GRUB_EFI_ARGS+=("--efi-dir=$ESP_MOUNT")
+fi
+bash "${SHREEOS_ROOT_DIR}/bootloader/scripts/install-grub-disk.sh" "$TARGET" "$WORKING_DISK" --boot-mode="$BOOT_MODE" "${GRUB_EFI_ARGS[@]}"
 
 # 7. Generate fstab with UUIDs
 ROOT_UUID=$(blkid -s UUID -o value "$PART_ROOT" 2>/dev/null || echo "")
@@ -473,6 +530,23 @@ elif ! grep -q "${ROOT_UUID}" "${TARGET}/etc/fstab"; then
   shreeos_warn "Verification failure: Root UUID ${ROOT_UUID} not present in /etc/fstab"
   VERIFY_FAILED=true
 fi
+
+if [ -n "$ESP_MOUNT" ]; then
+  for esp_file in "${ESP_MOUNT}/EFI/BOOT/BOOTX64.EFI" "${ESP_MOUNT}/EFI/BOOT/grub.cfg"; do
+    if [ ! -s "$esp_file" ] || [ -L "$esp_file" ]; then
+      shreeos_warn "Verification failure: required UEFI ESP file is missing or unsafe: ${esp_file}"
+      VERIFY_FAILED=true
+    fi
+  done
+fi
+
+for auth_binary in "${TARGET}/usr/bin/shree-auth" "${TARGET}/sbin/shree-auth"; do
+  if [ ! -f "$auth_binary" ] || [ -L "$auth_binary" ] || \
+     [ "$(stat -c '%u:%g:%a' "$auth_binary" 2>/dev/null || echo '')" != "0:0:4755" ]; then
+    shreeos_warn "Verification failure: authentication helper is not root-owned setuid 4755: ${auth_binary}"
+    VERIFY_FAILED=true
+  fi
+done
 
 if [ -f "${TARGET}/etc/shadow" ]; then
   if [ "$(stat -c '%a' "${TARGET}/etc/shadow" 2>/dev/null || echo '0')" != "600" ]; then

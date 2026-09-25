@@ -24,6 +24,7 @@ SKIP_ARCHIVE=false
 
 REQUIRED_SERVICES=(
   00-sysinit.conf
+  05-mdev.conf
   10-hostname.conf
   20-network.conf
   30-shreed.conf
@@ -55,6 +56,13 @@ for arg in "$@"; do
   esac
 done
 
+PROFILE="${PROFILE:-minimal}"
+case "$PROFILE" in
+  minimal|desktop|server) ;;
+  *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
+esac
+export PROFILE
+
 lumen_step "Assembling root filesystem in ${LUMEN_STAGE_ROOT}"
 
 # 1. Verify prerequisites
@@ -70,6 +78,36 @@ fi
 lumen_step "Setting up rootfs skeleton"
 mkdir -p "${LUMEN_STAGE_ROOT}"
 "${LUMEN_ROOT_DIR}/base-system/scripts/setup-rootfs.sh"
+
+PROFILE_MARKER="${LUMEN_STAGE_ROOT}/etc/shreeos/profile"
+mkdir -p "$(dirname "$PROFILE_MARKER")"
+if [ -s "$PROFILE_MARKER" ] && [ "$(cat "$PROFILE_MARKER")" != "$PROFILE" ]; then
+  lumen_die "Rootfs stage belongs to profile $(cat "$PROFILE_MARKER"), refusing to reuse it for $PROFILE; clean the stage first"
+fi
+printf '%s\n' "$PROFILE" > "$PROFILE_MARKER"
+chmod 0644 "$PROFILE_MARKER"
+if [ "$SKIP_INIT" = true ]; then
+  # Rebuild-free rerun: the stage is the source of truth, so a removed service
+  # definition is a corruption signal and must fail closed.
+  for service in "${REQUIRED_SERVICES[@]}"; do
+    [ -s "${LUMEN_STAGE_ROOT}/etc/services.d/${service}" ] || \
+      lumen_die "Missing required rootfs service output: /etc/services.d/${service}"
+  done
+else
+  if [ -d "${LUMEN_STAGE_ROOT}/etc/services.d" ]; then
+    find "${LUMEN_STAGE_ROOT}/etc/services.d" -maxdepth 1 -type f -name '*.conf' -delete
+  fi
+  # Full assembly installs the required service definitions after clearing any
+  # stale units from an earlier run or a profile switch.
+  mkdir -p "${LUMEN_STAGE_ROOT}/etc/services.d"
+  for service in "${REQUIRED_SERVICES[@]}"; do
+    [ -s "${LUMEN_ROOT_DIR}/init/services/${service}" ] || \
+      shreeos_die "Missing required service definition: ${service}"
+    cp "${LUMEN_ROOT_DIR}/init/services/${service}" \
+      "${LUMEN_STAGE_ROOT}/etc/services.d/${service}"
+  done
+  shreeos_ok "Installed service definitions to /etc/services.d"
+fi
 
 # Templated files from rootfs/skeleton/
 if [ -d "${ROOTFS_DIR}/skeleton/etc" ]; then
@@ -109,13 +147,6 @@ if [ "$SKIP_INIT" = false ]; then
   chmod 4755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/shree-auth"
   shreeos_ok "Installed shree-auth"
 
-  for service in "${REQUIRED_SERVICES[@]}"; do
-    [ -s "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services/${service}" ] || \
-      shreeos_die "Missing required service definition: ${service}"
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services/${service}" \
-      "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/etc/services.d/${service}"
-  done
-  shreeos_ok "Installed service definitions to /etc/services.d"
 
   shreeos_step "Building ShreeOS hardware service"
   make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware" all
@@ -273,7 +304,7 @@ fi
 
 # 5. Verify base system essentials
 lumen_step "Verifying base system"
-for bin in bash ls mount; do
+for bin in bash ls mount false; do
   if [ ! -x "${LUMEN_STAGE_ROOT}/usr/bin/${bin}" ]; then
     lumen_die "Missing base system binary: /usr/bin/${bin}"
   fi

@@ -43,6 +43,7 @@ PACKAGES=(
   "23-alsa"
   "24-bluez"
   "25-tzdata"
+  "26-busybox"
 )
 
 while [[ $# -gt 0 ]]; do

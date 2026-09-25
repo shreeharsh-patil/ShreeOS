@@ -62,6 +62,9 @@ xz	5.6.4	https://github.com/tukaani-project/xz/releases/download/v5.6.4/xz-5.6.4
 # util-linux 2.40.4
 util-linux	2.40.4	https://www.kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.4.tar.xz	5c1daf733b04e9859afdc3bd87cc481180ee0f88b5c0946b16fdec931975fb79
 
+# BusyBox 1.37.0
+busybox	1.37.0	https://busybox.net/downloads/busybox-1.37.0.tar.bz2	3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4
+
 # libxcrypt 4.4.36
 libxcrypt	4.4.36	https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz	e5e1f4caee0a01de2aee26e3138807d6d3ca2b8e67287966d1fefd65e1fd8943
 

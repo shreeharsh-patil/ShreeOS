@@ -256,19 +256,17 @@ if [ "$CONFIRM_DISK" != "$TARGET_DISK" ]; then
   shreeos_die "Disk confirmation failed ('$CONFIRM_DISK' != '$TARGET_DISK'). Installation cancelled."
 fi
 
-# Create secure temporary credential file mode 0600.
 CREDS_FILE=$(mktemp /tmp/shreeos-creds-XXXXXX)
-chmod 600 "$CREDS_FILE"
-printf "%s\n%s\n" "$ROOT_PW" "$USER_PW" > "$CREDS_FILE"
-ROOT_PW=""; ROOT_PW_CONFIRM=""; USER_PW=""; USER_PW_CONFIRM=""
-unset ROOT_PW ROOT_PW_CONFIRM USER_PW USER_PW_CONFIRM
-
 cleanup_credentials() {
   [ -n "${CREDS_FILE:-}" ] && rm -f "$CREDS_FILE"
 }
 trap cleanup_credentials EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+chmod 600 "$CREDS_FILE"
+printf "%s\n%s\n" "$ROOT_PW" "$USER_PW" > "$CREDS_FILE"
+ROOT_PW=""; ROOT_PW_CONFIRM=""; USER_PW=""; USER_PW_CONFIRM=""
+unset ROOT_PW ROOT_PW_CONFIRM USER_PW USER_PW_CONFIRM
 
 echo ""
 echo "==> Starting installation process..."

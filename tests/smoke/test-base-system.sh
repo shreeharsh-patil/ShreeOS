@@ -55,6 +55,10 @@ check_bin patch
 check_bin m4
 check_bin bison
 check_bin diff
+check_bin busybox
+check_bin ip
+check_bin udhcpc
+check_bin mdev
 
 if [ -x "${LUMEN_STAGE_ROOT}/bin/sh" ]; then
   lumen_ok "Found: /bin/sh compatibility shell"

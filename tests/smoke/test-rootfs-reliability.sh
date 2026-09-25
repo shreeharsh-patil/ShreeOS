@@ -4,7 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
-trap 'rm -rf "$TEST_ROOT"' EXIT
+cleanup_test_root() {
+  if [ "${KEEP_TEST_ROOT:-0}" = "1" ]; then
+    printf 'Retained rootfs test directory: %s\n' "$TEST_ROOT"
+  else
+    rm -rf "$TEST_ROOT"
+  fi
+}
+trap cleanup_test_root EXIT
 
 fail() {
   echo "  [FAIL] $*" >&2
@@ -44,14 +51,14 @@ fakeroot -- bash -c '
 echo "  [OK] Rootfs security modes and device nodes are enforced"
 
 for path in \
-  usr/bin/bash usr/bin/ls usr/bin/mount bin/bash bin/sh \
+  usr/bin/bash usr/bin/ls usr/bin/mount usr/bin/false bin/bash bin/sh \
   sbin/init sbin/initctl usr/bin/initctl \
   sbin/shree-auth usr/bin/shree-auth \
   bin/lpm usr/bin/lpm usr/sbin/shreed usr/bin/shreedctl; do
   make_executable "$SHREEOS_STAGE_ROOT/$path"
 done
 chmod 4755 "$SHREEOS_STAGE_ROOT/sbin/shree-auth" "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
-for service in 00-sysinit.conf 10-hostname.conf 20-network.conf 30-shreed.conf 90-console.conf; do
+for service in 00-sysinit.conf 05-mdev.conf 10-hostname.conf 20-network.conf 30-shreed.conf 90-console.conf; do
   mkdir -p "$SHREEOS_STAGE_ROOT/etc/services.d"
   cp "$PROJECT_ROOT/init/services/$service" "$SHREEOS_STAGE_ROOT/etc/services.d/$service"
 done
@@ -72,8 +79,9 @@ for entry in \
   init sbin/init sbin/initctl usr/bin/initctl \
   sbin/shree-auth usr/bin/shree-auth bin/lpm usr/bin/lpm \
   usr/sbin/shreed usr/bin/shreedctl \
-  etc/services.d/00-sysinit.conf etc/services.d/10-hostname.conf \
-  etc/services.d/20-network.conf etc/services.d/30-shreed.conf \
+  etc/services.d/00-sysinit.conf etc/services.d/05-mdev.conf \
+  etc/services.d/10-hostname.conf etc/services.d/20-network.conf \
+  etc/services.d/30-shreed.conf \
   etc/services.d/90-console.conf; do
   if ! grep -Fxq "$entry" "$TEST_ROOT/archive.list" && \
      ! grep -Fxq "./$entry" "$TEST_ROOT/archive.list" && \
@@ -112,7 +120,7 @@ for path in \
   make_executable "$SHREEOS_STAGE_ROOT/$path"
 done
 chmod 4755 "$SHREEOS_STAGE_ROOT/sbin/shree-auth" "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
-for service in 00-sysinit.conf 10-hostname.conf 20-network.conf 30-shreed.conf 90-console.conf; do
+for service in 00-sysinit.conf 05-mdev.conf 10-hostname.conf 20-network.conf 30-shreed.conf 90-console.conf; do
   rm -f "$SHREEOS_STAGE_ROOT/etc/services.d/$service"
   if NO_COLOR=1 fakeroot -- bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
       > "$TEST_ROOT/missing.log" 2>&1; then

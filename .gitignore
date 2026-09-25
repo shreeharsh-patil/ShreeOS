@@ -1,6 +1,8 @@
 # Build scratch space — never committed, always reproducible from scripts
 /build/
 /out/
+/build-logs/
+/release-assets/
 
 # Downloaded upstream sources (large, re-fetchable, checksum-verified)
 *.tar.gz

@@ -33,56 +33,68 @@ fi
 
 # 1. Strict username validation: ^[a-z_][a-z0-9_-]{0,31}$
 if ! [[ "$USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
-  echo "Error: Invalid username '${USER}'. Must match ^[a-z_][a-z0-9_-]{0,31}$." >&2
+  echo "Error: Invalid username '${USER}'. Must match ^[a-z_][a-z0-9_-]{0,31}\$." >&2
+  exit 1
+fi
+case "$USER" in
+  root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|_apt|nobody|systemd-*|messagebus|sshd|shree-hardware)
+    echo "Error: Reserved system username '${USER}' cannot be used." >&2
+    exit 1
+    ;;
+esac
+if [ -f "${TARGET}/etc/passwd" ] && grep -q "^${USER}:" "${TARGET}/etc/passwd"; then
+  echo "Error: Account '${USER}' already exists; refusing to modify it." >&2
   exit 1
 fi
 
-# 2. Read password securely (from 0600 file or stdin)
+ENCRYPTED_PASS="${SHREEOS_PREHASHED_USER_PASSWORD:-}"
 PASSWORD=""
-if [ -n "$CRED_FILE" ]; then
-  if [ ! -f "$CRED_FILE" ] || [ -L "$CRED_FILE" ]; then
-    echo "Error: Credential file must be a regular, non-symlink file." >&2
+if [ -z "$ENCRYPTED_PASS" ]; then
+  if [ -n "$CRED_FILE" ]; then
+    if [ ! -f "$CRED_FILE" ] || [ -L "$CRED_FILE" ]; then
+      echo "Error: Credential file must be a regular, non-symlink file." >&2
+      exit 1
+    fi
+    CRED_MODE=$(stat -c '%a' "$CRED_FILE" 2>/dev/null || echo "")
+    if [ "$CRED_MODE" != "600" ] && [ "$CRED_MODE" != "400" ]; then
+      echo "Error: Credential file must have mode 0600 or 0400." >&2
+      exit 1
+    fi
+    PASSWORD=$(sed -n '1p' "$CRED_FILE")
+  elif [ ! -t 0 ]; then
+    IFS= read -r PASSWORD || true
+  fi
+
+  if [ -z "$PASSWORD" ]; then
+    echo "Error: Empty password provided for user '${USER}'. Aborting." >&2
     exit 1
   fi
-  CRED_MODE=$(stat -c '%a' "$CRED_FILE" 2>/dev/null || echo "")
-  if [ "$CRED_MODE" != "600" ] && [ "$CRED_MODE" != "400" ]; then
-    echo "Error: Credential file must have mode 0600 or 0400." >&2
+
+  SALT="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+  if ! [[ "$SALT" =~ ^[0-9a-fA-F]{16}$ ]]; then
+    echo "CRITICAL SECURITY ERROR: Failed to generate password salt." >&2
     exit 1
   fi
-  PASSWORD=$(sed -n '1p' "$CRED_FILE")
-elif [ ! -t 0 ]; then
-  IFS= read -r PASSWORD || true
-fi
 
-if [ -z "$PASSWORD" ]; then
-  echo "Error: Empty password provided for user '${USER}'. Aborting." >&2
-  exit 1
-fi
+  if command -v openssl >/dev/null 2>&1; then
+    ENCRYPTED_PASS=$(printf "%s" "$PASSWORD" | openssl passwd -6 -salt "$SALT" -stdin 2>/dev/null || echo "")
+  fi
+  if [ -z "$ENCRYPTED_PASS" ] && command -v mkpasswd >/dev/null 2>&1; then
+    ENCRYPTED_PASS=$(printf "%s" "$PASSWORD" | mkpasswd -m sha-512 -S "$SALT" -s 2>/dev/null || \
+                     printf "%s" "$PASSWORD" | mkpasswd -m sha-512 -S "$SALT" 2>/dev/null || echo "")
+  fi
+  if [ -z "$ENCRYPTED_PASS" ] && command -v python3 >/dev/null 2>&1; then
+    ENCRYPTED_PASS=$(printf "%s" "$PASSWORD" | python3 -c "import sys, crypt; pw=sys.stdin.read(); print(crypt.crypt(pw, '\$6\$$SALT\$'))" 2>/dev/null || echo "")
+  fi
 
-# 3. Secure SHA-512 password hashing without exposing password in process argv
-SALT="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
-if ! [[ "$SALT" =~ ^[0-9a-fA-F]{16}$ ]]; then
-  echo "CRITICAL SECURITY ERROR: Failed to generate password salt." >&2
-  exit 1
+  PASSWORD=""
+  unset PASSWORD
+else
+  if ! [[ "$ENCRYPTED_PASS" =~ ^\$6\$[./A-Za-z0-9]+\$[./A-Za-z0-9]+$ ]]; then
+    echo "Error: Invalid prehashed SHA-512 password." >&2
+    exit 1
+  fi
 fi
-ENCRYPTED_PASS=""
-
-if command -v openssl >/dev/null 2>&1; then
-  ENCRYPTED_PASS=$(printf "%s" "$PASSWORD" | openssl passwd -6 -salt "$SALT" -stdin 2>/dev/null || echo "")
-fi
-
-if [ -z "$ENCRYPTED_PASS" ] && command -v mkpasswd >/dev/null 2>&1; then
-  ENCRYPTED_PASS=$(printf "%s" "$PASSWORD" | mkpasswd -m sha-512 -S "$SALT" -s 2>/dev/null || \
-                   printf "%s" "$PASSWORD" | mkpasswd -m sha-512 -S "$SALT" 2>/dev/null || echo "")
-fi
-
-if [ -z "$ENCRYPTED_PASS" ] && command -v python3 >/dev/null 2>&1; then
-  ENCRYPTED_PASS=$(printf "%s" "$PASSWORD" | python3 -c "import sys, crypt; pw=sys.stdin.read(); print(crypt.crypt(pw, '\$6\$$SALT\$'))" 2>/dev/null || echo "")
-fi
-
-# Wipe plaintext password immediately
-PASSWORD=""
-unset PASSWORD
 
 if [ -z "$ENCRYPTED_PASS" ]; then
   echo "CRITICAL SECURITY ERROR: Failed to securely hash user password via SHA-512." >&2
@@ -120,18 +132,12 @@ if ! [[ "$NEW_UID" =~ ^[0-9]+$ ]] || ! [[ "$NEW_GID" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# 6. Add user and group entries if not present
-if ! grep -q "^${USER}:" "${TARGET}/etc/passwd" 2>/dev/null; then
-  echo "${USER}:x:${NEW_UID}:${NEW_GID}:${USER}:/home/${USER}:/bin/bash" >> "${TARGET}/etc/passwd"
-else
-  # Retrieve existing UID/GID for directory chown
-  NEW_UID=$(awk -F':' -v u="$USER" '$1==u {print $3; exit}' "${TARGET}/etc/passwd")
-  NEW_GID=$(awk -F':' -v u="$USER" '$1==u {print $4; exit}' "${TARGET}/etc/passwd")
-  if ! [[ "$NEW_UID" =~ ^[0-9]+$ ]] || ! [[ "$NEW_GID" =~ ^[0-9]+$ ]]; then
-    echo "Error: Existing account '$USER' has invalid UID/GID metadata." >&2
-    exit 1
-  fi
+# 6. Add user and group entries
+if grep -q "^${USER}:" "${TARGET}/etc/passwd" 2>/dev/null; then
+  echo "Error: Account '${USER}' already exists; refusing to modify it." >&2
+  exit 1
 fi
+echo "${USER}:x:${NEW_UID}:${NEW_GID}:${USER}:/home/${USER}:/bin/bash" >> "${TARGET}/etc/passwd"
 
 if ! grep -q "^${USER}:" "${TARGET}/etc/group" 2>/dev/null; then
   echo "${USER}:x:${NEW_GID}:" >> "${TARGET}/etc/group"

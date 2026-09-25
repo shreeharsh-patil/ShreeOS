@@ -31,6 +31,8 @@ source "$ROOT_DIR/scripts/common.sh" 2>/dev/null || {
 }
 
 TIMEOUT="${TIMEOUT:-180}"
+BIOS_TIMEOUT="${BIOS_TIMEOUT:-$TIMEOUT}"
+UEFI_TIMEOUT="${UEFI_TIMEOUT:-240}"
 MEMORY="${MEMORY:-2048M}"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
@@ -38,7 +40,11 @@ FAILURES=0
 
 for arg in "$@"; do
   case "$arg" in
-    --timeout=*) TIMEOUT="${arg#*=}" ;;
+    --timeout=*)
+      TIMEOUT="${arg#*=}"
+      BIOS_TIMEOUT="$TIMEOUT"
+      UEFI_TIMEOUT="$TIMEOUT"
+      ;;
     --memory=*)  MEMORY="${arg#*=}" ;;
     --help|-h)
       echo "Usage: test-e2e-install-and-boot.sh [--timeout=N] [--memory=SIZE]"
@@ -102,6 +108,16 @@ if [ "$CAN_INSTALL" = false ]; then
   exit 77
 fi
 
+INSTALL_BUILD_DIR="${SHREEOS_BUILD_DIR:-${ROOT_DIR}/build}"
+if [ ! -s "${INSTALL_BUILD_DIR}/build-kernel/arch/x86/boot/bzImage" ] || \
+   [ ! -s "${INSTALL_BUILD_DIR}/initramfs.cpio.gz" ]; then
+  INSTALL_BUILD_DIR="${TEST_WORK_DIR}/fallback-build"
+  mkdir -p "${INSTALL_BUILD_DIR}/build-kernel/arch/x86/boot"
+  cp "$BZIMAGE" "${INSTALL_BUILD_DIR}/build-kernel/arch/x86/boot/bzImage"
+  cp "$ROOTFS_CPIO" "${INSTALL_BUILD_DIR}/initramfs.cpio.gz"
+  shreeos_warn "Using out/ fallback artifacts through ${INSTALL_BUILD_DIR}"
+fi
+
 # 2. Create test disk
 shreeos_step "Creating 4 GiB virtual test disk"
 truncate -s 4G "$TEST_DISK"
@@ -127,7 +143,7 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 fi
 
-if "${INSTALL_PREFIX[@]}" bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" "$TEST_DISK" --yes \
+if "${INSTALL_PREFIX[@]}" env SHREEOS_BUILD_DIR="$INSTALL_BUILD_DIR" bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" "$TEST_DISK" --yes \
     --hostname="shreeos-e2e" \
     --timezone="UTC" \
     --username="shree" \
@@ -152,14 +168,15 @@ BIOS_SERIAL="${LOG_DIR}/qemu-bios-serial.log"
   -monitor none \
   -serial file:"$BIOS_SERIAL" \
   -no-reboot \
+  -nic none \
   > "$BIOS_LOG" 2>&1 &
 QEMU_PID=$!
 
 WAITED=0
 BIOS_SUCCESS=false
-shreeos_log "Waiting for system boot marker (Timeout: ${TIMEOUT}s)..."
+shreeos_log "Waiting for system boot marker (Timeout: ${BIOS_TIMEOUT}s)..."
 
-while [ "$WAITED" -lt "$TIMEOUT" ]; do
+while [ "$WAITED" -lt "$BIOS_TIMEOUT" ]; do
   sleep 1
   WAITED=$((WAITED + 1))
 
@@ -210,14 +227,15 @@ if [ -n "$OVMF_PATH" ]; then
     -monitor none \
     -serial file:"$UEFI_SERIAL" \
     -no-reboot \
+    -nic none \
     > "$UEFI_LOG" 2>&1 &
   QEMU_PID=$!
 
   WAITED=0
   UEFI_SUCCESS=false
-  shreeos_log "Waiting for UEFI system boot marker (Timeout: ${TIMEOUT}s)..."
+  shreeos_log "Waiting for UEFI system boot marker (Timeout: ${UEFI_TIMEOUT}s)..."
 
-  while [ $WAITED -lt "$TIMEOUT" ]; do
+  while [ $WAITED -lt "$UEFI_TIMEOUT" ]; do
     sleep 1
     WAITED=$((WAITED + 1))
 

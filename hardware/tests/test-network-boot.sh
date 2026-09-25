@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-config="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/init/services/20-network.conf"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+network_config="$root/init/services/20-network.conf"
+mdev_config="$root/init/services/05-mdev.conf"
 
-# The DHCP client is intentionally best-effort: its failure must not make the
-# non-critical boot service fail, and only Ethernet interfaces are selected.
-grep -q 'dhcpcd -w -t 20' "$config"
-grep -q 'udhcpc -n -q -T 3 -t 3' "$config"
-grep -q 'udhcpc.*|| true' "$config"
-grep -q 'type.*= 1' "$config"
-echo 'PASS: DHCP failure is non-fatal and Ethernet-only'
+[ -s "$mdev_config" ]
+grep -q '^critical=true$' "$mdev_config"
+grep -q '/sbin/mdev' "$mdev_config"
+grep -q 'udhcpc -n -q -T 3 -t 3' "$network_config"
+grep -q 'udhcpc.*|| echo' "$network_config"
+grep -q 'type.*= 1' "$network_config"
+grep -q 'wireless' "$network_config"
+grep -q 'phy80211' "$network_config"
+grep -q '^after=hostname,mdev$' "$network_config"
+if grep -Eq '(^|[[:space:]])(eth0|en0)[[:space:]"]' "$network_config"; then
+  echo 'FAIL: network startup hardcodes an interface name' >&2
+  exit 1
+fi
+echo 'PASS: mdev, dynamic Ethernet discovery, and non-fatal DHCP are configured'

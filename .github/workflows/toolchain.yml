@@ -74,7 +74,7 @@ jobs:
           touch build/.markers/.toolchain
 
       - name: Save validated toolchain cache
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        if: steps.cache-toolchain.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
         uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: |

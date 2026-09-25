@@ -52,10 +52,13 @@ EOF
 
 cat > "${LUMEN_STAGE_ROOT}/etc/passwd" <<'EOF'
 root:x:0:0:root:/root:/bin/bash
-daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
-bin:x:2:2:bin:/bin:/usr/sbin/nologin
-nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+daemon:x:1:1:daemon:/usr/sbin:/bin/false
+bin:x:2:2:bin:/bin:/bin/false
+nobody:x:65534:65534:nobody:/nonexistent:/bin/false
 EOF
+
+mkdir -p "${LUMEN_STAGE_ROOT}/nonexistent"
+chmod 0755 "${LUMEN_STAGE_ROOT}/nonexistent"
 
 cat > "${LUMEN_STAGE_ROOT}/etc/group" <<'EOF'
 root:x:0:

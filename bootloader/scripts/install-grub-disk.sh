@@ -48,7 +48,11 @@ if [ ! -s "${TARGET}/boot/bzImage" ]; then
   shreeos_die "Target is missing /boot/bzImage; refusing to generate an unbootable GRUB configuration."
 fi
 
-shreeos_require_cmd grub-install blkid
+shreeos_require_cmd grub-install grub-mkimage grub-file blkid grub-script-check findmnt install
+
+case "$EFI_DIR" in
+  ""|"/"|"/boot") shreeos_die "Refusing unsafe EFI directory: $EFI_DIR" ;;
+esac
 
 shreeos_step "Installing GRUB2 (${BOOT_MODE}) to target disk ${DISK} (Target root: ${TARGET})"
 
@@ -146,19 +150,22 @@ cat > "${TARGET}/boot/grub/grub.cfg" <<EOF
 set default=0
 set timeout=5
 
+insmod serial
+insmod terminal
+# The serial console stays enabled: the automated QEMU boot tests require it,
+# and it is harmless on physical hardware.
 serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1
+terminal_input --append serial console
+terminal_output --append serial console
 
 # Load video and graphics modules
 insmod all_video
 insmod font
 insmod gfxterm
 set gfxmode=auto
-terminal_output gfxterm
-terminal_input --append serial console
-terminal_output --append serial console
+terminal_output --append gfxterm
 
 # Filesystem modules
-insmod gpt
 insmod part_gpt
 insmod part_msdos
 insmod ext2
@@ -182,5 +189,28 @@ menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State (SafeUpdate Rollback)"
     linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 single shreeos.rollback=1 ${CMDLINE_EXTRA}
 }
 EOF
+
+grub-script-check "${TARGET}/boot/grub/grub.cfg"
+
+if [ "$UEFI_SUCCESS" = true ]; then
+  UEFI_BOOT_DIR="${EFI_DIR}/EFI/BOOT"
+  UEFI_IMAGE="${UEFI_BOOT_DIR}/BOOTX64.EFI"
+  mkdir -p "$UEFI_BOOT_DIR"
+  UEFI_MODULES=(
+    efi_gop part_gpt part_msdos ext2 fat iso9660 search search_fs_uuid
+    search_fs_file normal configfile linux chain loadenv echo serial terminal
+    test gzio all_video font gfxterm reboot halt
+  )
+  grub-mkimage --verbose -O x86_64-efi -o "$UEFI_IMAGE" -p /EFI/BOOT "${UEFI_MODULES[@]}"
+  grub-file --is-x86_64-efi "$UEFI_IMAGE" >/dev/null 2>&1 || \
+    shreeos_die "Generated UEFI GRUB image failed format validation: $UEFI_IMAGE"
+  install -m 0644 "${TARGET}/boot/grub/grub.cfg" "${UEFI_BOOT_DIR}/grub.cfg"
+  if [ -d "${EFI_DIR}/EFI/${DISTRO_NAME:-ShreeOS}" ]; then
+    install -m 0644 "$UEFI_IMAGE" "${EFI_DIR}/EFI/${DISTRO_NAME:-ShreeOS}/grubx64.efi"
+  fi
+  [ -s "$UEFI_IMAGE" ] || shreeos_die "UEFI boot image is missing: $UEFI_IMAGE"
+  [ -s "${UEFI_BOOT_DIR}/grub.cfg" ] || shreeos_die "UEFI boot configuration is missing on ESP"
+  shreeos_ok "Generated explicit /EFI/BOOT UEFI GRUB image and ESP configuration"
+fi
 
 shreeos_ok "Generated ${TARGET}/boot/grub/grub.cfg with root PARTUUID ${ROOT_PARTUUID}"

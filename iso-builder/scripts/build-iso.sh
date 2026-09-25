@@ -26,6 +26,12 @@ source "$LUMEN_ROOT_DIR/scripts/common.sh"
 
 NO_CLEANUP="${NO_CLEANUP:-false}"
 CMDLINE_EXTRA="${CMDLINE_EXTRA:-}"
+PROFILE="${PROFILE:-minimal}"
+case "$PROFILE" in
+  minimal|desktop|server) ;;
+  *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
+esac
+export PROFILE
 
 for arg in "$@"; do
   case "$arg" in
@@ -44,12 +50,16 @@ case "${NO_CLEANUP,,}" in
   *) lumen_die "Invalid NO_CLEANUP value: $NO_CLEANUP" ;;
 esac
 
-lumen_require_cmd xorriso
+lumen_require_cmd xorriso sha256sum awk
 
 BZIMAGE="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/build-kernel/arch/x86/boot/bzImage"
 INITRD="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/initramfs.cpio.gz"
 ISO_STAGING="${SHREEOS_BUILD_DIR:-${LUMEN_BUILD_DIR}}/iso-staging"
-ISO_OUT="${SHREEOS_OUT:-${LUMEN_OUT}}/${DISTRO_ID}-${DISTRO_VERSION}.iso"
+if [ "$PROFILE" = "minimal" ]; then
+  ISO_OUT="${SHREEOS_OUT:-${LUMEN_OUT}}/${DISTRO_ID}-${DISTRO_VERSION}.iso"
+else
+  ISO_OUT="${SHREEOS_OUT:-${LUMEN_OUT}}/${DISTRO_ID}-${DISTRO_VERSION}-${PROFILE}.iso"
+fi
 
 shreeos_step "Building bootable ISO: ${ISO_OUT}"
 
@@ -77,7 +87,15 @@ bash "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/bootloader/scripts/install-grub-iso
 lumen_step "Creating hybrid ISO with xorriso"
 mkdir -p "$LUMEN_OUT"
 
+XORRISO_DATE_ARGS=()
+if [[ "${SOURCE_DATE_EPOCH:-}" =~ ^[0-9]+$ ]]; then
+  find "$ISO_STAGING" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+  iso_date="$(date -u -d "@${SOURCE_DATE_EPOCH}" +%Y%m%d%H%M%S00)"
+  XORRISO_DATE_ARGS=(--modification-date="$iso_date" --set_all_file_dates "$iso_date")
+fi
+
 xorriso -as mkisofs \
+  "${XORRISO_DATE_ARGS[@]}" \
   -iso-level 3 \
   -full-iso9660-filenames \
   -volid "${DISTRO_ID}-${DISTRO_VERSION}" \
@@ -112,16 +130,29 @@ if command -v sha256sum &>/dev/null; then
   lumen_ok "Generated SHA-256 checksum: ${ISO_OUT}.sha256"
 fi
 
-cat > "${LUMEN_OUT}/${DISTRO_ID}-${DISTRO_VERSION}-manifest.json" <<MANIFEST
+BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || printf 'unknown')"
+if [[ "${SOURCE_DATE_EPOCH:-}" =~ ^[0-9]+$ ]]; then
+  BUILD_DATE="$(date -u -d "@${SOURCE_DATE_EPOCH}" +"%Y-%m-%dT%H:%M:%SZ")"
+fi
+if [ -n "$(git -C "$LUMEN_ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null)" ]; then
+  lumen_die "Refusing to generate a provenance-labelled ISO from a dirty worktree"
+fi
+COMMIT_SHA="$(git -C "$LUMEN_ROOT_DIR" rev-parse HEAD 2>/dev/null || printf 'unknown')"
+MANIFEST_OUT="${LUMEN_OUT}/$(basename "${ISO_OUT%.iso}")-manifest.json"
+cat > "$MANIFEST_OUT" <<MANIFEST
 {
   "name": "${DISTRO_NAME}",
   "version": "${DISTRO_VERSION}",
+  "profile": "${PROFILE}",
   "iso": "$(basename "$ISO_OUT")",
   "size_bytes": ${ISO_SIZE},
-  "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")"
+  "sha256": "$(sha256sum "$ISO_OUT" | awk '{print $1}')",
+  "source_date_epoch": ${SOURCE_DATE_EPOCH:-0},
+  "commit": "${COMMIT_SHA}",
+  "created_at": "${BUILD_DATE}"
 }
 MANIFEST
-lumen_ok "Generated build manifest: ${DISTRO_ID}-${DISTRO_VERSION}-manifest.json"
+lumen_ok "Generated build manifest: ${MANIFEST_OUT}"
 
 # 7. Cleanup staging
 if [ "$NO_CLEANUP" = false ]; then

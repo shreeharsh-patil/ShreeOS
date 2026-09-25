@@ -173,6 +173,14 @@ grep -Fq 'EXPECTED_CREDS_OWNER="${SUDO_UID:-$(id -u)}"' "$INSTALLER" || {
   echo "  [FAIL] External credential ownership validation was removed" >&2
   exit 1
 }
+grep -Fq 'grub-mkimage --verbose -O x86_64-efi -o "$UEFI_IMAGE" -p /EFI/BOOT' "$GRUB_INSTALLER" || {
+  echo "  [FAIL] Installed UEFI path does not build an explicit /EFI/BOOT GRUB image" >&2
+  exit 1
+}
+grep -Fq 'install -m 0644 "${TARGET}/boot/grub/grub.cfg" "${UEFI_BOOT_DIR}/grub.cfg"' "$GRUB_INSTALLER" || {
+  echo "  [FAIL] Installed UEFI path does not stage grub.cfg on the ESP" >&2
+  exit 1
+}
 grep -Fq 'env -u SUDO_UID bash' "$TUI_INSTALLER" || {
   echo "  [FAIL] TUI does not isolate its root-owned temporary credentials from sudo ownership checks" >&2
   exit 1

@@ -74,6 +74,7 @@ mkdir -p "$(dirname "$FETCH_DEST")"
 printf 'shreeos-source-fixture\n' > "$FETCH_SOURCE"
 FETCH_SHA="$(sha256sum "$FETCH_SOURCE" | awk '{print $1}')"
 FETCH_URL="file://$FETCH_SOURCE"
+export SHREEOS_ALLOW_FILE_FETCH=1
 
 shreeos_fetch "$FETCH_URL" "$FETCH_DEST" "$FETCH_SHA" >/dev/null
 cmp -s "$FETCH_SOURCE" "$FETCH_DEST" || {
@@ -103,6 +104,7 @@ if compgen -G "$FETCH_DEST.part.*" >/dev/null; then
   exit 1
 fi
 rm -rf "$FETCH_TEST_DIR"
+unset SHREEOS_ALLOW_FILE_FETCH
 trap - EXIT
 echo "  [OK] Source cache verifies before publish and recovers from corruption"
 
