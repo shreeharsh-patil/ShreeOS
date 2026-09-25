@@ -245,9 +245,14 @@ done
 loader_name="$(basename "$loader")"
 loader_rel="${loader#"${LUMEN_STAGE_ROOT}/"}"
 for loader_dir in lib64 lib; do
+  # A prefixed sysroot has no top-level lib/lib64, so these directories do not
+  # exist yet in a fresh staging root.
   mkdir -p "${LUMEN_STAGE_ROOT}/${loader_dir}"
   loader_link="${LUMEN_STAGE_ROOT}/${loader_dir}/${loader_name}"
-  [ -e "$loader_link" ] || ln -sfn "../${loader_rel}" "$loader_link"
+  if [ ! -e "$loader_link" ]; then
+    ln -sfn "../${loader_rel}" "$loader_link" || \
+      lumen_die "Could not link the target dynamic loader into /${loader_dir}"
+  fi
   shreeos_ok "Target loader reachable at /${loader_dir}/${loader_name}"
 done
 
