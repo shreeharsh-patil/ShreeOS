@@ -93,22 +93,32 @@ verify_entry() {
   fi
 
   if [ "$needs_fetch" = true ] && [ "$FETCH_MISSING" = true ]; then
-    printf "  [FETCH]   [%-11s] %s\n" "$comp" "$filename"
-    rm -f "$tmp_path"
-    if curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 600 --proto '=https' --proto-redir '=https' -o "$tmp_path" "$url"; then
-      local fetched_sha
-      fetched_sha="$(sha256sum "$tmp_path" | awk '{print $1}')"
-      if [ "$fetched_sha" != "$expected_sha" ]; then
-        rm -f "$tmp_path"
-        printf "  [MISMATCH][%-11s] %-16s %-8s %s\n" "$comp" "$name" "$version" "$filename"
+    local candidate_url fetched_sha
+    local fetched=false
+    local -a source_urls=()
+    mapfile -t source_urls < <(shreeos_source_candidates "$url")
+
+    for candidate_url in "${source_urls[@]}"; do
+      printf "  [FETCH]   [%-11s] %s <- %s\n" "$comp" "$filename" "$candidate_url"
+      rm -f -- "$tmp_path"
+      if curl --fail --location --retry 2 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 600 --proto '=https' --proto-redir '=https' -o "$tmp_path" "$candidate_url"; then
+        fetched_sha="$(sha256sum "$tmp_path" | awk '{print $1}')"
+        if [ "$fetched_sha" = "$expected_sha" ]; then
+          mv -f -- "$tmp_path" "$archive_path"
+          fetched=true
+          break
+        fi
+        rm -f -- "$tmp_path"
+        printf "  [REJECT]  [%-11s] %-16s checksum mismatch from %s\n" "$comp" "$name" "$candidate_url"
         printf "            expected: %s\n            actual:   %s\n" "$expected_sha" "$fetched_sha"
-        FAILED=$((FAILED + 1))
-        return 0
+      else
+        rm -f -- "$tmp_path"
+        printf "  [RETRY]   [%-11s] %-16s source unavailable: %s\n" "$comp" "$name" "$candidate_url"
       fi
-      mv "$tmp_path" "$archive_path"
-    else
-      rm -f "$tmp_path"
-      printf "  [FAILED]  [%-11s] %-16s download failed\n" "$comp" "$name"
+    done
+
+    if [ "$fetched" != true ]; then
+      printf "  [FAILED]  [%-11s] %-16s no trusted candidate produced the pinned archive\n" "$comp" "$name"
       FAILED=$((FAILED + 1))
       return 0
     fi
