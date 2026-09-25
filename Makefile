@@ -108,9 +108,15 @@ verify-iso:
 $(MARKER_DIR):
 	mkdir -p $(MARKER_DIR)
 
-ifdef FORCE
-$(shell rm -rf $(MARKER_DIR) 2>/dev/null)
+FORCE_TARGET :=
+ifneq ($(filter 1 true yes,$(FORCE)),)
+FORCE_TARGET := force
+.PHONY: force
+force:
+	rm -rf $(MARKER_DIR)
 endif
+
+.NOTPARALLEL: toolchain base-system kernel packages desktop rootfs iso force
 
 # Source file dependencies for accurate cache invalidation.
 # A marker is rebuilt when its own stage inputs change, so interrupted builds
@@ -120,8 +126,8 @@ TOOLCHAIN_DEPS := $(COMMON_BUILD_DEPS) $(shell find toolchain -type f 2>/dev/nul
 BASE_DEPS := $(COMMON_BUILD_DEPS) $(shell find base-system -type f 2>/dev/null)
 KERNEL_DEPS := $(COMMON_BUILD_DEPS) $(shell find kernel -type f 2>/dev/null)
 PKG_DEPS := $(COMMON_BUILD_DEPS) $(shell find pkgmanager/src init/src hardware -type f 2>/dev/null)
-DESKTOP_DEPS := $(COMMON_BUILD_DEPS) scripts/graphics-readiness.sh $(shell find desktop -type f 2>/dev/null)
-ROOTFS_DEPS := $(COMMON_BUILD_DEPS) $(shell find rootfs -type f 2>/dev/null)
+DESKTOP_DEPS := $(COMMON_BUILD_DEPS) scripts/graphics-readiness.sh $(shell find desktop branding -type f 2>/dev/null)
+ROOTFS_DEPS := $(COMMON_BUILD_DEPS) $(shell find rootfs init/services installer/scripts scripts -type f 2>/dev/null)
 ISO_DEPS := $(COMMON_BUILD_DEPS) scripts/verify-iso.sh $(shell find iso-builder bootloader -type f 2>/dev/null)
 
 # Marker cache guards. Order-only phony prerequisites execute on every invocation
@@ -133,7 +139,7 @@ check-toolchain-cache:
 check-base-cache:
 	@if [ -f "$(MARKER_DIR)/.base-system" ]; then bash scripts/verify-stage.sh base-system; fi
 check-kernel-cache:
-	@if [ -f "$(MARKER_DIR)/.kernel" ]; then bash scripts/verify-stage.sh kernel; fi
+	@if [ -f "$(MARKER_DIR)/.kernel-$(PROFILE)" ]; then bash scripts/verify-stage.sh kernel; fi
 check-packages-cache:
 	@if [ -f "$(MARKER_DIR)/.packages" ]; then bash scripts/verify-stage.sh packages; fi
 check-desktop-cache:
@@ -145,7 +151,7 @@ check-iso-cache:
 
 # -- Phase 1: Toolchain -----------------------------------------------
 .PHONY: toolchain
-toolchain: $(MARKER_DIR)/.toolchain
+toolchain: $(FORCE_TARGET) $(MARKER_DIR)/.toolchain
 	bash scripts/verify-stage.sh toolchain
 
 $(MARKER_DIR)/.toolchain: $(TOOLCHAIN_DEPS) | $(MARKER_DIR) check-toolchain-cache
@@ -159,7 +165,7 @@ toolchain-test:
 
 # -- Phase 2: Base System --------------------------------------------
 .PHONY: base-system
-base-system: $(MARKER_DIR)/.base-system
+base-system: $(FORCE_TARGET) $(MARKER_DIR)/.base-system
 	bash scripts/verify-stage.sh base-system
 
 $(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS) | check-toolchain-cache check-base-cache
@@ -169,17 +175,17 @@ $(MARKER_DIR)/.base-system: $(MARKER_DIR)/.toolchain $(BASE_DEPS) | check-toolch
 
 # -- Phase 3: Kernel --------------------------------------------------
 .PHONY: kernel
-kernel: $(MARKER_DIR)/.kernel
+kernel: $(FORCE_TARGET) $(MARKER_DIR)/.kernel-$(PROFILE)
 	bash scripts/verify-stage.sh kernel
 
-$(MARKER_DIR)/.kernel: $(MARKER_DIR)/.toolchain $(KERNEL_DEPS) | check-toolchain-cache check-kernel-cache
+$(MARKER_DIR)/.kernel-$(PROFILE): $(MARKER_DIR)/.toolchain $(KERNEL_DEPS) | check-toolchain-cache check-kernel-cache
 	bash kernel/scripts/build-kernel.sh
 	bash scripts/verify-stage.sh kernel
 	@touch $@
 
 # -- Phase 4: Package Manager, Init & Hardware Service ----------------
 .PHONY: packages
-packages: $(MARKER_DIR)/.packages
+packages: $(FORCE_TARGET) $(MARKER_DIR)/.packages
 	bash scripts/verify-stage.sh packages
 
 $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(PKG_DEPS) | check-toolchain-cache check-base-cache check-packages-cache
@@ -192,10 +198,10 @@ $(MARKER_DIR)/.packages: $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(P
 
 # -- Phase 5: Desktop Suite (Profile-aware) ---------------------------
 .PHONY: desktop
-desktop: $(MARKER_DIR)/.desktop-$(PROFILE)
+desktop: $(FORCE_TARGET) $(MARKER_DIR)/.desktop-$(PROFILE)
 	bash scripts/verify-stage.sh desktop
 
-$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(DESKTOP_DEPS) | check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache
+$(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel-$(PROFILE) $(MARKER_DIR)/.packages $(DESKTOP_DEPS) | check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache
 ifeq ($(PROFILE),desktop)
 	bash desktop/wm/build-all.sh
 endif
@@ -204,17 +210,17 @@ endif
 
 # -- Phase 6: RootFS Assembly (Profile-aware) -------------------------
 .PHONY: rootfs
-rootfs: $(MARKER_DIR)/.rootfs-$(PROFILE)
+rootfs: $(FORCE_TARGET) $(MARKER_DIR)/.rootfs-$(PROFILE)
 	bash scripts/verify-stage.sh rootfs
 
-$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS) | check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache
-	bash rootfs/scripts/make-rootfs.sh
+$(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel-$(PROFILE) $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS) | check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache
+	fakeroot -- bash rootfs/scripts/make-rootfs.sh
 	bash scripts/verify-stage.sh rootfs
 	@touch $@
 
 # -- Phase 7: ISO Creation (Profile-aware) ----------------------------
 .PHONY: iso
-iso: $(MARKER_DIR)/.iso-$(PROFILE)
+iso: $(FORCE_TARGET) $(MARKER_DIR)/.iso-$(PROFILE)
 	bash scripts/verify-stage.sh iso
 
 $(MARKER_DIR)/.iso-$(PROFILE): $(MARKER_DIR)/.rootfs-$(PROFILE) $(ISO_DEPS) | check-rootfs-cache check-iso-cache
@@ -301,7 +307,7 @@ clean:
 .PHONY: clean-toolchain
 clean-toolchain:
 	rm -rf $(BUILD_DIR)/tools $(BUILD_DIR)/sysroot
-	rm -f $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.packages
+	rm -f $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.packages $(MARKER_DIR)/.kernel-*
 	rm -f $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
 
 .PHONY: clean-base
@@ -314,7 +320,7 @@ clean-base:
 clean-kernel:
 	rm -rf $(BUILD_DIR)/build-kernel
 	rm -rf $(BUILD_DIR)/rootfs/lib/modules
-	rm -f $(MARKER_DIR)/.kernel $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
+	rm -f $(MARKER_DIR)/.kernel-* $(MARKER_DIR)/.desktop-* $(MARKER_DIR)/.rootfs-* $(MARKER_DIR)/.iso-*
 
 .PHONY: clean-desktop
 clean-desktop:
@@ -325,7 +331,7 @@ clean-desktop:
 clean-iso:
 	rm -rf $(BUILD_DIR)/iso-staging
 	rm -f $(MARKER_DIR)/.iso-*
-	rm -f out/*.iso out/*.iso.sha256 out/*-manifest.json
+	rm -f out/*.iso out/*.iso.sha256 out/*-manifest.json out/SHA256SUMS
 
 .PHONY: distclean
 distclean: clean

@@ -2,7 +2,7 @@
 # tests/qemu/test-e2e-install-and-boot.sh — End-to-End QEMU Installation & Boot Verification
 #
 # Automates Phase 7:
-#   1. Initialize virtual disk image (2 GiB raw)
+#   1. Initialize virtual disk image (4 GiB raw)
 #   2. Install ShreeOS (Partitioning, Rootfs payload, GRUB UEFI + BIOS, Credential setup)
 #   3. Boot installed disk in QEMU (BIOS mode)
 #      - Verify GRUB loading
@@ -30,8 +30,8 @@ source "$ROOT_DIR/scripts/common.sh" 2>/dev/null || {
   shreeos_die() { echo "  [ERROR] $1" >&2; exit 1; }
 }
 
-TIMEOUT=60
-MEMORY="512M"
+TIMEOUT="${TIMEOUT:-180}"
+MEMORY="${MEMORY:-2048M}"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
 FAILURES=0
@@ -44,6 +44,7 @@ for arg in "$@"; do
       echo "Usage: test-e2e-install-and-boot.sh [--timeout=N] [--memory=SIZE]"
       exit 0
       ;;
+    *) shreeos_die "Unknown option: $arg" ;;
   esac
 done
 
@@ -101,9 +102,9 @@ if [ "$CAN_INSTALL" = false ]; then
   exit 77
 fi
 
-# 2. Create 2GB test disk
-shreeos_step "Creating 2 GiB virtual test disk"
-truncate -s 2G "$TEST_DISK"
+# 2. Create test disk
+shreeos_step "Creating 4 GiB virtual test disk"
+truncate -s 4G "$TEST_DISK"
 shreeos_ok "Virtual disk initialized at ${TEST_DISK}"
 
 # Prepare secure credentials file

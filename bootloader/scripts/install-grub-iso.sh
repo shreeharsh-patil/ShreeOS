@@ -49,11 +49,11 @@ mkdir -p   "${STAGING}/boot/grub/i386-pc"   "${STAGING}/boot/grub/x86_64-efi"   
 
 BIOS_MODULES=(
   biosdisk iso9660 part_msdos part_gpt normal configfile search search_fs_file
-  loopback ext2 fat linux font gettext serial terminal test gzio
+  loopback ext2 fat linux font gettext serial terminal test all_video gfxterm gzio gfxterm all_video
 )
 UEFI_MODULES=(
   iso9660 part_msdos part_gpt normal configfile search search_fs_file
-  loopback ext2 fat linux efi_gop font gettext serial terminal test gzio
+  loopback ext2 fat linux efi_gop font gettext serial terminal test all_video gfxterm gzio gfxterm all_video
 )
 
 verify_grub_image() {
@@ -135,6 +135,9 @@ fi
 # Stage the standard GRUB font so grub.cfg can enable gfxterm for physical
 # consoles; serial-based QEMU boot tests are unaffected by this cosmetic path.
 GRUB_FONT="${GRUB_FONT:-/usr/share/grub/unicode.pf2}"
+if [ ! -f "$GRUB_FONT" ] && [ -f "$I386_MODULE_DIR/unicode.pf2" ]; then
+  GRUB_FONT="$I386_MODULE_DIR/unicode.pf2"
+fi
 if [ -f "$GRUB_FONT" ]; then
   mkdir -p "${STAGING}/boot/grub/fonts"
   cp "$GRUB_FONT" "${STAGING}/boot/grub/fonts/unicode.pf2"

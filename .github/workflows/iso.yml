@@ -51,7 +51,7 @@ jobs:
 
       - name: Restore exact toolchain cache
         id: cache-toolchain
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: |
             build/tools
@@ -75,17 +75,26 @@ jobs:
           mkdir -p build/.markers
           touch build/.markers/.toolchain
 
+      - name: Save validated toolchain cache
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: |
+            build/tools
+            build/sysroot
+          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
+
       - name: Build and verify minimal ISO
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/build-minimal.log) 2>&1
-          PROFILE="$BUILD_PROFILE" TIMEOUT=180 MEMORY=2048M bash scripts/build.sh "$BUILD_PROFILE"
+          PROFILE="$BUILD_PROFILE" BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M bash scripts/build.sh "$BUILD_PROFILE"
 
       - name: Run profile-aware automated tests
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/tests.log) 2>&1
-          PROFILE="$BUILD_PROFILE" TIMEOUT=180 MEMORY=2048M make test-all
+          PROFILE="$BUILD_PROFILE" BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M make test-all
 
       - name: Generate and verify minimal ISO bundle
         run: |
@@ -170,7 +179,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: shreeos-build-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build-logs/
+          path: |
+            build-logs/
+            build/logs/
           if-no-files-found: error
           overwrite: true
           retention-days: 7

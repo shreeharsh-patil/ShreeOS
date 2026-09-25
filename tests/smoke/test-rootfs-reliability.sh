@@ -30,38 +30,18 @@ export SHREEOS_SYSROOT="$TEST_ROOT/sysroot"
 export SHREEOS_TOOLS="$TEST_ROOT/tools"
 export SHREEOS_OUT="$TEST_ROOT/out"
 export SHREEOS_SOURCES="$TEST_ROOT/sources"
-export MKNOD_LOG="$TEST_ROOT/mknod.log"
-export PATH="$TEST_ROOT/bin:$PATH"
-
-mkdir -p "$TEST_ROOT/bin"
-cat > "$TEST_ROOT/bin/mknod" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -m)
-      mode="$2"
-      shift 2
-      ;;
-    *)
-      break
-      ;;
-  esac
-done
-: > "$1"
-printf '%s %s\n' "$mode" "$1" >> "$MKNOD_LOG"
-EOF
-chmod 755 "$TEST_ROOT/bin/mknod"
 
 bash "$PROJECT_ROOT/base-system/scripts/setup-rootfs.sh" >/dev/null
 assert_mode "$SHREEOS_STAGE_ROOT/root" 700
 assert_mode "$SHREEOS_STAGE_ROOT/etc/shadow" 600
 
-bash "$PROJECT_ROOT/rootfs/scripts/populate-devices.sh" "$SHREEOS_STAGE_ROOT" >/dev/null
-assert_mode "$SHREEOS_STAGE_ROOT/dev/console" 600
-grep -Fxq "600 $SHREEOS_STAGE_ROOT/dev/console" "$MKNOD_LOG" || \
-  fail "console was not created with mode 0600"
-echo "  [OK] Rootfs security modes are enforced"
+fakeroot -- bash -c '
+  set -Eeuo pipefail
+  bash "$1/rootfs/scripts/populate-devices.sh" "$2" >/dev/null
+  [ "$(stat -c "%a" -- "$2/dev/console")" = "600" ]
+  [ "$(stat -c "%F %t:%T" -- "$2/dev/console")" = "character special file 5:1" ]
+' _ "$PROJECT_ROOT" "$SHREEOS_STAGE_ROOT"
+echo "  [OK] Rootfs security modes and device nodes are enforced"
 
 for path in \
   usr/bin/bash usr/bin/ls usr/bin/mount bin/bash bin/sh \
@@ -70,6 +50,7 @@ for path in \
   bin/lpm usr/bin/lpm usr/sbin/shreed usr/bin/shreedctl; do
   make_executable "$SHREEOS_STAGE_ROOT/$path"
 done
+chmod 4755 "$SHREEOS_STAGE_ROOT/sbin/shree-auth" "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
 for service in 00-sysinit.conf 10-hostname.conf 20-network.conf 30-shreed.conf 90-console.conf; do
   mkdir -p "$SHREEOS_STAGE_ROOT/etc/services.d"
   cp "$PROJECT_ROOT/init/services/$service" "$SHREEOS_STAGE_ROOT/etc/services.d/$service"
@@ -81,7 +62,7 @@ for index in $(seq 1 4096); do
   printf 'rootfs-determinism-fixture-%08d\n' "$index"
 done > "$SHREEOS_STAGE_ROOT/usr/share/rootfs-determinism-fixture"
 
-NO_COLOR=1 bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
+NO_COLOR=1 fakeroot -- bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
   > "$TEST_ROOT/rootfs.log" 2>&1
 ARCHIVE="$SHREEOS_BUILD_DIR/initramfs.cpio.gz"
 gzip -t -- "$ARCHIVE"
@@ -102,11 +83,27 @@ for entry in \
 done
 echo "  [OK] Initramfs passes gzip, size, and required-entry checks"
 
+cp "$ARCHIVE" "$TEST_ROOT/first-initramfs.cpio.gz"
+NO_COLOR=1 fakeroot -- bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
+  > "$TEST_ROOT/repeat.log" 2>&1
+cmp "$TEST_ROOT/first-initramfs.cpio.gz" "$ARCHIVE" || \
+  fail "identical rootfs inputs produced different initramfs archives"
+echo "  [OK] Initramfs archive is byte-for-byte reproducible"
+
+chmod 0755 "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
+if NO_COLOR=1 fakeroot -- bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
+    > "$TEST_ROOT/unsafe-auth.log" 2>&1; then
+  fail "non-SUID authentication helper did not fail"
+fi
+grep -Fq "Authentication helper has unsafe mode: /usr/bin/shree-auth" "$TEST_ROOT/unsafe-auth.log" || \
+  fail "unsafe authentication helper did not produce the required diagnostic"
+chmod 4755 "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
+
 for path in \
   sbin/initctl usr/bin/initctl sbin/shree-auth usr/bin/shree-auth \
   bin/lpm usr/bin/lpm usr/sbin/shreed usr/bin/shreedctl; do
   rm -f "$SHREEOS_STAGE_ROOT/$path"
-  if NO_COLOR=1 bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
+  if NO_COLOR=1 fakeroot -- bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
       > "$TEST_ROOT/missing.log" 2>&1; then
     fail "missing required executable /$path did not fail"
   fi
@@ -114,9 +111,10 @@ for path in \
     fail "missing /$path did not produce the required diagnostic"
   make_executable "$SHREEOS_STAGE_ROOT/$path"
 done
+chmod 4755 "$SHREEOS_STAGE_ROOT/sbin/shree-auth" "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
 for service in 00-sysinit.conf 10-hostname.conf 20-network.conf 30-shreed.conf 90-console.conf; do
   rm -f "$SHREEOS_STAGE_ROOT/etc/services.d/$service"
-  if NO_COLOR=1 bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
+  if NO_COLOR=1 fakeroot -- bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
       > "$TEST_ROOT/missing.log" 2>&1; then
     fail "missing required service $service did not fail"
   fi

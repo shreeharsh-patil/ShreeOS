@@ -16,18 +16,41 @@ DEVDIR="${TARGET}/dev"
 
 mkdir -p "$DEVDIR"
 
-# Create essential static character device nodes if running with mknod privileges
-if command -v mknod &>/dev/null; then
-  if [ -L "${DEVDIR}/console" ] || { [ -e "${DEVDIR}/console" ] && [ ! -c "${DEVDIR}/console" ]; }; then
-    rm -f -- "${DEVDIR}/console"
-  fi
-  [ -e "${DEVDIR}/console" ] || mknod -m 600 "${DEVDIR}/console" c 5 1 2>/dev/null || true
-  [ ! -e "${DEVDIR}/console" ] || chmod 600 "${DEVDIR}/console"
-  [ -e "${DEVDIR}/null" ]    || mknod -m 666 "${DEVDIR}/null"    c 1 3 2>/dev/null || true
-  [ -e "${DEVDIR}/zero" ]    || mknod -m 666 "${DEVDIR}/zero"    c 1 5 2>/dev/null || true
-  [ -e "${DEVDIR}/tty" ]     || mknod -m 666 "${DEVDIR}/tty"     c 5 0 2>/dev/null || true
-  [ -e "${DEVDIR}/random" ]  || mknod -m 666 "${DEVDIR}/random"  c 1 8 2>/dev/null || true
-  [ -e "${DEVDIR}/urandom" ] || mknod -m 666 "${DEVDIR}/urandom" c 1 9 2>/dev/null || true
+if ! command -v mknod &>/dev/null; then
+  echo "mknod is required to create the initramfs console device" >&2
+  exit 1
 fi
+
+ensure_device() {
+  local name="$1"
+  local major="$2"
+  local minor="$3"
+  local mode="$4"
+  local path="${DEVDIR}/${name}"
+  local actual=""
+
+  if [ -c "$path" ]; then
+    actual="$(stat -c '%t:%T' -- "$path")"
+  fi
+  if [ "$actual" != "${major}:${minor}" ]; then
+    rm -f -- "$path"
+    if ! mknod -m "$mode" "$path" c "$major" "$minor"; then
+      echo "Failed to create required character device ${path} (${major}:${minor})" >&2
+      exit 1
+    fi
+  fi
+  if [ ! -c "$path" ] || [ "$(stat -c '%t:%T' -- "$path")" != "${major}:${minor}" ]; then
+    echo "Required character device was not created correctly: ${path}" >&2
+    exit 1
+  fi
+  chmod "$mode" -- "$path"
+}
+
+ensure_device console 5 1 600
+ensure_device null 1 3 666
+ensure_device zero 1 5 666
+ensure_device tty 5 0 666
+ensure_device random 1 8 666
+ensure_device urandom 1 9 666
 
 echo "Populated device nodes in ${DEVDIR}"

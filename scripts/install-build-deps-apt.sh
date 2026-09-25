@@ -23,7 +23,7 @@ export DEBIAN_FRONTEND=noninteractive
   git ca-certificates python3 perl build-essential gcc g++ make \
   bison flex gawk texinfo gperf \
   curl wget patch file rsync \
-  bzip2 gzip xz-utils tar cpio bc \
+  bzip2 gzip xz-utils tar cpio bc fakeroot \
   pkg-config gettext-base \
   libgmp-dev libmpfr-dev libmpc-dev \
   libssl-dev libelf-dev libcrypt-dev \

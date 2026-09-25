@@ -35,7 +35,7 @@ if [ -z "$DISK_IMAGE" ]; then
     fi
 
     TEMP_DISK="$(mktemp /tmp/shreeos-test-disk-XXXXXX.img)"
-    truncate -s 2G "$TEMP_DISK"
+    truncate -s 4G "$TEMP_DISK"
     DISK_IMAGE="$TEMP_DISK"
     CREDS_FILE="$(mktemp /tmp/shreeos-test-creds-XXXXXX)"
     cleanup_files() { rm -f "$TEMP_DISK" "$CREDS_FILE"; }
@@ -45,10 +45,10 @@ if [ -z "$DISK_IMAGE" ]; then
     chmod 600 "$CREDS_FILE"
     printf 'testrootpass\ntestuserpass\n' > "$CREDS_FILE"
     if [ "$(id -u)" -eq 0 ]; then
-      bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
+      bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --username=shree --credentials-file="$CREDS_FILE"
     elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
       SUDO=(sudo -n -E)
-      "${SUDO[@]}" bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --credentials-file="$CREDS_FILE"
+      "${SUDO[@]}" bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --username=shree --credentials-file="$CREDS_FILE"
     elif [ "$REQUIRE_ARTIFACTS" = "1" ]; then
       shreeos_die "passwordless sudo/root privileges are required for the installed-disk test"
     else
@@ -64,7 +64,7 @@ shreeos_step "Booting disk image: $DISK_IMAGE"
 # Persist serial logs under build/logs so CI artifacts can capture boot failures.
 LOG_DIR="${PROJECT_ROOT}/build/logs"
 mkdir -p "$LOG_DIR"
-LOG_FILE="${LOG_DIR}/qemu-installed-disk-serial.log"
+LOG_FILE="$(mktemp "${LOG_DIR}/qemu-installed-disk.XXXXXX.log")"
 QEMU_PID=""
 cleanup_qemu() {
   if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then

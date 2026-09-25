@@ -189,16 +189,19 @@ static int mount_fs(const char *source, const char *target,
     return 0;
 }
 
-static void mount_essential_filesystems(void) {
-    if (g_test_mode) return;
+static bool mount_essential_filesystems(void) {
+    if (g_test_mode) return true;
+
+    bool all_mounted = true;
     log_info(NULL, "Mounting essential virtual filesystems...");
-    mount_fs("proc",     "/proc",     "proc",     0, NULL);
-    mount_fs("sysfs",    "/sys",      "sysfs",    0, NULL);
-    mount_fs("devtmpfs", "/dev",      "devtmpfs", 0, NULL);
-    mount_fs("tmpfs",    "/run",      "tmpfs",    MS_NOSUID | MS_NODEV, "mode=0755");
-    mount_fs("devpts",   "/dev/pts",  "devpts",   MS_NOSUID | MS_NOEXEC, "gid=5,mode=620");
-    mount_fs("tmpfs",    "/dev/shm",  "tmpfs",    MS_NOSUID | MS_NODEV, "mode=1777");
-    mount_fs("tmpfs",    "/tmp",      "tmpfs",    MS_NOSUID | MS_NODEV, "mode=1777");
+    if (mount_fs("proc",     "/proc",     "proc",     0, NULL) != 0) all_mounted = false;
+    if (mount_fs("sysfs",    "/sys",      "sysfs",    0, NULL) != 0) all_mounted = false;
+    if (mount_fs("devtmpfs", "/dev",      "devtmpfs", 0, NULL) != 0) all_mounted = false;
+    if (mount_fs("tmpfs",    "/run",      "tmpfs",    MS_NOSUID | MS_NODEV, "mode=0755") != 0) all_mounted = false;
+    if (mount_fs("devpts",   "/dev/pts",  "devpts",   MS_NOSUID | MS_NOEXEC, "gid=5,mode=620") != 0) all_mounted = false;
+    if (mount_fs("tmpfs",    "/dev/shm",  "tmpfs",    MS_NOSUID | MS_NODEV, "mode=1777") != 0) all_mounted = false;
+    if (mount_fs("tmpfs",    "/tmp",      "tmpfs",    MS_NOSUID | MS_NODEV, "mode=1777") != 0) all_mounted = false;
+    return all_mounted;
 }
 
 static void report_root_filesystem(void) {
@@ -1271,7 +1274,13 @@ int main(int argc, char **argv) {
     printf("  ShreeOS init: reached PID 1            \n");
     printf("=========================================\n\n");
 
-    mount_essential_filesystems();
+    if (!mount_essential_filesystems()) {
+        fprintf(stderr, "[init:fail] One or more essential filesystems could not be mounted.\n");
+        fprintf(stderr, "[init:fail] Starting an emergency shell for diagnostics.\n");
+        execl("/bin/sh", "sh", (char *)NULL);
+        fprintf(stderr, "[init:fail] Emergency shell could not be started: %s\n", strerror(errno));
+        return 1;
+    }
     report_root_filesystem();
 
     /* Check for kernel recovery / single user mode */

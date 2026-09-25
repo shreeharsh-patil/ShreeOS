@@ -193,6 +193,10 @@ for path in "${REQUIRED_EXECUTABLES[@]}"; do
   [ -s "${LUMEN_STAGE_ROOT}/${path}" ] && [ -x "${LUMEN_STAGE_ROOT}/${path}" ] || \
     lumen_die "Missing required rootfs executable output: /${path}"
 done
+for path in sbin/shree-auth usr/bin/shree-auth; do
+  [ "$(stat -c '%a' -- "${LUMEN_STAGE_ROOT}/${path}")" = "4755" ] || \
+    lumen_die "Authentication helper has unsafe mode: /${path}"
+done
 for service in "${REQUIRED_SERVICES[@]}"; do
   [ -s "${LUMEN_STAGE_ROOT}/etc/services.d/${service}" ] || \
     lumen_die "Missing required rootfs service output: /etc/services.d/${service}"
@@ -283,7 +287,7 @@ bash "${SCRIPT_DIR}/populate-devices.sh" "${LUMEN_STAGE_ROOT}"
 # 7. Package as cpio archive for QEMU
 if [ "$SKIP_ARCHIVE" = false ]; then
   lumen_step "Packaging rootfs as cpio archive"
-  lumen_require_cmd cpio find sort gzip mktemp stat
+  lumen_require_cmd cpio find sort gzip mktemp stat touch
   mkdir -p "${LUMEN_BUILD_DIR}"
   ROOTFS_ARCHIVE="${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
   archive_tmp=""
@@ -302,6 +306,7 @@ if [ "$SKIP_ARCHIVE" = false ]; then
 
   if ! (
     cd "${LUMEN_STAGE_ROOT}"
+    find . -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
     find . -print0 | LC_ALL=C sort -z | \
       cpio --null --create --format=newc --owner=0:0 --reproducible --quiet | \
       gzip -n -c

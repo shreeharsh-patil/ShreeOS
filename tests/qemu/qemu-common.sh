@@ -16,7 +16,7 @@ qemu_start() {
   local log_file="$1"
   shift
 
-  "$QEMU_BIN" -m "$MEMORY" -nographic -no-reboot "$@" >"$log_file" 2>&1 &
+  "$QEMU_BIN" -m "$MEMORY" -nographic -no-reboot -nic none "$@" >"$log_file" 2>&1 &
   QEMU_PID=$!
 }
 

@@ -8,6 +8,19 @@
 
 set -euo pipefail
 
+SHREEOS_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+  SOURCE_DATE_EPOCH="$(git -C "$SHREEOS_REPO_ROOT" log -1 --format=%ct 2>/dev/null || printf '0')"
+fi
+if ! [[ "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]]; then
+  printf 'SOURCE_DATE_EPOCH must be an integer, got: %s\n' "$SOURCE_DATE_EPOCH" >&2
+  exit 1
+fi
+export SOURCE_DATE_EPOCH
+export LC_ALL=C
+export TZ=UTC
+umask 022
+
 if [[ -z ${NO_COLOR+x} ]] && [[ -t 1 ]] && [[ -t 2 ]]; then
   shreeos_log()  { printf '\033[1;34m[shreeos]\033[0m %s\n' "$*"; }
   shreeos_ok()   { printf '\033[1;32m[  ok   ]\033[0m %s\n' "$*"; }

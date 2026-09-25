@@ -76,7 +76,7 @@ jobs:
 
       - name: Restore exact toolchain cache
         id: cache-toolchain
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: |
             build/tools
@@ -100,17 +100,26 @@ jobs:
           mkdir -p build/.markers
           touch build/.markers/.toolchain
 
+      - name: Save validated toolchain cache
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: |
+            build/tools
+            build/sysroot
+          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
+
       - name: Build and verify minimal ISO
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/build-minimal.log) 2>&1
-          PROFILE=minimal TIMEOUT=180 MEMORY=2048M bash scripts/build.sh minimal
+          PROFILE=minimal BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M bash scripts/build.sh minimal
 
       - name: Run profile-aware automated tests
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/tests.log) 2>&1
-          PROFILE=minimal TIMEOUT=180 MEMORY=2048M make test-all
+          PROFILE=minimal BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M make test-all
 
       - name: Generate and verify release bundle
         run: |
@@ -195,7 +204,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: shreeos-release-build-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build-logs/
+          path: |
+            build-logs/
+            build/logs/
           if-no-files-found: error
           overwrite: true
           retention-days: 7
@@ -298,7 +309,7 @@ jobs:
               raise SystemExit("downloaded manifest ISO size does not match")
           print(f"Downloaded manifest validated: {iso.name}")
           PY
-          ISO="$GITHUB_WORKSPACE/release-assets/$iso_name" PROFILE=minimal TIMEOUT=180 MEMORY=2048M bash scripts/verify-iso.sh
+          ISO="$GITHUB_WORKSPACE/release-assets/$iso_name" PROFILE=minimal BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M bash scripts/verify-iso.sh
 
       - name: Create or update exact release assets
         env:
@@ -430,7 +441,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: shreeos-publisher-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build-logs/
+          path: |
+            build-logs/
+            build/logs/
           if-no-files-found: error
           overwrite: true
           retention-days: 7

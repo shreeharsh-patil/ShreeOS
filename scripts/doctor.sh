@@ -93,6 +93,7 @@ check_cmd gzip "Gzip compression" true
 check_cmd bzip2 "Bzip2 compression" true
 check_cmd xz "XZ compression" true
 check_cmd cpio "CPIO archive tool" true
+check_cmd fakeroot "Device-node build sandbox" true
 check_cmd curl "Download tool (curl)" true
 check_cmd sha256sum "Checksum tool" true
 check_cmd bc "Calculator (bc)" true
