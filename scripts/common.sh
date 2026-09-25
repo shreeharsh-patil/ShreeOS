@@ -42,9 +42,13 @@ lumen_die()  { shreeos_die "$@"; }
 # shreeos_fetch <url> <dest-file> <sha256>
 # Downloads a source tarball and verifies it before publishing it into the
 # shared source cache. Invalid cached/downloaded files are never retained.
+# GNU sources automatically fall back to independent HTTPS mirrors when the
+# canonical ftp.gnu.org endpoint is temporarily unreachable from CI runners.
 shreeos_fetch() {
   local url="$1" dest="$2" expected_sha="$3"
-  local actual_sha tmp attempt
+  local actual_sha="" tmp attempt candidate rel
+  local downloaded=0
+  local -a urls=("$url")
 
   if [[ ! "${expected_sha}" =~ ^[0-9a-fA-F]{64}$ ]]; then
     shreeos_die "Invalid SHA-256 pin for $(basename "${dest}"): ${expected_sha}"
@@ -67,46 +71,60 @@ shreeos_fetch() {
     rm -f -- "${dest}"
   fi
 
+  if [[ "$url" == https://ftp.gnu.org/gnu/* ]]; then
+    rel="${url#https://ftp.gnu.org/gnu/}"
+    urls+=(
+      "https://ftpmirror.gnu.org/${rel}"
+      "https://mirrors.kernel.org/gnu/${rel}"
+    )
+  fi
+
   tmp="${dest}.part.${BASHPID}"
   rm -f -- "${tmp}"
 
-  for attempt in 1 2; do
-    shreeos_log "Fetching $(basename "${dest}") (attempt ${attempt}/2) ..."
-    local -a curl_args=(--fail --location --retry 3 --retry-all-errors --connect-timeout 20 --max-time 600 --output "${tmp}")
-    if [[ "${url}" == file://* ]]; then
-      if [[ "${SHREEOS_ALLOW_FILE_FETCH:-0}" != "1" ]]; then
-        rm -f -- "${tmp}"
-        shreeos_die "file:// source URLs are allowed only in isolated tests"
+  for candidate in "${urls[@]}"; do
+    for attempt in 1 2; do
+      shreeos_log "Fetching $(basename "${dest}") from ${candidate} (attempt ${attempt}/2) ..."
+      local -a curl_args=(--fail --location --retry 2 --retry-all-errors --connect-timeout 15 --max-time 600 --output "${tmp}")
+      if [[ "${candidate}" == file://* ]]; then
+        if [[ "${SHREEOS_ALLOW_FILE_FETCH:-0}" != "1" ]]; then
+          rm -f -- "${tmp}"
+          shreeos_die "file:// source URLs are allowed only in isolated tests"
+        fi
+      else
+        if [[ "${candidate}" != https://* ]]; then
+          rm -f -- "${tmp}"
+          shreeos_die "Only HTTPS source URLs are allowed: ${candidate}"
+        fi
+        curl_args+=(--proto '=https' --proto-redir '=https')
       fi
-    else
-      if [[ "${url}" != https://* ]]; then
+
+      if ! curl "${curl_args[@]}" "${candidate}"; then
         rm -f -- "${tmp}"
-        shreeos_die "Only HTTPS source URLs are allowed: ${url}"
-      fi
-      curl_args+=(--proto '=https' --proto-redir '=https')
-    fi
-    if ! curl "${curl_args[@]}" "${url}"; then
-      rm -f -- "${tmp}"
-      if (( attempt < 2 )); then
-        shreeos_warn "Download failed; retrying source fetch from ${url}"
+        if (( attempt < 2 )); then
+          shreeos_warn "Download failed; retrying source fetch from ${candidate}"
+        else
+          shreeos_warn "Source endpoint unavailable: ${candidate}"
+        fi
         continue
       fi
-      shreeos_die "Failed to download ${url}"
-    fi
 
-    actual_sha="$(sha256sum "${tmp}" | awk '{print $1}')"
-    if [[ "${actual_sha}" == "${expected_sha}" ]]; then
-      mv -f -- "${tmp}" "${dest}"
-      shreeos_ok "Verified checksum for $(basename "${dest}")"
-      return 0
-    fi
+      downloaded=1
+      actual_sha="$(sha256sum "${tmp}" | awk '{print $1}')"
+      if [[ "${actual_sha}" == "${expected_sha}" ]]; then
+        mv -f -- "${tmp}" "${dest}"
+        shreeos_ok "Verified checksum for $(basename "${dest}")"
+        return 0
+      fi
 
-    rm -f -- "${tmp}"
-    if (( attempt < 2 )); then
-      shreeos_warn "Downloaded checksum mismatch for $(basename "${dest}"); retrying"
-    fi
+      rm -f -- "${tmp}"
+      shreeos_warn "Downloaded checksum mismatch for $(basename "${dest}") from ${candidate}; trying another attempt or mirror"
+    done
   done
 
+  if (( downloaded == 0 )); then
+    shreeos_die "Failed to download ${url} from all configured HTTPS endpoints"
+  fi
   shreeos_die "Checksum mismatch for ${dest}: expected ${expected_sha}, got ${actual_sha}"
 }
 
@@ -138,4 +156,3 @@ shreeos_require_cmd() {
   fi
 }
 lumen_require_cmd() { shreeos_require_cmd "$@"; }
-
