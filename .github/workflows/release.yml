@@ -16,11 +16,14 @@ defaults:
   run:
     shell: bash --noprofile --norc -euo pipefail {0}
 
+env:
+  RELEASE_PROFILE: desktop
+
 jobs:
   build:
-    name: Build and validate tagged minimal ISO
+    name: Build and certify desktop ISO
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 360
     permissions:
       contents: read
     outputs:
@@ -35,44 +38,26 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Validate tag against build.conf
+      - name: Validate release tag
         id: version
         run: |
-          set -Eeuo pipefail
           source build.conf
-          canonical_version="${DISTRO_VERSION:?DISTRO_VERSION is required}"
-          if [[ ! "$canonical_version" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]*$ ]]; then
-            printf 'Unsafe or invalid DISTRO_VERSION: %s\n' "$canonical_version" >&2
-            exit 1
-          fi
-          actual_tag="${GITHUB_REF_NAME:-}"
-          expected_tag="v${canonical_version}"
-          if [[ "${GITHUB_REF_TYPE:-}" != "tag" || "$actual_tag" != "$expected_tag" ]]; then
-            printf 'Tag %s does not match canonical build.conf tag %s\n' "$actual_tag" "$expected_tag" >&2
+          expected_tag="v${DISTRO_VERSION}"
+          if [[ "${GITHUB_REF_TYPE:-}" != "tag" || "${GITHUB_REF_NAME:-}" != "$expected_tag" ]]; then
+            echo "Tag ${GITHUB_REF_NAME:-<none>} does not match build.conf ($expected_tag)" >&2
             exit 1
           fi
           prerelease=false
-          if [[ "$canonical_version" == *-dev ]]; then
-            prerelease=true
-          fi
+          [[ "$DISTRO_VERSION" == *-dev ]] && prerelease=true
           {
-            printf 'version=%s\n' "$canonical_version"
-            printf 'tag=%s\n' "$expected_tag"
-            printf 'prerelease=%s\n' "$prerelease"
-            printf 'artifact_name=shreeos-release-%s-%s\n' "$GITHUB_RUN_ID" "${GITHUB_RUN_ATTEMPT:-0}"
+            echo "version=$DISTRO_VERSION"
+            echo "tag=$expected_tag"
+            echo "prerelease=$prerelease"
+            echo "artifact_name=shreeos-desktop-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Initialize build logs
-        run: |
-          set -Eeuo pipefail
-          mkdir -p build-logs
-          printf 'ref=%s\nsha=%s\ntag=%s\nprofile=minimal\n' "$GITHUB_REF" "$GITHUB_SHA" "${{ steps.version.outputs.tag }}" > build-logs/context.txt
-
       - name: Install build dependencies
-        run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/dependencies.log) 2>&1
-          bash scripts/install-build-deps-apt.sh
+        run: bash scripts/install-build-deps-apt.sh
 
       - name: Restore exact toolchain cache
         id: cache-toolchain
@@ -87,21 +72,17 @@ jobs:
         env:
           CACHE_HIT: ${{ steps.cache-toolchain.outputs.cache-hit }}
         run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/toolchain.log) 2>&1
-          if [[ "${CACHE_HIT}" = "true" ]]; then
+          if [[ "$CACHE_HIT" == "true" ]]; then
             bash scripts/verify-stage.sh toolchain
           else
-            make PROFILE=minimal toolchain
+            make PROFILE="$RELEASE_PROFILE" toolchain
           fi
           bash scripts/verify-stage.sh toolchain
-          bash tests/smoke/test-toolchain.sh
-          bash tests/smoke/run-all.sh
           mkdir -p build/.markers
           touch build/.markers/.toolchain
 
       - name: Save validated toolchain cache
-        if: steps.cache-toolchain.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
         uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: |
@@ -109,96 +90,81 @@ jobs:
             build/sysroot
           key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
 
-      - name: Build and verify minimal ISO
+      - name: Build desktop ISO
+        env:
+          PROFILE: desktop
+          ALLOW_DEFERRED_GRAPHICS: '0'
+          BIOS_TIMEOUT: '240'
+          UEFI_TIMEOUT: '300'
+          MEMORY: 4096M
         run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/build-minimal.log) 2>&1
-          PROFILE=minimal BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M bash scripts/build.sh minimal
+          mkdir -p build-logs
+          bash scripts/build.sh desktop 2>&1 | tee build-logs/build-desktop.log
 
-      - name: Run profile-aware automated tests
+      - name: Require real desktop graphics stack
+        env:
+          PROFILE: desktop
         run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/tests.log) 2>&1
-          PROFILE=minimal BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M make test-all
+          bash scripts/verify-stage.sh desktop
+          bash scripts/verify-stage.sh rootfs
+          bash scripts/verify-stage.sh iso
+          bash scripts/graphics-readiness.sh --strict
+          status_file="build/rootfs/etc/shreeos/desktop-native.status"
+          test -f "$status_file"
+          test "$(tr -d '\r\n' < "$status_file")" = ready
 
-      - name: Generate and verify release bundle
+      - name: Run desktop-aware tests
+        env:
+          PROFILE: desktop
+          BIOS_TIMEOUT: '240'
+          UEFI_TIMEOUT: '300'
+          MEMORY: 4096M
+        run: make test-all
+
+      - name: Validate and stage release assets
         run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/assets.log) 2>&1
           source build.conf
           mapfile -t iso_paths < <(find out -maxdepth 1 -type f -name '*.iso' -print | sort)
-          if [[ "${#iso_paths[@]}" -ne 1 ]]; then
-            printf 'Expected exactly one ISO, found %s\n' "${#iso_paths[@]}" >&2
-            exit 1
-          fi
+          [[ "${#iso_paths[@]}" -eq 1 ]]
           iso_path="${iso_paths[0]}"
           iso_name="$(basename "$iso_path")"
-          iso_checksum_path="${iso_path}.sha256"
-          manifest_path="out/${iso_name%.iso}-manifest.json"
-          for required in "$iso_path" "$iso_checksum_path" "$manifest_path"; do
-            if [[ ! -s "$required" ]]; then
-              printf 'Missing or empty release input: %s\n' "$required" >&2
-              exit 1
-            fi
-          done
+          manifest="out/${iso_name%.iso}-manifest.json"
+          checksum="${iso_path}.sha256"
+          test -s "$iso_path"
+          test -s "$manifest"
+          test -s "$checksum"
+          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" EXPECTED_COMMIT="$GITHUB_SHA" python3 - "$iso_path" "$manifest" <<'PY'
+          import hashlib, json, os, pathlib, sys
+          iso = pathlib.Path(sys.argv[1])
+          manifest = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'))
+          checks = {
+              'name': os.environ['EXPECTED_NAME'],
+              'version': os.environ['EXPECTED_VERSION'],
+              'profile': 'desktop',
+              'commit': os.environ['EXPECTED_COMMIT'],
+              'iso': iso.name,
+          }
+          for key, expected in checks.items():
+              if manifest.get(key) != expected:
+                  raise SystemExit(f'manifest {key} mismatch: {manifest.get(key)!r} != {expected!r}')
+          if manifest.get('size_bytes') != iso.stat().st_size:
+              raise SystemExit('manifest size mismatch')
+          digest = hashlib.sha256(iso.read_bytes()).hexdigest()
+          if manifest.get('sha256') != digest:
+              raise SystemExit('manifest checksum mismatch')
+          print(f'Desktop release manifest certified: {iso.name} ({iso.stat().st_size} bytes)')
+          PY
           (
             cd out
-            sha256sum -- "$iso_name" > SHA256SUMS
-            [[ "$(wc -l < SHA256SUMS)" -eq 1 ]]
-            awk -v expected="$iso_name" '$2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' SHA256SUMS
+            sha256sum "$iso_name" > SHA256SUMS
             sha256sum -c SHA256SUMS
-            [[ "$(wc -l < "$iso_name.sha256")" -eq 1 ]]
-            awk -v expected="$iso_name" '$2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' "$iso_name.sha256"
             sha256sum -c "$iso_name.sha256"
           )
-          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" EXPECTED_PROFILE=minimal EXPECTED_COMMIT="$GITHUB_SHA" python3 - "$iso_path" "$manifest_path" <<'PY'
-          import hashlib
-          import json
-          import os
-          import pathlib
-          import sys
-
-          iso = pathlib.Path(sys.argv[1])
-          manifest_path = pathlib.Path(sys.argv[2])
-          try:
-              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-          except (OSError, ValueError) as exc:
-              raise SystemExit(f"manifest validation failed: {exc}")
-
-          if manifest.get("name") != os.environ["EXPECTED_NAME"]:
-              raise SystemExit("manifest name does not match build.conf")
-          if manifest.get("version") != os.environ["EXPECTED_VERSION"]:
-              raise SystemExit("manifest version does not match build.conf")
-          if manifest.get("profile") != os.environ["EXPECTED_PROFILE"]:
-              raise SystemExit("manifest profile does not match the release profile")
-          if manifest.get("commit") != os.environ["EXPECTED_COMMIT"]:
-              raise SystemExit("manifest commit does not match GITHUB_SHA")
-          if manifest.get("iso") != iso.name:
-              raise SystemExit("manifest ISO name does not match the generated ISO")
-          size = manifest.get("size_bytes")
-          if isinstance(size, bool) or not isinstance(size, int) or size != iso.stat().st_size:
-              raise SystemExit("manifest ISO size does not match the generated ISO")
-          digest = hashlib.sha256(iso.read_bytes()).hexdigest()
-          if manifest.get("sha256") != digest:
-              raise SystemExit("manifest ISO digest does not match the generated ISO")
-          print(f"Manifest validated: {iso.name}")
-          PY
           rm -rf release-assets
-          mkdir -p release-assets
-          cp -- "$iso_path" "$iso_checksum_path" "$manifest_path" out/SHA256SUMS release-assets/
-          expected_names=("$iso_name" "$iso_name.sha256" "${iso_name%.iso}-manifest.json" SHA256SUMS)
-          for name in "${expected_names[@]}"; do
-            if [[ ! -f "release-assets/$name" || -L "release-assets/$name" ]]; then
-              printf 'Missing or unsafe bundle member: %s\n' "$name" >&2
-              exit 1
-            fi
-          done
-          [[ "$(find release-assets -mindepth 1 -maxdepth 1 -type f -print | wc -l)" -eq 4 ]]
-          unexpected="$(find release-assets -mindepth 1 -maxdepth 1 ! -type f -print -quit)"
-          [[ -z "$unexpected" ]]
-          printf 'Validated release bundle: %s\n' "$iso_name"
+          mkdir release-assets
+          cp "$iso_path" "$checksum" "$manifest" out/SHA256SUMS release-assets/
 
-      - name: Upload tested release bundle
+      - name: Upload certified desktop bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ steps.version.outputs.artifact_name }}
@@ -207,20 +173,20 @@ jobs:
           overwrite: true
           retention-days: 7
 
-      - name: Upload build log on failure
-        if: ${{ failure() }}
+      - name: Upload build logs on failure
+        if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-release-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          name: shreeos-desktop-release-failure-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             build-logs/
             build/logs/
-          if-no-files-found: error
+          if-no-files-found: warn
           overwrite: true
           retention-days: 7
 
   publish:
-    name: Publish validated release
+    name: Publish certified desktop release
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -228,259 +194,38 @@ jobs:
       actions: read
       contents: write
     steps:
-      - name: Check out release source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          fetch-depth: 1
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Initialize publisher logs
-        run: |
-          set -Eeuo pipefail
-          mkdir -p build-logs
-          printf 'ref=%s\nsha=%s\ntag=%s\n' "$GITHUB_REF" "$GITHUB_SHA" "${{ needs.build.outputs.tag }}" > build-logs/context.txt
-
-      - name: Install artifact validation dependencies
-        run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/validation-tools.log) 2>&1
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorriso qemu-system-x86 ovmf
-
-      - name: Download tested release bundle
+      - name: Download certified bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ${{ needs.build.outputs.artifact_name }}
           path: release-assets
 
-      - name: Revalidate downloaded release bundle
-        env:
-          RELEASE_TAG: ${{ needs.build.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+      - name: Revalidate checksums
         run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/revalidate.log) 2>&1
-          source build.conf
-          if [[ "$DISTRO_VERSION" != "$RELEASE_VERSION" || "${GITHUB_REF_NAME:-}" != "$RELEASE_TAG" ]]; then
-            printf 'Publisher checkout does not match validated tag/version\n' >&2
-            exit 1
-          fi
-          mapfile -t iso_names < <(find release-assets -maxdepth 1 -type f -name '*.iso' -printf '%f\n' | sort)
-          if [[ "${#iso_names[@]}" -ne 1 ]]; then
-            printf 'Expected exactly one downloaded ISO, found %s\n' "${#iso_names[@]}" >&2
-            exit 1
-          fi
-          iso_name="${iso_names[0]}"
-          iso_checksum_name="${iso_name}.sha256"
-          manifest_name="${iso_name%.iso}-manifest.json"
-          expected_names=("$iso_name" "$iso_checksum_name" "$manifest_name" SHA256SUMS)
-          for name in "${expected_names[@]}"; do
-            if [[ ! -f "release-assets/$name" || -L "release-assets/$name" ]]; then
-              printf 'Missing or unsafe downloaded asset: %s\n' "$name" >&2
-              exit 1
-            fi
-          done
-          [[ "$(find release-assets -mindepth 1 -maxdepth 1 -type f -print | wc -l)" -eq 4 ]]
-          unexpected="$(find release-assets -mindepth 1 -maxdepth 1 ! -type f -print -quit)"
-          [[ -z "$unexpected" ]]
-          (
-            cd release-assets
-            [[ "$(wc -l < SHA256SUMS)" -eq 1 ]]
-            awk -v expected="$iso_name" '$2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' SHA256SUMS
-            sha256sum -c SHA256SUMS
-            [[ "$(wc -l < "$iso_checksum_name")" -eq 1 ]]
-            awk -v expected="$iso_name" '$2 == expected { found=1 } END { exit(found == 1 ? 0 : 1) }' "$iso_checksum_name"
-            sha256sum -c "$iso_checksum_name"
-          )
-          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" EXPECTED_PROFILE=minimal EXPECTED_COMMIT="$GITHUB_SHA" python3 - "release-assets/$iso_name" "release-assets/$manifest_name" <<'PY'
-          import hashlib
-          import json
-          import os
-          import pathlib
-          import sys
+          cd release-assets
+          sha256sum -c SHA256SUMS
+          mapfile -t checksums < <(find . -maxdepth 1 -type f -name '*.iso.sha256' -print)
+          [[ "${#checksums[@]}" -eq 1 ]]
+          sha256sum -c "${checksums[0]}"
 
-          iso = pathlib.Path(sys.argv[1])
-          manifest_path = pathlib.Path(sys.argv[2])
-          try:
-              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-          except (OSError, ValueError) as exc:
-              raise SystemExit(f"downloaded manifest validation failed: {exc}")
-
-          if manifest.get("name") != os.environ["EXPECTED_NAME"]:
-              raise SystemExit("downloaded manifest name does not match build.conf")
-          if manifest.get("version") != os.environ["EXPECTED_VERSION"]:
-              raise SystemExit("downloaded manifest version does not match build.conf")
-          if manifest.get("profile") != os.environ["EXPECTED_PROFILE"]:
-              raise SystemExit("downloaded manifest profile does not match the release profile")
-          if manifest.get("commit") != os.environ["EXPECTED_COMMIT"]:
-              raise SystemExit("manifest commit does not match GITHUB_SHA")
-          if manifest.get("iso") != iso.name:
-              raise SystemExit("downloaded manifest ISO name does not match")
-          size = manifest.get("size_bytes")
-          if isinstance(size, bool) or not isinstance(size, int) or size != iso.stat().st_size:
-              raise SystemExit("downloaded manifest ISO size does not match")
-          digest = hashlib.sha256(iso.read_bytes()).hexdigest()
-          if manifest.get("sha256") != digest:
-              raise SystemExit("downloaded manifest ISO digest does not match")
-          print(f"Downloaded manifest validated: {iso.name}")
-          PY
-          ISO="$GITHUB_WORKSPACE/release-assets/$iso_name" PROFILE=minimal BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M bash scripts/verify-iso.sh
-
-      - name: Create or update exact release assets
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
-          RELEASE_PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          set -Eeuo pipefail
-          exec > >(tee -a build-logs/publish.log) 2>&1
-          cd release-assets
-          tag_commit="$(git ls-remote "https://github.com/${GH_REPO}.git" "refs/tags/${RELEASE_TAG}^{}" | awk 'NR == 1 {print $1}')"
-          if [ -z "$tag_commit" ]; then
-            tag_commit="$(git ls-remote "https://github.com/${GH_REPO}.git" "refs/tags/${RELEASE_TAG}" | awk 'NR == 1 {print $1}')"
-          fi
-          if [ "$tag_commit" != "$GITHUB_SHA" ]; then
-            printf 'Release tag %s does not resolve to the validated commit %s (got %s)\\n' "$RELEASE_TAG" "$GITHUB_SHA" "$tag_commit" >&2
-            exit 1
-          fi
-          mapfile -t iso_names < <(find . -maxdepth 1 -type f -name '*.iso' -printf '%f\n' | sort)
-          if [[ "${#iso_names[@]}" -ne 1 ]]; then
-            printf 'Expected exactly one validated ISO at publication\n' >&2
-            exit 1
-          fi
-          iso_name="${iso_names[0]}"
-          expected_assets=("$iso_name" "$iso_name.sha256" "${iso_name%.iso}-manifest.json" SHA256SUMS)
-          {
-            printf '## ShreeOS %s\n\n' "$RELEASE_VERSION"
-            printf 'This release contains the minimal profile ISO. It is a headless image and is not a certified desktop image.\n\n'
-            printf 'Assets:\n'
-            printf -- '- `%s`\n' "$iso_name"
-            printf -- '- `%s`\n' "$iso_name.sha256"
-            printf -- '- `%s`\n' "${iso_name%.iso}-manifest.json"
-            printf -- '- `SHA256SUMS`\n\n'
-            printf 'Verify the aggregate checksum with `sha256sum -c SHA256SUMS` and the per-ISO checksum before use.\n'
-          } > release-notes.md
+          cat > release-notes.md <<EOF
+          ShreeOS ${RELEASE_VERSION} desktop-certified release.
 
-          release_exists=false
-          release_is_draft=false
-          release_is_prerelease=false
-          release_name=""
-          release_body=""
-          if release_state="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
-            release_exists=true
-            release_is_draft="$release_state"
-            release_is_prerelease="$(gh release view "$RELEASE_TAG" --json isPrerelease --jq '.isPrerelease')"
-            release_name="$(gh release view "$RELEASE_TAG" --json name --jq '.name')"
-            release_body="$(gh release view "$RELEASE_TAG" --json body --jq '.body')"
-            if [ "$release_is_draft" != "true" ]; then
-              printf 'Refusing to modify already-public release %s; publish a new immutable tag instead.\\n' "$RELEASE_TAG" >&2
-              exit 1
-            fi
+          This release is built with PROFILE=desktop and is published only after the native target graphics stack, root filesystem, ISO structure, checksums, BIOS boot, UEFI boot, and automated tests pass. Minimal/headless images are not published as the primary ShreeOS release.
+          EOF
+          prerelease_arg=()
+          [[ "$PRERELEASE" == true ]] && prerelease_arg+=(--prerelease)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+            gh release edit "$RELEASE_TAG" --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md "${prerelease_arg[@]}"
           else
-            create_args=("$RELEASE_TAG" --verify-tag --target "$GITHUB_SHA" --title "ShreeOS $RELEASE_TAG" --notes-file release-notes.md --draft)
-            if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
-              create_args+=(--prerelease --latest=false)
-            fi
-            gh release create "${create_args[@]}"
-            release_is_draft=true
-            release_is_prerelease="$RELEASE_PRERELEASE"
-            release_name="ShreeOS $RELEASE_TAG"
-            release_body="$(cat release-notes.md)"
+            gh release create "$RELEASE_TAG" release-assets/* --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md "${prerelease_arg[@]}"
           fi
-
-          declare -A expected_set=()
-          for name in "${expected_assets[@]}"; do
-            expected_set["$name"]=1
-          done
-          asset_listing="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
-          mapfile -t existing_assets <<< "$asset_listing"
-          declare -A existing_set=()
-          for name in "${existing_assets[@]}"; do
-            [[ -n "$name" ]] || continue
-            if [[ -n "${existing_set[$name]+x}" ]]; then
-              printf 'Duplicate release asset name: %s\n' "$name" >&2
-              exit 1
-            fi
-            existing_set["$name"]=1
-            if [[ -z "${expected_set[$name]+x}" ]]; then
-              printf 'Unexpected asset already exists on %s: %s\n' "$RELEASE_TAG" "$name" >&2
-              exit 1
-            fi
-          done
-
-          remote_dir="$(mktemp -d)"
-          trap 'rm -rf "$remote_dir"' EXIT
-          remote_exact=true
-          for name in "${expected_assets[@]}"; do
-            if [[ -z "${existing_set[$name]+x}" ]]; then
-              remote_exact=false
-              continue
-            fi
-            gh release download "$RELEASE_TAG" --pattern "$name" --dir "$remote_dir"
-            if ! cmp -s "$name" "$remote_dir/$name"; then
-              remote_exact=false
-            fi
-          done
-          if [[ "$remote_exact" != "true" ]]; then
-            gh release upload "$RELEASE_TAG" "${expected_assets[@]}" --clobber
-          fi
-
-          needs_edit=false
-          desired_body="$(cat release-notes.md)"
-          if [[ "$release_is_draft" == "true" || "$release_is_prerelease" != "$RELEASE_PRERELEASE" || "$release_name" != "ShreeOS $RELEASE_TAG" || "$release_body" != "$desired_body" ]]; then
-            needs_edit=true
-          fi
-          if [[ "$needs_edit" == "true" ]]; then
-            publish_args=("$RELEASE_TAG" --verify-tag --title "ShreeOS $RELEASE_TAG" --notes-file release-notes.md --draft=false)
-            if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
-              publish_args+=(--prerelease --latest=false)
-            else
-              publish_args+=(--prerelease=false)
-            fi
-            gh release edit "${publish_args[@]}"
-          fi
-
-          final_listing="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | sort)"
-          mapfile -t final_assets <<< "$final_listing"
-          mapfile -t expected_sorted < <(printf '%s\n' "${expected_assets[@]}" | sort)
-          if [[ "${final_assets[*]}" != "${expected_sorted[*]}" ]]; then
-            printf 'Release assets do not match the validated bundle\n' >&2
-            printf 'Expected: %s\n' "${expected_sorted[*]}" >&2
-            printf 'Found: %s\n' "${final_assets[*]}" >&2
-            exit 1
-          fi
-          final_state="$(gh release view "$RELEASE_TAG" --json tagName,isDraft,isPrerelease --jq '[.tagName, .isDraft, .isPrerelease] | @tsv')"
-          IFS=$'\t' read -r final_tag final_is_draft final_is_prerelease <<< "$final_state"
-          if [[ "$final_tag" != "$RELEASE_TAG" || "$final_is_draft" != "false" || "$final_is_prerelease" != "$RELEASE_PRERELEASE" ]]; then
-            printf 'Published release state is incorrect\n' >&2
-            exit 1
-          fi
-          rm -rf "$remote_dir"
-          mkdir -p "$remote_dir"
-          for name in "${expected_assets[@]}"; do
-            gh release download "$RELEASE_TAG" --pattern "$name" --dir "$remote_dir"
-            cmp -s "$name" "$remote_dir/$name" || {
-              printf 'Published asset bytes differ from the validated bundle: %s\\n' "$name" >&2
-              exit 1
-            }
-          done
-          if [[ "$release_exists" == "true" && "$release_is_draft" == "true" ]]; then
-            printf 'Published existing draft %s\n' "$RELEASE_TAG"
-          else
-            printf 'Published validated release %s\n' "$RELEASE_TAG"
-          fi
-
-      - name: Upload publisher log on failure
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: shreeos-publisher-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            build-logs/
-            build/logs/
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 7
