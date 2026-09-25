@@ -88,6 +88,7 @@ install -Dm755 "$BUILDDIR/busybox" "${LUMEN_STAGE_ROOT}/usr/bin/busybox"
 for applet in ip ifconfig route udhcpc mdev modprobe modinfo insmod rmmod lsmod ping netstat; do
   ln -sfn busybox "${LUMEN_STAGE_ROOT}/usr/bin/${applet}"
 done
+mkdir -p "${LUMEN_STAGE_ROOT}/sbin"
 ln -sfn ../usr/bin/busybox "${LUMEN_STAGE_ROOT}/sbin/mdev"
 install -Dm755 "$SCRIPT_DIR/udhcpc-default.sh" "${LUMEN_STAGE_ROOT}/usr/share/udhcpc/default.script"
 
