@@ -1,8 +1,8 @@
 # ShreeOS top-level build orchestration
 #
 # Profiles:
-#   PROFILE=desktop (default: complete graphical desktop environment)
-#   PROFILE=minimal (minimal headless rescue/embedded environment)
+#   PROFILE=minimal (default: minimal headless rescue/embedded environment)
+#   PROFILE=desktop (complete graphical desktop environment)
 #   PROFILE=server  (headless networking/server environment)
 #
 # Targets:
@@ -27,7 +27,7 @@
 #   qemu            — Launch built ISO in QEMU (UEFI)
 #   qemu-bios       — Launch built ISO in QEMU (BIOS)
 
-PROFILE ?= desktop
+PROFILE ?= minimal
 BUILD_DIR := build
 MARKER_DIR := $(BUILD_DIR)/.markers
 SHELL := /usr/bin/env bash
@@ -80,7 +80,7 @@ help:
 	@echo "  make distclean            Full reset including build/ and out/"
 	@echo ""
 	@echo "Options:"
-	@echo "  PROFILE=desktop|minimal|server  (default: desktop)"
+	@echo "  PROFILE=desktop|minimal|server  (default: minimal)"
 	@echo "  FORCE=1                         (rebuild all stages)"
 
 # Diagnostic & source verification

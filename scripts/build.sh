@@ -14,7 +14,7 @@ if [ -z "${SHREEOS_MAKE_JOBS:-}" ]; then
   export SHREEOS_MAKE_JOBS="$jobs"
 fi
 
-profile="${1:-desktop}"
+profile="${1:-minimal}"
 case "$profile" in
   desktop|minimal|server) ;;
   *)
@@ -23,24 +23,18 @@ case "$profile" in
     ;;
 esac
 
-echo "==> ShreeOS reliable build: PROFILE=$profile"
+printf '==> ShreeOS reliable build: PROFILE=%s\n' "$profile"
 bash scripts/doctor.sh --strict
-bash scripts/verify-sources.sh --fetch
+
+for component in toolchain kernel base-system; do
+  bash scripts/verify-sources.sh --fetch --component="$component"
+done
 
 if [ "$profile" = "desktop" ]; then
-  # Fail before spending time assembling an ISO known to lack its native target SDK.
-  make toolchain
-  make base-system
-  if [ "${ALLOW_DEFERRED_GRAPHICS:-0}" = "1" ]; then
-    # Explicit opt-in used by CI release builds and headless integration runs:
-    # stage the desktop assets while the native graphics stack is still
-    # incomplete, exactly like the ISO workflow does for its boot-compatible
-    # build. The staged /etc/shreeos/desktop-native.status keeps reporting
-    # "deferred" so no consumer mistakes this ISO for desktop-certified.
-    bash scripts/graphics-readiness.sh || true
-  else
-    bash scripts/graphics-readiness.sh --strict
-  fi
+  bash scripts/verify-sources.sh --fetch --component=desktop
+  make PROFILE="$profile" toolchain
+  make PROFILE="$profile" base-system
+  bash scripts/graphics-readiness.sh --strict
 fi
 
 make PROFILE="$profile" iso

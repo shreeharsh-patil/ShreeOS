@@ -146,12 +146,16 @@ cat > "${TARGET}/boot/grub/grub.cfg" <<EOF
 set default=0
 set timeout=5
 
+serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1
+
 # Load video and graphics modules
 insmod all_video
 insmod font
 insmod gfxterm
 set gfxmode=auto
 terminal_output gfxterm
+terminal_input --append serial console
+terminal_output --append serial console
 
 # Filesystem modules
 insmod gpt
@@ -163,19 +167,19 @@ insmod fat
 menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.2.0-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait quiet ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 ${CMDLINE_EXTRA}
     echo "Booting ${DISTRO_NAME:-ShreeOS}..."
 }
 
 menuentry "${DISTRO_NAME:-ShreeOS} (Recovery Mode)" {
     echo "Loading Linux kernel in single-user recovery mode..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.mode=recovery ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 single shreeos.mode=recovery ${CMDLINE_EXTRA}
 }
 
 menuentry "${DISTRO_NAME:-ShreeOS} Previous Working State (SafeUpdate Rollback)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.rollback=1 ${CMDLINE_EXTRA}
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 single shreeos.rollback=1 ${CMDLINE_EXTRA}
 }
 EOF
 

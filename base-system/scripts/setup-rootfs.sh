@@ -15,10 +15,21 @@ mkdir -p "${LUMEN_STAGE_ROOT}/var"/{cache,lib,lock,log,mail,opt,run,spool,tmp}
 mkdir -p "${LUMEN_STAGE_ROOT}/var/log"/{journal,old}
 mkdir -p "${LUMEN_STAGE_ROOT}/run"
 
+chmod 0700 "${LUMEN_STAGE_ROOT}/root"
 chmod 1777 "${LUMEN_STAGE_ROOT}/tmp"
 chmod 1777 "${LUMEN_STAGE_ROOT}/var/tmp"
-ln -sf /run "${LUMEN_STAGE_ROOT}/var/run"
-ln -sf /run/lock "${LUMEN_STAGE_ROOT}/var/lock"
+# /var/run and /var/lock are canonical symlinks into tmpfs. On rebuilds they may
+# already exist as real directories created by an earlier stage; replace those
+# directories (keeping their contents under /run) instead of letting ln -sf fail
+# with "cannot overwrite directory" under set -e.
+if [ -d "${LUMEN_STAGE_ROOT}/var/run" ] && [ ! -L "${LUMEN_STAGE_ROOT}/var/run" ]; then
+  rm -rf "${LUMEN_STAGE_ROOT}/var/run"
+fi
+if [ -d "${LUMEN_STAGE_ROOT}/var/lock" ] && [ ! -L "${LUMEN_STAGE_ROOT}/var/lock" ]; then
+  rm -rf "${LUMEN_STAGE_ROOT}/var/lock"
+fi
+ln -sfn /run "${LUMEN_STAGE_ROOT}/var/run"
+ln -sfn /run/lock "${LUMEN_STAGE_ROOT}/var/lock"
 
 HOSTNAME="${DISTRO_CODENAME}"
 cat > "${LUMEN_STAGE_ROOT}/etc/hostname" <<EOF
@@ -64,7 +75,7 @@ daemon:*::0:::::
 bin:*::0:::::
 nobody:*::0:::::
 EOF
-chmod 640 "${LUMEN_STAGE_ROOT}/etc/shadow"
+chmod 0600 "${LUMEN_STAGE_ROOT}/etc/shadow"
 
 cat > "${LUMEN_STAGE_ROOT}/etc/os-release" <<EOF
 NAME="${DISTRO_NAME}"

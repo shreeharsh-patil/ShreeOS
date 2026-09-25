@@ -15,7 +15,7 @@ fi
 STAGING="$1"
 shift
 
-CMDLINE_EXTRA=""
+CMDLINE_EXTRA="${CMDLINE_EXTRA:-}"
 for arg in "$@"; do
   case "$arg" in
     --cmdline=*) CMDLINE_EXTRA="${arg#*=}" ;;
@@ -27,7 +27,7 @@ for arg in "$@"; do
   esac
 done
 
-shreeos_require_cmd grub-mkimage dd mformat mmd mcopy
+shreeos_require_cmd grub-mkimage grub-file dd mformat mmd mcopy
 
 I386_MODULE_DIR="/usr/lib/grub/i386-pc"
 if [ ! -d "$I386_MODULE_DIR" ]; then
@@ -36,16 +36,63 @@ fi
 if [ ! -f "$I386_MODULE_DIR/cdboot.img" ]; then
   shreeos_die "GRUB BIOS CD boot image missing: $I386_MODULE_DIR/cdboot.img"
 fi
+if [ ! -f "$I386_MODULE_DIR/gzio.mod" ]; then
+  shreeos_die "GRUB BIOS gzio module missing: $I386_MODULE_DIR/gzio.mod"
+fi
+UEFI_MODULE_DIR="/usr/lib/grub/x86_64-efi"
+if [ ! -f "$UEFI_MODULE_DIR/gzio.mod" ]; then
+  shreeos_die "GRUB UEFI gzio module missing: $UEFI_MODULE_DIR/gzio.mod"
+fi
 
 shreeos_step "Installing GRUB2 for ISO staging: ${STAGING}"
 mkdir -p   "${STAGING}/boot/grub/i386-pc"   "${STAGING}/boot/grub/x86_64-efi"   "${STAGING}/EFI/BOOT"
+
+BIOS_MODULES=(
+  biosdisk iso9660 part_msdos part_gpt normal configfile search search_fs_file
+  loopback ext2 fat linux font gettext serial terminal test gzio
+)
+UEFI_MODULES=(
+  iso9660 part_msdos part_gpt normal configfile search search_fs_file
+  loopback ext2 fat linux efi_gop font gettext serial terminal test gzio
+)
+
+verify_grub_image() {
+  local image="$1"
+  local check_flag="$2"
+  local label="$3"
+
+  if ! grub-file "$check_flag" "$image" >/dev/null 2>&1; then
+    shreeos_die "GRUB ${label} image failed ${check_flag} validation: ${image}"
+  fi
+}
+
+build_grub_image() {
+  local format="$1"
+  local output="$2"
+  local label="$3"
+  local grub_output
+  shift 3
+
+  if ! grub_output="$(grub-mkimage --verbose -O "$format" -o "$output" -p "/boot/grub" "$@" 2>&1)"; then
+    printf '%s\n' "$grub_output" >&2
+    shreeos_die "GRUB ${label} image generation failed"
+  fi
+  # grub-mkimage --verbose logs each dependency as "grub-mkimage: info: ...loading
+  # <moduledir>/gzio.mod...". Match any reference to gzio.mod so the check works
+  # across GRUB releases regardless of the exact log wording.
+  if ! grep -Fq "gzio.mod" <<<"$grub_output"; then
+    shreeos_die "GRUB ${label} image did not resolve the gzio module"
+  fi
+}
 
 # BIOS El Torito image: cdboot.img + a core image that knows how to read ISO9660.
 BIOS_CORE="${STAGING}/boot/grub/i386-pc/core.img"
 BIOS_ELTORITO="${STAGING}/boot/grub/i386-pc/eltorito.img"
 
 shreeos_log "Generating i386-pc El Torito image"
-grub-mkimage   -O i386-pc   -o "$BIOS_CORE"   -p "/boot/grub"   biosdisk iso9660 part_msdos part_gpt normal configfile search search_fs_file   loopback ext2 fat linux font gettext serial terminal test
+build_grub_image i386-pc "$BIOS_CORE" BIOS "${BIOS_MODULES[@]}"
+verify_grub_image "$BIOS_CORE" --is-x86-multiboot BIOS
+shreeos_ok "BIOS GRUB image includes gzio and passes format validation"
 
 cat "$I386_MODULE_DIR/cdboot.img" "$BIOS_CORE" > "$BIOS_ELTORITO"
 
@@ -54,7 +101,9 @@ UEFI_EFI="${STAGING}/EFI/BOOT/BOOTX64.EFI"
 EFI_IMG="${STAGING}/boot/grub/x86_64-efi/efi.img"
 
 shreeos_log "Generating x86_64-efi boot image"
-grub-mkimage   -O x86_64-efi   -o "$UEFI_EFI"   -p "/boot/grub"   iso9660 part_msdos part_gpt normal configfile search search_fs_file   loopback ext2 fat linux efi_gop font gettext serial terminal test
+build_grub_image x86_64-efi "$UEFI_EFI" UEFI "${UEFI_MODULES[@]}"
+verify_grub_image "$UEFI_EFI" --is-x86_64-efi UEFI
+shreeos_ok "UEFI GRUB image includes gzio and passes format validation"
 
 # Use a fixed-size, freshly-created FAT image. mformat chooses a valid FAT
 # geometry for the image instead of relying on a hard-coded inconsistent CHS.
@@ -70,10 +119,11 @@ TEMPLATE="$SHREEOS_ROOT_DIR/bootloader/grub/grub.cfg.template"
 [ -f "$TEMPLATE" ] || shreeos_die "GRUB template not found: $TEMPLATE"
 
 if command -v envsubst >/dev/null 2>&1; then
+  ENVSUBST_VARS="\${DISTRO_NAME} \${DISTRO_VERSION} \${CMDLINE_EXTRA}"
   DISTRO_NAME="${DISTRO_NAME:-ShreeOS}" \
   DISTRO_VERSION="${DISTRO_VERSION:-0.2.0-dev}" \
   CMDLINE_EXTRA="$CMDLINE_EXTRA" \
-    envsubst '${DISTRO_NAME} ${DISTRO_VERSION} ${CMDLINE_EXTRA}' \
+    envsubst "$ENVSUBST_VARS" \
       < "$TEMPLATE" > "${STAGING}/boot/grub/grub.cfg"
 else
   # CMDLINE_EXTRA may contain sed-significant characters, so require envsubst

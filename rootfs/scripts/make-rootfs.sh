@@ -245,6 +245,7 @@ done
 loader_name="$(basename "$loader")"
 loader_rel="${loader#"${LUMEN_STAGE_ROOT}/"}"
 for loader_dir in lib64 lib; do
+  mkdir -p "${LUMEN_STAGE_ROOT}/${loader_dir}"
   loader_link="${LUMEN_STAGE_ROOT}/${loader_dir}/${loader_name}"
   [ -e "$loader_link" ] || ln -sfn "../${loader_rel}" "$loader_link"
   shreeos_ok "Target loader reachable at /${loader_dir}/${loader_name}"

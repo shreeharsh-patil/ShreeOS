@@ -8,10 +8,17 @@
 
 set -euo pipefail
 
-shreeos_log()  { printf '\033[1;34m[shreeos]\033[0m %s\n' "$*"; }
-shreeos_ok()   { printf '\033[1;32m[  ok   ]\033[0m %s\n' "$*"; }
-shreeos_warn() { printf '\033[1;33m[ warn  ]\033[0m %s\n' "$*" >&2; }
-shreeos_die()  { printf '\033[1;31m[ fail  ]\033[0m %s\n' "$*" >&2; exit 1; }
+if [[ -z ${NO_COLOR+x} ]] && [[ -t 1 ]] && [[ -t 2 ]]; then
+  shreeos_log()  { printf '\033[1;34m[shreeos]\033[0m %s\n' "$*"; }
+  shreeos_ok()   { printf '\033[1;32m[  ok   ]\033[0m %s\n' "$*"; }
+  shreeos_warn() { printf '\033[1;33m[ warn  ]\033[0m %s\n' "$*" >&2; }
+  shreeos_die()  { printf '\033[1;31m[ fail  ]\033[0m %s\n' "$*" >&2; exit 1; }
+else
+  shreeos_log()  { printf '[shreeos] %s\n' "$*"; }
+  shreeos_ok()   { printf '[  ok   ] %s\n' "$*"; }
+  shreeos_warn() { printf '[ warn  ] %s\n' "$*" >&2; }
+  shreeos_die()  { printf '[ fail  ] %s\n' "$*" >&2; exit 1; }
+fi
 
 # Legacy aliases
 lumen_log()  { shreeos_log "$@"; }

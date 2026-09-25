@@ -11,12 +11,11 @@ QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 KERNEL_IMAGE="${KERNEL_IMAGE:-${PROJECT_ROOT}/build/build-kernel/arch/x86/boot/bzImage}"
 INITRD="${INITRD:-${PROJECT_ROOT}/build/initramfs.cpio.gz}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
-# Direct kernel boot feeds the same rootfs-sized initramfs as the live ISO, so
-# mirror the ISO boot-test memory and timeout budgets.
 TIMEOUT="${TIMEOUT:-180}"
-MEMORY="${MEMORY:-2048M}"
+MEMORY="${MEMORY:-1024M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
-NO_CLEANUP=false
+NO_CLEANUP="${NO_CLEANUP:-false}"
+source "$SCRIPT_DIR/qemu-common.sh"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -24,11 +23,21 @@ while [ $# -gt 0 ]; do
     --kernel) [ $# -ge 2 ] || shreeos_die "--kernel requires a path"; KERNEL_IMAGE="$2"; shift 2 ;;
     --initrd=*) INITRD="${1#*=}"; shift ;;
     --initrd) [ $# -ge 2 ] || shreeos_die "--initrd requires a path"; INITRD="$2"; shift 2 ;;
+    --memory=*) MEMORY="${1#*=}"; shift ;;
+    --memory) [ $# -ge 2 ] || shreeos_die "--memory requires a value"; MEMORY="$2"; shift 2 ;;
+    --timeout=*) TIMEOUT="${1#*=}"; shift ;;
+    --timeout) [ $# -ge 2 ] || shreeos_die "--timeout requires a value"; TIMEOUT="$2"; shift 2 ;;
     --no-cleanup) NO_CLEANUP=true; shift ;;
-    --help|-h) echo "Usage: boot-full-rootfs.sh [--kernel=<path>] [--initrd=<path>] [--no-cleanup]"; exit 0 ;;
+    --help|-h) echo "Usage: boot-full-rootfs.sh [--kernel=<path>] [--initrd=<path>] [--memory=SIZE] [--timeout=SECONDS] [--no-cleanup]"; exit 0 ;;
     *) shreeos_die "Unknown option: $1" ;;
   esac
 done
+
+case "${NO_CLEANUP,,}" in
+  1|true|yes|on) NO_CLEANUP=true ;;
+  0|false|no|off) NO_CLEANUP=false ;;
+  *) shreeos_die "Invalid NO_CLEANUP value: $NO_CLEANUP" ;;
+esac
 
 shreeos_step "QEMU full rootfs boot test"
 if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
@@ -42,36 +51,27 @@ for artifact in "$KERNEL_IMAGE" "$INITRD"; do
   fi
 done
 
-LOG_FILE="$(mktemp /tmp/shreeos-qemu-rootfs.XXXXXX)"
+LOG_DIR="${LOG_DIR:-${PROJECT_ROOT}/build/logs}"
+mkdir -p "$LOG_DIR" || shreeos_die "Unable to create QEMU log directory: $LOG_DIR"
+LOG_FILE="$(mktemp "${LOG_DIR}/qemu-full-rootfs.XXXXXX.log")"
 QEMU_PID=""
 cleanup_qemu() {
-  if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
-    kill "$QEMU_PID" 2>/dev/null || true
-    wait "$QEMU_PID" 2>/dev/null || true
-  fi
+  qemu_stop "${QEMU_PID:-}"
+  QEMU_PID=""
 }
-trap cleanup_qemu EXIT INT TERM
+trap cleanup_qemu EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-"$QEMU_BIN"   -kernel "$KERNEL_IMAGE"   -initrd "$INITRD"   -nographic   -append "console=ttyS0"   -m "$MEMORY"   -no-reboot   > "$LOG_FILE" 2>&1 &
-QEMU_PID=$!
-
-WAITED=0
-FOUND=false
-while [ "$WAITED" -lt "$TIMEOUT" ]; do
-  sleep 1
-  WAITED=$((WAITED + 1))
-  if grep -Fq "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then FOUND=true; break; fi
-  kill -0 "$QEMU_PID" 2>/dev/null || break
-done
-cleanup_qemu
-QEMU_PID=""
-
-tail -30 "$LOG_FILE" || true
-if [ "$FOUND" = true ]; then
-  shreeos_ok "Full rootfs boot test PASSED — marker found after ${WAITED}s"
-  if [ "$NO_CLEANUP" = false ]; then rm -f "$LOG_FILE"; else echo "Log: $LOG_FILE"; fi
+qemu_start "$LOG_FILE" -kernel "$KERNEL_IMAGE" -initrd "$INITRD" -append "console=tty0 console=ttyS0,115200n8"
+if qemu_wait_for_marker "$LOG_FILE" "$QEMU_PID" "$TIMEOUT" "Full rootfs"; then
+  cleanup_qemu
+  echo "  Complete log: $LOG_FILE"
+  if [ "$NO_CLEANUP" = true ]; then
+    echo "  NO_CLEANUP enabled; complete log retained"
+  fi
   exit 0
 fi
-shreeos_warn "Full rootfs boot test FAILED — marker not found within ${TIMEOUT}s"
-echo "Log: $LOG_FILE"
+cleanup_qemu
+echo "  Complete log: $LOG_FILE"
 exit 1

@@ -52,7 +52,10 @@ if [ ! -s "$INITRAMFS" ]; then
   exit 77
 fi
 
-LOG_FILE="$(mktemp /tmp/shreeos-qemu-kernel.XXXXXX)"
+# Persist serial logs under build/logs so CI artifacts can capture boot failures.
+LOG_DIR="${PROJECT_ROOT}/build/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/qemu-kernel-only-serial.log"
 QEMU_PID=""
 cleanup_qemu() {
   if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then

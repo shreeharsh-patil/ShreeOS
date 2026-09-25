@@ -9,21 +9,21 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$ROOT_DIR/build.conf"
 source "$ROOT_DIR/scripts/common.sh"
 
-# Leave TIMEOUT empty by default so every boot test applies its own budget. The
-# live ISO path boots a rootfs-sized initramfs and needs a much larger window
-# than the kernel-only or installed-disk tests, so a single global default here
-# would either waste minutes or fail the slow paths.
-TIMEOUT=""
+TIMEOUT="${TIMEOUT:-}"
+MEMORY="${MEMORY:-}"
 STRICT=false
-for arg in "$@"; do
-  case "$arg" in
-    --timeout=*) TIMEOUT="${arg#*=}" ;;
-    --strict) STRICT=true ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --timeout=*) TIMEOUT="${1#*=}"; shift ;;
+    --timeout) [ $# -ge 2 ] || shreeos_die "--timeout requires a value"; TIMEOUT="$2"; shift 2 ;;
+    --memory=*) MEMORY="${1#*=}"; shift ;;
+    --memory) [ $# -ge 2 ] || shreeos_die "--memory requires a value"; MEMORY="$2"; shift 2 ;;
+    --strict) STRICT=true; shift ;;
     --help|-h)
-      echo "Usage: run-all-qemu-tests.sh [--timeout=N] [--strict]"
+      echo "Usage: run-all-qemu-tests.sh [--timeout=N] [--memory=SIZE] [--strict]"
       exit 0
       ;;
-    *) shreeos_die "Unknown option: $arg" ;;
+    *) shreeos_die "Unknown option: $1" ;;
   esac
 done
 
@@ -50,8 +50,15 @@ TESTS=(
 PASSED=0
 FAILED=0
 SKIPPED=0
+declare -A SEEN_TESTS=()
 
 for t in "${TESTS[@]}"; do
+  if [ -n "${SEEN_TESTS[$t]+present}" ]; then
+    shreeos_warn "Skipping duplicate QEMU test: $t"
+    continue
+  fi
+  SEEN_TESTS["$t"]=1
+
   test_path="$SCRIPT_DIR/$t"
   if [ ! -f "$test_path" ]; then
     if [ "$STRICT" = true ]; then
@@ -64,12 +71,25 @@ for t in "${TESTS[@]}"; do
   fi
 
   shreeos_step "Executing QEMU test: $t"
-  set +e
-  if [ -n "$TIMEOUT" ]; then
-    REQUIRE_ARTIFACTS="$([ "$STRICT" = true ] && echo 1 || echo 0)" TIMEOUT="$TIMEOUT" bash "$test_path"
-  else
-    REQUIRE_ARTIFACTS="$([ "$STRICT" = true ] && echo 1 || echo 0)" bash "$test_path"
+  REQUIRE_ARTIFACTS=0
+  if [ "$STRICT" = true ]; then
+    REQUIRE_ARTIFACTS=1
   fi
+  TEST_ENV=(REQUIRE_ARTIFACTS="$REQUIRE_ARTIFACTS")
+  if [ -n "$TIMEOUT" ]; then
+    TEST_ENV+=(TIMEOUT="$TIMEOUT")
+  fi
+  if [ -n "$MEMORY" ]; then
+    TEST_ENV+=(MEMORY="$MEMORY")
+  else
+    case "$t" in
+      boot-kernel-only.sh) TEST_ENV+=(MEMORY=256M) ;;
+      boot-full-rootfs.sh|boot-iso-bios.sh|boot-iso-uefi.sh) TEST_ENV+=(MEMORY=1024M) ;;
+    esac
+  fi
+
+  set +e
+  env "${TEST_ENV[@]}" bash "$test_path"
   rc=$?
   set -e
 

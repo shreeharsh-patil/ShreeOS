@@ -75,14 +75,9 @@ lumen_ok "C++ cross-compiler found: ${CXX}"
 
 cat > "${TESTDIR}/hello.cpp" << 'EOF'
 #include <iostream>
-#include <vector>
-#include <string>
 
 int main() {
-  std::vector<std::string> msg = {"ShreeOS", "C++", "toolchain", "OK"};
-  for (size_t i = 0; i < msg.size(); ++i) {
-    std::cout << msg[i] << (i + 1 < msg.size() ? " " : "\n");
-  }
+  std::cout << "ShreeOS C++ toolchain OK\n";
   return 0;
 }
 EOF

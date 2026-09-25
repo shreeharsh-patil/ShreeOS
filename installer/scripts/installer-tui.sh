@@ -26,7 +26,7 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh" 2>/dev/null || {
 if [ "$(id -u)" -ne 0 ]; then
   shreeos_die "The interactive installer requires root privileges. Re-run it with sudo."
 fi
-shreeos_require_cmd lsblk findmnt realpath stat awk grep
+shreeos_require_cmd lsblk findmnt realpath stat awk grep env
 
 clear
 
@@ -272,7 +272,7 @@ trap 'exit 143' TERM
 
 echo ""
 echo "==> Starting installation process..."
-bash "${SCRIPT_DIR}/install-to-disk.sh" "$TARGET_DISK" --yes \
+env -u SUDO_UID bash "${SCRIPT_DIR}/install-to-disk.sh" "$TARGET_DISK" --yes \
   --hostname="$USER_HOSTNAME" \
   --timezone="$USER_TZ" \
   --username="$USERNAME" \

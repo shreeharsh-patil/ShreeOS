@@ -9,25 +9,27 @@ serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1
 terminal_input --append serial console
 terminal_output --append serial console
 
-# Load graphics and font for a cleaner menu if available
-if loadfont $prefix/fonts/unicode.pf2; then
-  set gfxmode=auto
+if loadfont $prefix/fonts/unicode.pf2; then :; elif loadfont /boot/grub/fonts/unicode.pf2; then :; fi
+if [ "$grub_platform" = efi ]; then
   insmod efi_gop
+fi
+if loadfont /boot/grub/fonts/unicode.pf2 || ls $prefix/fonts/unicode.pf2; then
+  set gfxmode=auto
   insmod gfxterm
 fi
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION}" --id="${DISTRO_NAME}" {
-  linux /boot/bzImage console=ttyS0 quiet
+  linux /boot/bzImage ${CMDLINE_EXTRA} console=tty0 console=ttyS0,115200n8
   initrd /boot/initramfs.cpio.gz
 }
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (recovery mode)" --id="recovery" {
-  linux /boot/bzImage shreeos.mode=recovery console=ttyS0 single quiet
+  linux /boot/bzImage shreeos.mode=recovery ${CMDLINE_EXTRA} single console=tty0 console=ttyS0,115200n8
   initrd /boot/initramfs.cpio.gz
 }
 
 menuentry "${DISTRO_NAME} Previous Working State (SafeUpdate Rollback)" --id="previous-working-state" {
-  linux /boot/bzImage shreeos.rollback=1 console=ttyS0 single quiet
+  linux /boot/bzImage shreeos.rollback=1 ${CMDLINE_EXTRA} single console=tty0 console=ttyS0,115200n8
   initrd /boot/initramfs.cpio.gz
 }
 

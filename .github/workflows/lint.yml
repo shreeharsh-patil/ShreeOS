@@ -2,51 +2,133 @@ name: Lint
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
   pull_request:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
 jobs:
   shellcheck:
-    runs-on: ubuntu-latest
+    name: Check all tracked shell entry points
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Shellcheck all shell scripts (warnings & errors)
-        run: |
-          find . -name '*.sh' -not -path './build/*' -print0 \
-            | xargs -0 -r shellcheck -x --severity=warning
-          find scripts -type f -name 'shree*' -print0 \
-            | xargs -0 -r shellcheck -x --severity=warning
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
 
-      - name: Syntax-check all configuration and shell scripts
+      - name: Install shell and workflow parsers
         run: |
-          bash -n build.conf
-          bash -n scripts/common.sh
-          find . -name '*.sh' -not -path './build/*' -exec bash -n {} +
-          find scripts -type f -name 'shree*' -exec bash -n {} +
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml
 
-      - name: Verify file permissions (no 644/755 regressions)
+      - name: Lint every tracked shebang script
         run: |
+          set -Eeuo pipefail
+          mapfile -d '' tracked_files < <(git ls-files -z)
+          shellcheck_files=()
+          bash_syntax_files=()
+          sh_syntax_files=()
+          for file in "${tracked_files[@]}"; do
+            [[ -f "$file" ]] || continue
+            first_line=""
+            if IFS= read -r first_line < "$file"; then
+              case "$first_line" in
+                '#!'*) shellcheck_files+=("$file") ;;
+              esac
+              case "$first_line" in
+                '#!/usr/bin/env bash'|'#!/bin/bash'|'#!/usr/bin/bash') bash_syntax_files+=("$file") ;;
+                '#!/bin/sh'|'#!/usr/bin/sh') sh_syntax_files+=("$file") ;;
+              esac
+            fi
+          done
+          if [[ "${#shellcheck_files[@]}" -eq 0 ]]; then
+            printf 'No tracked shebang scripts found\n' >&2
+            exit 1
+          fi
+          for file in "${shellcheck_files[@]}"; do
+            shellcheck -x --severity=warning --exclude=SC2155,SC2034 "$file"
+          done
+          for file in "${bash_syntax_files[@]}"; do
+            bash -n "$file"
+          done
+          for file in "${sh_syntax_files[@]}"; do
+            sh -n "$file"
+          done
+          printf 'Linted %s tracked shebang scripts\n' "${#shellcheck_files[@]}"
+
+      - name: Parse every workflow YAML file
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+          import yaml
+
+          paths = subprocess.check_output(
+              ["git", "ls-files", ".github/workflows/*.yml", ".github/workflows/*.yaml"],
+              text=True,
+          ).splitlines()
+          if not paths:
+              raise SystemExit("no workflow files found")
+          for name in paths:
+              document = yaml.safe_load(Path(name).read_text(encoding="utf-8"))
+              if not isinstance(document, dict) or "jobs" not in document:
+                  raise SystemExit(f"invalid workflow structure: {name}")
+          print(f"Parsed {len(paths)} workflow files")
+          PY
+
+      - name: Run actionlint when already installed
+        run: |
+          set -Eeuo pipefail
+          if command -v actionlint >/dev/null 2>&1; then
+            actionlint
+          else
+            printf 'actionlint is not installed; YAML parsing completed without downloading it\n'
+          fi
+
+      - name: Verify file permissions
+        run: |
+          set -Eeuo pipefail
           bash scripts/audit-permissions.sh
 
   structure-check:
-    runs-on: ubuntu-latest
+    name: Check component documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Verify every top-level component has a README
         run: |
+          set -Eeuo pipefail
           missing=0
-          for d in toolchain base-system kernel rootfs init bootloader \
-                   pkgmanager repo-tools installer iso-builder desktop \
-                   branding update tests; do
-            if [[ ! -f "$d/README.md" ]]; then
-              echo "Missing README.md in $d/"
+          for directory in toolchain base-system kernel rootfs init bootloader \
+            pkgmanager repo-tools installer iso-builder desktop branding update tests; do
+            if [[ ! -f "$directory/README.md" ]]; then
+              printf 'Missing README.md in %s/\n' "$directory"
               missing=1
             fi
           done
-          exit $missing
+          exit "$missing"

@@ -10,25 +10,31 @@ source "$PROJECT_ROOT/scripts/common.sh"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
 ISO="${ISO:-${PROJECT_ROOT}/out/${DISTRO_ID}-${DISTRO_VERSION}.iso}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
-# The live ISO boots the assembled rootfs directly as its initramfs. That
-# archive is ~180 MB compressed and unpacks into the initrd tmpfs, so the
-# emulated machine needs about 1 GB of RAM before userspace can even start.
-# The timeout also covers TCG-only runners, where unpacking a rootfs-sized
-# cpio costs tens of seconds of emulated CPU time.
 TIMEOUT="${TIMEOUT:-180}"
-MEMORY="${MEMORY:-2048M}"
+MEMORY="${MEMORY:-1024M}"
 REQUIRE_ARTIFACTS="${REQUIRE_ARTIFACTS:-0}"
-NO_CLEANUP=false
+NO_CLEANUP="${NO_CLEANUP:-false}"
+source "$SCRIPT_DIR/qemu-common.sh"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --iso=*) ISO="${1#*=}"; shift ;;
     --iso) [ $# -ge 2 ] || shreeos_die "--iso requires a path"; ISO="$2"; shift 2 ;;
+    --memory=*) MEMORY="${1#*=}"; shift ;;
+    --memory) [ $# -ge 2 ] || shreeos_die "--memory requires a value"; MEMORY="$2"; shift 2 ;;
+    --timeout=*) TIMEOUT="${1#*=}"; shift ;;
+    --timeout) [ $# -ge 2 ] || shreeos_die "--timeout requires a value"; TIMEOUT="$2"; shift 2 ;;
     --no-cleanup) NO_CLEANUP=true; shift ;;
-    --help|-h) echo "Usage: boot-iso-bios.sh [--iso=<path>|--iso <path>] [--no-cleanup]"; exit 0 ;;
+    --help|-h) echo "Usage: boot-iso-bios.sh [--iso=<path>|--iso <path>] [--memory=SIZE] [--timeout=SECONDS] [--no-cleanup]"; exit 0 ;;
     *) shreeos_die "Unknown option: $1" ;;
   esac
 done
+
+case "${NO_CLEANUP,,}" in
+  1|true|yes|on) NO_CLEANUP=true ;;
+  0|false|no|off) NO_CLEANUP=false ;;
+  *) shreeos_die "Invalid NO_CLEANUP value: $NO_CLEANUP" ;;
+esac
 
 shreeos_step "QEMU BIOS ISO boot test"
 
@@ -44,47 +50,28 @@ if [ ! -s "$ISO" ]; then
 fi
 
 shreeos_ok "ISO: $ISO"
-LOG_FILE="$(mktemp /tmp/shreeos-qemu-bios.XXXXXX)"
+LOG_DIR="${LOG_DIR:-${PROJECT_ROOT}/build/logs}"
+mkdir -p "$LOG_DIR" || shreeos_die "Unable to create QEMU log directory: $LOG_DIR"
+LOG_FILE="$(mktemp "${LOG_DIR}/qemu-iso-bios.XXXXXX.log")"
 QEMU_PID=""
 
 cleanup_qemu() {
-  if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
-    kill "$QEMU_PID" 2>/dev/null || true
-    wait "$QEMU_PID" 2>/dev/null || true
-  fi
+  qemu_stop "${QEMU_PID:-}"
+  QEMU_PID=""
 }
-trap cleanup_qemu EXIT INT TERM
+trap cleanup_qemu EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-"$QEMU_BIN"   -cdrom "$ISO"   -boot d   -m "$MEMORY"   -nographic   -no-reboot   > "$LOG_FILE" 2>&1 &
-QEMU_PID=$!
-
-WAITED=0
-FOUND=false
-while [ "$WAITED" -lt "$TIMEOUT" ]; do
-  sleep 1
-  WAITED=$((WAITED + 1))
-  if grep -Fq "$MARKER_STRING" "$LOG_FILE" 2>/dev/null; then
-    FOUND=true
-    break
+qemu_start "$LOG_FILE" -cdrom "$ISO" -boot d
+if qemu_wait_for_marker "$LOG_FILE" "$QEMU_PID" "$TIMEOUT" "BIOS ISO"; then
+  cleanup_qemu
+  echo "  Complete log: $LOG_FILE"
+  if [ "$NO_CLEANUP" = true ]; then
+    echo "  NO_CLEANUP enabled; complete log retained"
   fi
-  kill -0 "$QEMU_PID" 2>/dev/null || break
-done
-
-cleanup_qemu
-QEMU_PID=""
-
-echo
-echo "--- QEMU Serial Output (last 30 lines) ---"
-tail -30 "$LOG_FILE" || true
-echo "--- End of output ---"
-
-if [ "$FOUND" = true ]; then
-  shreeos_ok "BIOS ISO boot test PASSED — marker found after ${WAITED}s"
-  if [ "$NO_CLEANUP" = false ]; then rm -f "$LOG_FILE"; else echo "  Log: $LOG_FILE"; fi
   exit 0
 fi
-
-shreeos_warn "BIOS ISO boot test FAILED — marker not found within ${TIMEOUT}s"
-echo "  Expected: $MARKER_STRING"
-echo "  Log:      $LOG_FILE"
+cleanup_qemu
+echo "  Complete log: $LOG_FILE"
 exit 1

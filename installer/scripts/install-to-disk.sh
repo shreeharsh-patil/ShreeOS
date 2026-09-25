@@ -99,6 +99,15 @@ if [[ "$TIMEZONE" == *".."* ]] || [[ "$TIMEZONE" == /* ]] || ! [[ "$TIMEZONE" =~
   shreeos_die "Invalid timezone specification '${TIMEZONE}'."
 fi
 
+if [ -n "$USERNAME" ]; then
+  if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+    shreeos_die "Invalid username '${USERNAME}'. Must match ^[a-z_][a-z0-9_-]{0,31}$."
+  fi
+  if [ -z "$CREDS_FILE" ]; then
+    shreeos_die "A username requires a credentials file with a non-empty user password."
+  fi
+fi
+
 if [ -n "$CREDS_FILE" ]; then
   if [ ! -f "$CREDS_FILE" ] || [ -L "$CREDS_FILE" ]; then
     shreeos_die "Credentials file must be a regular, non-symlink file."
@@ -118,6 +127,23 @@ if [ -n "$CREDS_FILE" ]; then
     shreeos_die "Credentials file has an empty root password."
   fi
   CREDS_ROOT_CHECK=""; unset CREDS_ROOT_CHECK
+  if [ "$CREDS_LINE_COUNT" -eq 2 ]; then
+    if [ -z "$USERNAME" ]; then
+      shreeos_die "A user password was supplied without --username."
+    fi
+    CREDS_USER_CHECK=$(sed -n '2p' "$CREDS_FILE")
+    if [ -z "$CREDS_USER_CHECK" ]; then
+      CREDS_USER_CHECK=""; unset CREDS_USER_CHECK
+      shreeos_die "Credentials file has an empty user password."
+    fi
+    CREDS_USER_CHECK=""; unset CREDS_USER_CHECK
+  elif [ -n "$USERNAME" ]; then
+    shreeos_die "A username requires a second, non-empty user password line."
+  fi
+fi
+
+if [ -n "$USERNAME" ] && [ ! -f "${SCRIPT_DIR}/configure-user.sh" ]; then
+  shreeos_die "Username configuration helper is missing: ${SCRIPT_DIR}/configure-user.sh."
 fi
 
 # If UEFI requested, require FAT formatting utility
@@ -129,13 +155,6 @@ fi
 
 if [ ! -b "$DISK" ] && [ ! -f "$DISK" ]; then
   shreeos_die "${DISK} is not a valid block device or disk image."
-fi
-
-# Partitioning, loop setup, filesystem creation, mounting and GRUB installation
-# all require real root privileges. Fail before touching the requested target
-# rather than failing half-way through an installation.
-if [ "$(id -u)" -ne 0 ]; then
-  shreeos_die "Installation requires root privileges. Re-run with sudo: sudo bash installer/scripts/install-to-disk.sh ..."
 fi
 
 # Complete every non-destructive preflight before creating a loop device,
@@ -152,22 +171,82 @@ elif [ ! -s "${ROOTFS_CPIO}" ]; then
 fi
 if [ ! -s "${BZIMAGE}" ]; then shreeos_die "Missing kernel artifact: ${BZIMAGE}"; fi
 if [ ! -s "${ROOTFS_CPIO}" ]; then shreeos_die "Missing initramfs artifact: ${ROOTFS_CPIO}"; fi
-shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip
+shreeos_require_cmd sfdisk losetup mkfs.ext4 mount umount grub-install blkid cpio gzip chown du lsblk realpath stat
 if [ ! -d "${STAGE_ROOT}" ] || [ ! "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
   if ! gzip -dc "${ROOTFS_CPIO}" | cpio -t --quiet | grep -qx "./usr/share/zoneinfo/${TIMEZONE}"; then
     shreeos_die "Timezone '${TIMEZONE}' is not present in the initramfs."
   fi
 fi
 
+if ! CANONICAL_DISK="$(realpath -- "$DISK" 2>/dev/null)"; then
+  shreeos_die "Unable to resolve target path safely: ${DISK}"
+fi
+if [ -f "$CANONICAL_DISK" ] && [ ! -b "$CANONICAL_DISK" ]; then
+  if ! EXISTING_LOOPS=$(losetup -j "$CANONICAL_DISK" 2>/dev/null); then
+    shreeos_die "Unable to inspect existing loop associations for ${DISK}; refusing to attach it."
+  fi
+  if [ -n "$EXISTING_LOOPS" ]; then
+    shreeos_die "Target disk image ${DISK} already has a loop association; refusing to reuse overlapping media."
+  fi
+fi
+
+if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
+  if ! ROOTFS_PAYLOAD_KB=$(du -sk -- "${STAGE_ROOT}" | awk '{print $1}'); then
+    shreeos_die "Unable to determine the staged rootfs payload size."
+  fi
+  if ! [[ "$ROOTFS_PAYLOAD_KB" =~ ^[0-9]+$ ]] || [ "$ROOTFS_PAYLOAD_KB" -le 0 ]; then
+    shreeos_die "Unable to determine a valid staged rootfs payload size."
+  fi
+  ROOTFS_PAYLOAD_BYTES=$((ROOTFS_PAYLOAD_KB * 1024))
+else
+  if ! ROOTFS_PAYLOAD_BYTES=$(gzip -dc "${ROOTFS_CPIO}" | wc -c | tr -d '[:space:]'); then
+    shreeos_die "Unable to determine the initramfs payload size."
+  fi
+fi
+if ! [[ "$ROOTFS_PAYLOAD_BYTES" =~ ^[0-9]+$ ]] || [ "$ROOTFS_PAYLOAD_BYTES" -le 0 ]; then
+  shreeos_die "Unable to determine a valid rootfs payload size."
+fi
+BZIMAGE_BYTES=$(stat -c '%s' -- "$BZIMAGE" 2>/dev/null || echo "")
+ROOTFS_CPIO_BYTES=$(stat -c '%s' -- "$ROOTFS_CPIO" 2>/dev/null || echo "")
+if ! [[ "$BZIMAGE_BYTES" =~ ^[0-9]+$ ]] || ! [[ "$ROOTFS_CPIO_BYTES" =~ ^[0-9]+$ ]]; then
+  shreeos_die "Unable to determine the installed boot payload size."
+fi
+ROOTFS_PAYLOAD_BYTES=$((ROOTFS_PAYLOAD_BYTES + BZIMAGE_BYTES + ROOTFS_CPIO_BYTES))
+
+ESP_SIZE_BYTES=$((512 * 1024 * 1024))
+SAFETY_MARGIN_BYTES=$((256 * 1024 * 1024))
+LAYOUT_OVERHEAD_BYTES=$((4 * 1024 * 1024))
+MIN_TARGET_BYTES=$((ESP_SIZE_BYTES + ROOTFS_PAYLOAD_BYTES + SAFETY_MARGIN_BYTES + LAYOUT_OVERHEAD_BYTES))
+
+if [ -f "$DISK" ]; then
+  TARGET_BYTES=$(stat -c '%s' -- "$DISK" 2>/dev/null || echo "")
+else
+  TARGET_BYTES=""
+  if command -v blockdev >/dev/null 2>&1; then
+    TARGET_BYTES=$(blockdev --getsize64 "$DISK" 2>/dev/null || echo "")
+  fi
+  if ! [[ "$TARGET_BYTES" =~ ^[0-9]+$ ]]; then
+    TARGET_BYTES=$(lsblk -bndo SIZE -- "$DISK" 2>/dev/null | awk 'NR == 1 {print $1}')
+  fi
+fi
+if ! [[ "$TARGET_BYTES" =~ ^[0-9]+$ ]] || [ "$TARGET_BYTES" -le 0 ]; then
+  shreeos_die "Unable to determine the target media size for ${DISK}."
+fi
+if [ "$TARGET_BYTES" -lt "$MIN_TARGET_BYTES" ]; then
+  shreeos_die "Target media is too small: ${TARGET_BYTES} bytes; at least ${MIN_TARGET_BYTES} bytes are required for the 512MiB ESP, rootfs payload, and safety margin."
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+  shreeos_die "Installation requires root privileges. Re-run with sudo: sudo bash installer/scripts/install-to-disk.sh ..."
+fi
+
 WORKING_DISK="$DISK"
 
 # If disk is regular file, attach loop device with partition scanning
 if [ -f "$DISK" ] && [ ! -b "$DISK" ]; then
-  if command -v losetup >/dev/null 2>&1; then
-    shreeos_log "Attaching raw disk image ${DISK} via loop device (with partition scanning)..."
-    LOOP_DEV=$(losetup -Pf --show "$DISK")
-    WORKING_DISK="$LOOP_DEV"
-  fi
+  shreeos_log "Attaching raw disk image ${DISK} via loop device (with partition scanning)..."
+  LOOP_DEV=$(losetup --nooverlap -Pf --show "$CANONICAL_DISK")
+  WORKING_DISK="$LOOP_DEV"
 fi
 
 shreeos_step "Installing ${DISTRO_NAME:-ShreeOS} to ${WORKING_DISK}"
@@ -242,11 +321,6 @@ shreeos_log "Mounting target filesystems"
 TARGET=$(mktemp -d /tmp/shreeos-target-XXXXXX)
 mount "$PART_ROOT" "$TARGET"
 
-if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "uefi" ]; then
-  mkdir -p "${TARGET}/boot/efi"
-  mount "$PART_ESP" "${TARGET}/boot/efi"
-fi
-
 # 4. Copy rootfs payload
 shreeos_log "Copying root filesystem contents..."
 if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
@@ -270,6 +344,13 @@ if [ ! -s "${TARGET}/boot/bzImage" ] || [ ! -s "${TARGET}/boot/initramfs.cpio.gz
   shreeos_die "Failed to install required kernel or initramfs boot artifact."
 fi
 
+chown -R root:root "${TARGET}"
+
+if [ "$BOOT_MODE" = "both" ] || [ "$BOOT_MODE" = "uefi" ]; then
+  mkdir -p "${TARGET}/boot/efi"
+  mount "$PART_ESP" "${TARGET}/boot/efi"
+fi
+
 # 5. Configure system identity, timezone and credentials
 shreeos_log "Configuring system identity and credentials..."
 mkdir -p "${TARGET}/etc"
@@ -284,7 +365,10 @@ ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${TARGET}/etc/localtime"
 # Read root & user passwords from secure credential file if provided
 if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
   ROOT_PW=$(sed -n '1p' "$CREDS_FILE")
-  USER_PW=$(sed -n '2p' "$CREDS_FILE")
+  USER_PW=""
+  if [ "$CREDS_LINE_COUNT" -ge 2 ]; then
+    USER_PW=$(sed -n '2p' "$CREDS_FILE")
+  fi
 
   if [ -n "$ROOT_PW" ]; then
     SALT="$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)"
@@ -311,7 +395,7 @@ if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
     chmod 600 "${TARGET}/etc/shadow"
   fi
 
-  if [ -n "${USERNAME}" ] && [ -f "${SCRIPT_DIR}/configure-user.sh" ]; then
+  if [ -n "${USERNAME}" ]; then
     USER_TMP_CRED=$(mktemp /tmp/user-cred-XXXXXX)
     chmod 600 "$USER_TMP_CRED"
     printf "%s" "$USER_PW" > "$USER_TMP_CRED"

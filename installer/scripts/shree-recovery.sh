@@ -125,14 +125,14 @@ while true; do
           | gzip -9 > "$INITRAMFS_TMP"
       ) && gzip -t "$INITRAMFS_TMP" 2>/dev/null; then
         INIT_LIST=$(gzip -dc "$INITRAMFS_TMP" | cpio -t --quiet 2>/dev/null || true)
-        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?(init|sbin/init)$'; then
+        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?init$'; then
           chmod 0644 "$INITRAMFS_TMP"
           mv -f "$INITRAMFS_TMP" "$INITRAMFS_TARGET"
           sync
           echo "Successfully rebuilt ${INITRAMFS_TARGET} ($(du -h "$INITRAMFS_TARGET" | cut -f1))"
         else
           rm -f "$INITRAMFS_TMP"
-          echo "ERROR: rebuilt initramfs does not contain an init entry; existing archive was preserved."
+          echo "ERROR: rebuilt initramfs does not contain an /init entry; existing archive was preserved."
         fi
       else
         rm -f "$INITRAMFS_TMP"
@@ -158,11 +158,15 @@ while true; do
 set default=0
 set timeout=5
 
+serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1
+
 insmod all_video
 insmod font
 insmod gfxterm
 set gfxmode=auto
 terminal_output gfxterm
+terminal_input --append serial console
+terminal_output --append serial console
 
 insmod gpt
 insmod part_gpt
@@ -172,17 +176,17 @@ insmod fat
 
 menuentry "ShreeOS (Repaired Boot)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait quiet
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8
 }
 
 menuentry "ShreeOS (Recovery Mode)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.mode=recovery
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 single shreeos.mode=recovery
 }
 
 menuentry "ShreeOS Previous Working State (SafeUpdate Rollback)" {
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
-    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait single shreeos.rollback=1
+    linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 single shreeos.rollback=1
 }
 GRUBEOF
         chmod 0644 /boot/grub/grub.cfg

@@ -2,41 +2,83 @@ name: Toolchain
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
     paths:
       - 'toolchain/**'
       - 'build.conf'
       - 'scripts/common.sh'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build and smoke-test toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Initialize build logs
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build-logs
+          printf 'ref=%s\nsha=%s\n' "$GITHUB_REF" "$GITHUB_SHA" > build-logs/context.txt
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bison flex gawk \
-            texinfo curl patch bzip2 xz-utils gperf libgmp-dev libmpfr-dev libmpc-dev pkg-config
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/dependencies.log) 2>&1
+          bash scripts/install-build-deps-apt.sh
 
-      - name: Cache toolchain & sysroot
+      - name: Restore exact toolchain cache
         id: cache-toolchain
-        uses: actions/cache@v5
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: |
             build/tools
             build/sysroot
-          key: toolchain-sysroot-${{ hashFiles('build.conf', 'scripts/common.sh', 'toolchain/scripts/**', 'toolchain/patches/**') }}
-          restore-keys: |
-            toolchain-sysroot-
+          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
 
-      - name: Build toolchain
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+      - name: Build or validate toolchain
+        env:
+          CACHE_HIT: ${{ steps.cache-toolchain.outputs.cache-hit }}
         run: |
-          bash toolchain/scripts/build-all.sh --skip-tests
-
-      - name: Verify cross-compiler
-        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/toolchain.log) 2>&1
+          if [[ "${CACHE_HIT}" = "true" ]]; then
+            bash scripts/verify-stage.sh toolchain
+          else
+            make toolchain
+          fi
+          bash scripts/verify-stage.sh toolchain
           bash tests/smoke/test-toolchain.sh
+          bash tests/smoke/run-all.sh
+          mkdir -p build/.markers
+          touch build/.markers/.toolchain
+
+      - name: Upload build log on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-toolchain-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-logs/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7

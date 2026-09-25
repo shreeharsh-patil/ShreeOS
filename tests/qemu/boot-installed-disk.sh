@@ -61,7 +61,10 @@ fi
 [ -s "$DISK_IMAGE" ] || shreeos_die "Disk image not found or empty: $DISK_IMAGE"
 shreeos_step "Booting disk image: $DISK_IMAGE"
 
-LOG_FILE="$(mktemp /tmp/shreeos-qemu-disk.XXXXXX)"
+# Persist serial logs under build/logs so CI artifacts can capture boot failures.
+LOG_DIR="${PROJECT_ROOT}/build/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/qemu-installed-disk-serial.log"
 QEMU_PID=""
 cleanup_qemu() {
   if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then

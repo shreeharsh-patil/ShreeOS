@@ -18,7 +18,11 @@ mkdir -p "$DEVDIR"
 
 # Create essential static character device nodes if running with mknod privileges
 if command -v mknod &>/dev/null; then
-  [ -e "${DEVDIR}/console" ] || mknod -m 622 "${DEVDIR}/console" c 5 1 2>/dev/null || true
+  if [ -L "${DEVDIR}/console" ] || { [ -e "${DEVDIR}/console" ] && [ ! -c "${DEVDIR}/console" ]; }; then
+    rm -f -- "${DEVDIR}/console"
+  fi
+  [ -e "${DEVDIR}/console" ] || mknod -m 600 "${DEVDIR}/console" c 5 1 2>/dev/null || true
+  [ ! -e "${DEVDIR}/console" ] || chmod 600 "${DEVDIR}/console"
   [ -e "${DEVDIR}/null" ]    || mknod -m 666 "${DEVDIR}/null"    c 1 3 2>/dev/null || true
   [ -e "${DEVDIR}/zero" ]    || mknod -m 666 "${DEVDIR}/zero"    c 1 5 2>/dev/null || true
   [ -e "${DEVDIR}/tty" ]     || mknod -m 666 "${DEVDIR}/tty"     c 5 0 2>/dev/null || true
