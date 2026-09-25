@@ -1,5 +1,5 @@
-# ShreeOS desktop profile: a polished GNOME workstation with an Ubuntu-like
-# workflow, built entirely from Debian 13 packages.
+# ShreeOS desktop profile: a polished GNOME workstation with a distinct
+# ShreeOS workflow, built entirely from Debian 13 packages.
 task-gnome-desktop
 live-boot
 live-config
@@ -20,10 +20,6 @@ power-profiles-daemon
 gnome-tweaks
 gnome-shell-extension-dashtodock
 gnome-shell-extension-appindicator
-yaru-theme-gtk
-yaru-theme-icon
-yaru-theme-sound
-yaru-theme-gnome-shell
 fonts-noto
 fonts-noto-color-emoji
 firefox-esr
