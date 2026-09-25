@@ -84,7 +84,11 @@ if command -v readelf >/dev/null 2>&1 && readelf -d "$BUILDDIR/busybox" 2>/dev/n
   lumen_die "BusyBox unexpectedly contains dynamic runtime dependencies"
 fi
 
-install -Dm755 "$BUILDDIR/busybox" "${LUMEN_STAGE_ROOT}/usr/bin/busybox"
+# install(1) with -D creates usr/bin for the binary, but the compatibility
+# /sbin link below has its own parent directory. A fresh stage root does not
+# necessarily contain /sbin yet, so create both destinations explicitly.
+install -d -m755 "${LUMEN_STAGE_ROOT}/usr/bin" "${LUMEN_STAGE_ROOT}/sbin"
+install -m755 "$BUILDDIR/busybox" "${LUMEN_STAGE_ROOT}/usr/bin/busybox"
 for applet in ip ifconfig route udhcpc mdev modprobe modinfo insmod rmmod lsmod ping netstat; do
   ln -sfn busybox "${LUMEN_STAGE_ROOT}/usr/bin/${applet}"
 done
