@@ -109,7 +109,17 @@ shreeos_fetch() {
 
   shreeos_die "Checksum mismatch for ${dest}: expected ${expected_sha}, got ${actual_sha}"
 }
-lumen_fetch() { shreeos_fetch "$@"; }
+
+# Most callers want fetch progress on stdout. Native desktop package preparation
+# captures a function's stdout to obtain an extracted source path; in that mode
+# send fetch/status chatter to stderr so it cannot corrupt the captured path.
+lumen_fetch() {
+  if [[ "${LUMEN_FETCH_STDERR:-0}" == "1" ]]; then
+    shreeos_fetch "$@" >&2
+  else
+    shreeos_fetch "$@"
+  fi
+}
 
 # shreeos_step <description> -- runs and logs a labeled build step
 shreeos_step() {
