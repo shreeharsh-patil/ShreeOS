@@ -33,24 +33,22 @@ else
   shreeos_die()  { printf '[ fail  ] %s\n' "$*" >&2; exit 1; }
 fi
 
-# Compatibility aliases retained for older stage scripts while the project
-# migrates from the former Lumen naming to ShreeOS helpers.
+# Legacy aliases
 lumen_log()  { shreeos_log "$@"; }
 lumen_ok()   { shreeos_ok "$@"; }
 lumen_warn() { shreeos_warn "$@"; }
 lumen_die()  { shreeos_die "$@"; }
 
 # shreeos_source_candidates <url>
-# Prints trusted HTTPS candidates for a pinned upstream source. GNU archives get
-# redundant mirrors because ftp.gnu.org can occasionally be unreachable from CI.
-# Integrity is still enforced exclusively by the pinned SHA-256 digest.
+# Prints trusted HTTPS candidates for a pinned upstream source. GNU archives use
+# independent mirrors first because ftp.gnu.org can be intermittently unreachable
+# from hosted CI runners. Integrity is always enforced by the pinned SHA-256.
 shreeos_source_candidates() {
-  local url="$1" gnu_path
-
-  if [[ "$url" =~ ^https://ftp\.gnu\.org/gnu/(.+)$ ]]; then
-    gnu_path="${BASH_REMATCH[1]}"
-    printf 'https://ftpmirror.gnu.org/%s\n' "$gnu_path"
-    printf 'https://mirrors.kernel.org/gnu/%s\n' "$gnu_path"
+  local url="$1" rel
+  if [[ "$url" == https://ftp.gnu.org/gnu/* ]]; then
+    rel="${url#https://ftp.gnu.org/gnu/}"
+    printf 'https://ftpmirror.gnu.org/%s\n' "$rel"
+    printf 'https://mirrors.kernel.org/gnu/%s\n' "$rel"
     printf '%s\n' "$url"
   else
     printf '%s\n' "$url"
@@ -62,8 +60,9 @@ shreeos_source_candidates() {
 # shared source cache. Invalid cached/downloaded files are never retained.
 shreeos_fetch() {
   local url="$1" dest="$2" expected_sha="$3"
-  local actual_sha tmp attempt candidate_url
-  local -a source_urls=()
+  local actual_sha="" tmp attempt candidate
+  local downloaded=0
+  local -a urls=()
 
   if [[ ! "${expected_sha}" =~ ^[0-9a-fA-F]{64}$ ]]; then
     shreeos_die "Invalid SHA-256 pin for $(basename "${dest}"): ${expected_sha}"
@@ -86,37 +85,38 @@ shreeos_fetch() {
     rm -f -- "${dest}"
   fi
 
+  mapfile -t urls < <(shreeos_source_candidates "$url")
   tmp="${dest}.part.${BASHPID}"
   rm -f -- "${tmp}"
-  mapfile -t source_urls < <(shreeos_source_candidates "$url")
 
-  for candidate_url in "${source_urls[@]}"; do
+  for candidate in "${urls[@]}"; do
     for attempt in 1 2; do
-      shreeos_log "Fetching $(basename "${dest}") from ${candidate_url} (attempt ${attempt}/2) ..."
-      local -a curl_args=(--fail --location --retry 2 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 600 --output "${tmp}")
-      if [[ "${candidate_url}" == file://* ]]; then
+      shreeos_log "Fetching $(basename "${dest}") from ${candidate} (attempt ${attempt}/2) ..."
+      local -a curl_args=(--fail --location --retry 2 --retry-delay 2 --retry-all-errors --connect-timeout 15 --max-time 600 --output "${tmp}")
+      if [[ "${candidate}" == file://* ]]; then
         if [[ "${SHREEOS_ALLOW_FILE_FETCH:-0}" != "1" ]]; then
           rm -f -- "${tmp}"
           shreeos_die "file:// source URLs are allowed only in isolated tests"
         fi
       else
-        if [[ "${candidate_url}" != https://* ]]; then
+        if [[ "${candidate}" != https://* ]]; then
           rm -f -- "${tmp}"
-          shreeos_die "Only HTTPS source URLs are allowed: ${candidate_url}"
+          shreeos_die "Only HTTPS source URLs are allowed: ${candidate}"
         fi
         curl_args+=(--proto '=https' --proto-redir '=https')
       fi
 
-      if ! curl "${curl_args[@]}" "${candidate_url}"; then
+      if ! curl "${curl_args[@]}" "${candidate}"; then
         rm -f -- "${tmp}"
         if (( attempt < 2 )); then
-          shreeos_warn "Download failed; retrying source fetch from ${candidate_url}"
-          continue
+          shreeos_warn "Download failed; retrying source fetch from ${candidate}"
+        else
+          shreeos_warn "Source endpoint unavailable: ${candidate}"
         fi
-        shreeos_warn "Source unavailable from ${candidate_url}; trying the next trusted candidate"
-        break
+        continue
       fi
 
+      downloaded=1
       actual_sha="$(sha256sum "${tmp}" | awk '{print $1}')"
       if [[ "${actual_sha}" == "${expected_sha}" ]]; then
         mv -f -- "${tmp}" "${dest}"
@@ -125,15 +125,19 @@ shreeos_fetch() {
       fi
 
       rm -f -- "${tmp}"
-      shreeos_warn "Checksum mismatch from ${candidate_url} for $(basename "${dest}"); refusing this download"
-      break
+      shreeos_warn "Downloaded checksum mismatch for $(basename "${dest}") from ${candidate}; trying another attempt or mirror"
     done
   done
 
-  rm -f -- "${tmp}"
-  shreeos_die "Failed to download a SHA-256 verified copy of ${url} from all trusted candidates"
+  if (( downloaded == 0 )); then
+    shreeos_die "Failed to download ${url} from all configured HTTPS endpoints"
+  fi
+  shreeos_die "Checksum mismatch for ${dest}: expected ${expected_sha}, got ${actual_sha}"
 }
-lumen_fetch() { shreeos_fetch "$@"; }
+
+# Fetch/status output belongs on stderr so callers may safely capture stdout
+# from helper functions that prepare and return source-directory paths.
+lumen_fetch() { shreeos_fetch "$@" >&2; }
 
 # shreeos_step <description> -- runs and logs a labeled build step
 shreeos_step() {
