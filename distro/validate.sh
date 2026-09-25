@@ -29,7 +29,7 @@ xorriso -osirrox on -indev "${ISO}" -extract /live/filesystem.squashfs "${TMP}/f
 
 assert_file() {
   local path="$1"
-  unsquashfs -ll "${TMP}/filesystem.squashfs" "${path#/}" 2>/dev/null | grep -Fq "${path#/}" || {
+  unsquashfs -ll "${TMP}/filesystem.squashfs" "${path#/}" 2>/dev/null | grep -F "${path#/}" >/dev/null || {
     echo "error: live filesystem missing ${path}" >&2
     exit 1
   }
