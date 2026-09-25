@@ -32,6 +32,7 @@ done
 
 if [ "$profile" = "desktop" ]; then
   bash scripts/verify-sources.sh --fetch --component=desktop
+  bash desktop/graphics/verify-sources.sh
   make PROFILE="$profile" toolchain
   make PROFILE="$profile" base-system
 fi
