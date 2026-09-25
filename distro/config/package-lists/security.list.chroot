@@ -1,6 +1,8 @@
 # Security and diagnostics profile inspired by Kali's tool categories.
 # These packages come from Debian repositories; ShreeOS intentionally does not
-# mix Kali repositories into Debian stable.
+# mix Kali repositories into Debian stable. Tools unavailable in Debian stable
+# should later be packaged in a ShreeOS-owned repository rather than importing
+# Kali repositories into the base system.
 nmap
 wireshark
 tshark
@@ -12,7 +14,6 @@ john
 hashcat
 hydra
 sqlmap
-nikto
 gobuster
 dirb
 masscan
