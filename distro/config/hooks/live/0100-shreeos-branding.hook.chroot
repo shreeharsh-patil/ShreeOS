@@ -25,12 +25,18 @@ EOF
 printf 'ShreeOS 0.1 \\n \\l\n' >/etc/issue
 printf 'shreeos\n' >/etc/hostname
 
-# Brand the desktop installer launcher while retaining Debian Installer itself.
-if [ -f /usr/share/applications/debian-installer-launcher.desktop ]; then
+# Brand Debian Installer while retaining Debian's tested live-installer stack.
+# Ship both an Applications-menu entry and a Desktop launcher for the live user.
+INSTALLER_DESKTOP=/usr/share/applications/debian-installer-launcher.desktop
+if [ -f "${INSTALLER_DESKTOP}" ]; then
   sed -i \
     -e 's/^Name=.*/Name=Install ShreeOS/' \
     -e 's/^GenericName=.*/GenericName=Install ShreeOS to disk/' \
-    /usr/share/applications/debian-installer-launcher.desktop
+    "${INSTALLER_DESKTOP}"
+
+  mkdir -p /etc/skel/Desktop
+  cp "${INSTALLER_DESKTOP}" '/etc/skel/Desktop/Install ShreeOS.desktop'
+  chmod 0755 '/etc/skel/Desktop/Install ShreeOS.desktop'
 fi
 
 # System-wide GNOME defaults. Users can override every setting normally.
