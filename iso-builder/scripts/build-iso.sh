@@ -24,15 +24,25 @@ LUMEN_ROOT_DIR="$(cd "$ISOBUILDER_DIR/.." && pwd)"
 source "$LUMEN_ROOT_DIR/build.conf"
 source "$LUMEN_ROOT_DIR/scripts/common.sh"
 
-NO_CLEANUP=false
+NO_CLEANUP="${NO_CLEANUP:-false}"
+CMDLINE_EXTRA="${CMDLINE_EXTRA:-}"
 
 for arg in "$@"; do
   case "$arg" in
     --no-cleanup) NO_CLEANUP=true ;;
-    --help|-h) echo "Usage: build-iso.sh [--no-cleanup]"; exit 0 ;;
+    --cmdline=*) CMDLINE_EXTRA="${arg#*=}" ;;
+    --cmdline) [ $# -ge 2 ] || lumen_die "--cmdline requires a value"; CMDLINE_EXTRA="$2"; shift ;;
+    --help|-h) echo "Usage: build-iso.sh [--no-cleanup] [--cmdline=<kernel-arguments>]"; exit 0 ;;
     *) lumen_die "Unknown option: $arg" ;;
   esac
+  shift
 done
+
+case "${NO_CLEANUP,,}" in
+  1|true|yes|on) NO_CLEANUP=true ;;
+  0|false|no|off) NO_CLEANUP=false ;;
+  *) lumen_die "Invalid NO_CLEANUP value: $NO_CLEANUP" ;;
+esac
 
 lumen_require_cmd xorriso
 
@@ -61,7 +71,7 @@ cp "$INITRD" "${ISO_STAGING}/boot/initramfs.cpio.gz"
 shreeos_ok "Kernel and initramfs copied to staging"
 
 # 4. Install GRUB2
-bash "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/bootloader/scripts/install-grub-iso.sh" "$ISO_STAGING"
+bash "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/bootloader/scripts/install-grub-iso.sh" "$ISO_STAGING" --cmdline="$CMDLINE_EXTRA"
 
 # 5. Build hybrid ISO with xorriso
 lumen_step "Creating hybrid ISO with xorriso"
@@ -132,8 +142,8 @@ echo "  Bootloader:   GRUB2 (BIOS + UEFI)"
 echo "============================================"
 echo ""
 echo "To boot in QEMU (BIOS):"
-echo "  qemu-system-x86_64 -cdrom ${ISO_OUT} -boot d -m 256M -nographic"
+echo "  qemu-system-x86_64 -cdrom ${ISO_OUT} -boot d -m 1024M -nographic"
 echo ""
 echo "To boot in QEMU (UEFI):"
-echo "  qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd -cdrom ${ISO_OUT} -boot d -m 256M -nographic"
+echo "  qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd -cdrom ${ISO_OUT} -boot d -m 1024M -nographic"
 echo ""

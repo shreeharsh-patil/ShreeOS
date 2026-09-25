@@ -22,6 +22,27 @@ source "$LUMEN_ROOT_DIR/scripts/common.sh"
 SKIP_INIT=false
 SKIP_ARCHIVE=false
 
+REQUIRED_SERVICES=(
+  00-sysinit.conf
+  10-hostname.conf
+  20-network.conf
+  30-shreed.conf
+  90-console.conf
+)
+
+REQUIRED_EXECUTABLES=(
+  init
+  sbin/init
+  sbin/initctl
+  usr/bin/initctl
+  sbin/shree-auth
+  usr/bin/shree-auth
+  bin/lpm
+  usr/bin/lpm
+  usr/sbin/shreed
+  usr/bin/shreedctl
+)
+
 for arg in "$@"; do
   case "$arg" in
     --skip-init)    SKIP_INIT=true ;;
@@ -64,64 +85,66 @@ fi
 if [ "$SKIP_INIT" = false ]; then
   shreeos_step "Building custom init and initctl"
   export CROSS_COMPILE="${SHREEOS_TARGET_TRIPLET:-${LUMEN_TARGET_TRIPLET}}-"
-  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src" clean all
-  if [ ! -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/init" ]; then
-    shreeos_die "init build failed"
-  fi
+  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src" all
+  for binary in init initctl shree-auth; do
+    [ -s "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/${binary}" ] || \
+      shreeos_die "Missing required init build output: ${binary}"
+  done
+
   mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin"
+  mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin"
   mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/etc/services.d"
 
   cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/init" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init"
   chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init"
-  shreeos_ok "Installed init to /sbin/init"
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/initctl"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/initctl"
+  shreeos_ok "Installed init and initctl"
 
-  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" ]; then
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
-    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/initctl"
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/initctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/initctl" 2>/dev/null || true
-    shreeos_ok "Installed initctl to /sbin/initctl"
-  fi
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth"
+  chmod 4755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth"
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/shree-auth"
+  chmod 4755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/shree-auth"
+  shreeos_ok "Installed shree-auth"
 
-  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" ]; then
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth"
-    chmod 4755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth" 2>/dev/null || chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-auth"
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/src/shree-auth" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/shree-auth" 2>/dev/null || true
-    shreeos_ok "Installed shree-auth to /usr/bin/shree-auth"
-  fi
-
-  if [ -d "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services" ]; then
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services/"*.conf "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/etc/services.d/" 2>/dev/null || true
-    shreeos_ok "Installed service definitions to /etc/services.d"
-  fi
+  for service in "${REQUIRED_SERVICES[@]}"; do
+    [ -s "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services/${service}" ] || \
+      shreeos_die "Missing required service definition: ${service}"
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/init/services/${service}" \
+      "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/etc/services.d/${service}"
+  done
+  shreeos_ok "Installed service definitions to /etc/services.d"
 
   shreeos_step "Building ShreeOS hardware service"
-  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware" clean all
-  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreed" ]; then
-    mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreed" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
-    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreedctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
-    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
-    shreeos_ok "Installed shreed and shreedctl"
-  else
-    shreeos_die "shreed build failed"
-  fi
+  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware" all
+  for binary in shreed shreedctl; do
+    [ -s "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/${binary}" ] || \
+      shreeos_die "Missing required hardware build output: ${binary}"
+  done
+  mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin"
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreed" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/sbin/shreed"
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/shreedctl" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreedctl"
+  shreeos_ok "Installed shreed and shreedctl"
 
   # 3b. Compile and install LPM package manager
   shreeos_step "Building LPM package manager"
-  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src" clean all
+  make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src" all
+  [ -s "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src/lpm" ] || \
+    shreeos_die "Missing required package-manager build output: lpm"
   mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin"
   mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/bin"
   mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/var/lib/lpm/installed"
   mkdir -p "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/var/cache/lpm/pkg"
 
-  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src/lpm" ]; then
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src/lpm" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/lpm"
-    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/lpm"
-    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src/lpm" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/bin/lpm"
-    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/bin/lpm"
-    shreeos_ok "Installed lpm to /usr/bin/lpm"
-  fi
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src/lpm" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/lpm"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/lpm"
+  cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/pkgmanager/src/lpm" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/bin/lpm"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/bin/lpm"
+  shreeos_ok "Installed lpm to /usr/bin/lpm"
 
   # 3c. Install system management tools
   for tool in shreectl shree-doctor shreeinfo; do
@@ -152,9 +175,8 @@ if [ "$SKIP_INIT" = false ]; then
     chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-recovery"
   fi
 else
-  if [ ! -f "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init" ]; then
+  [ -s "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init" ] || \
     shreeos_die "No init binary at ${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init (use --skip-init only if it already exists)"
-  fi
 fi
 
 # Linux executes /init from an initramfs.  This must follow the custom-init
@@ -166,6 +188,15 @@ ln -sfn sbin/init "${LUMEN_STAGE_ROOT}/init"
 if [ ! -L "${LUMEN_STAGE_ROOT}/init" ] || [ "$(readlink "${LUMEN_STAGE_ROOT}/init")" != "sbin/init" ]; then
   lumen_die "Could not create the required relative initramfs /init -> sbin/init link."
 fi
+
+for path in "${REQUIRED_EXECUTABLES[@]}"; do
+  [ -s "${LUMEN_STAGE_ROOT}/${path}" ] && [ -x "${LUMEN_STAGE_ROOT}/${path}" ] || \
+    lumen_die "Missing required rootfs executable output: /${path}"
+done
+for service in "${REQUIRED_SERVICES[@]}"; do
+  [ -s "${LUMEN_STAGE_ROOT}/etc/services.d/${service}" ] || \
+    lumen_die "Missing required rootfs service output: /etc/services.d/${service}"
+done
 
 # 4. Verify base system essentials
 if ! grep -q '^shree-hardware:' "${LUMEN_STAGE_ROOT}/etc/group" 2>/dev/null; then
@@ -191,14 +222,43 @@ for rel in lib lib64 usr/lib usr/lib64; do
 done
 [ "$runtime_dirs" -gt 0 ] || lumen_die "No target runtime library directories found in ${LUMEN_SYSROOT}"
 
+# glibc records /lib64/ld-linux-x86-64.so.2 as the ELF interpreter of every
+# dynamically linked target binary, but the toolchain installs the loader itself
+# under /usr/lib because the sysroot is prefixed with /usr. Without these
+# compatibility links the kernel cannot open the interpreter, so each dynamic
+# binary (bash, coreutils, ...) fails to exec with ENOENT (shell exit code 127).
+shreeos_step "Linking the target dynamic loader into the rootfs"
+loader=""
+for candidate in \
+  "${LUMEN_STAGE_ROOT}/lib64/ld-linux-x86-64.so.2" \
+  "${LUMEN_STAGE_ROOT}/lib/ld-linux-x86-64.so.2" \
+  "${LUMEN_STAGE_ROOT}/usr/lib/ld-linux-x86-64.so.2" \
+  "${LUMEN_STAGE_ROOT}/usr/lib/ld-linux.so.2"
+do
+  if [ -e "$candidate" ]; then
+    loader="$candidate"
+    break
+  fi
+done
+[ -n "$loader" ] || lumen_die "Target dynamic loader was not staged from the sysroot"
+
+loader_name="$(basename "$loader")"
+loader_rel="${loader#"${LUMEN_STAGE_ROOT}/"}"
+for loader_dir in lib64 lib; do
+  loader_link="${LUMEN_STAGE_ROOT}/${loader_dir}/${loader_name}"
+  [ -e "$loader_link" ] || ln -sfn "../${loader_rel}" "$loader_link"
+  shreeos_ok "Target loader reachable at /${loader_dir}/${loader_name}"
+done
+
 if ! compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/libc.so*" >/dev/null && \
    ! compgen -G "${LUMEN_STAGE_ROOT}/lib/libc.so*" >/dev/null; then
   lumen_die "Target libc runtime is missing from the assembled rootfs"
 fi
-if ! compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/ld-linux*.so*" >/dev/null && \
-   ! compgen -G "${LUMEN_STAGE_ROOT}/lib/ld-linux*.so*" >/dev/null && \
-   ! compgen -G "${LUMEN_STAGE_ROOT}/lib64/ld-linux*.so*" >/dev/null; then
-  lumen_die "Target dynamic loader is missing from the assembled rootfs"
+# Target binaries only record /lib64/ld-linux-x86-64.so.2 (or /lib/...) in
+# PT_INTERP, so one of those paths must resolve in the assembled rootfs.
+if ! compgen -G "${LUMEN_STAGE_ROOT}/lib64/ld-linux*.so*" >/dev/null && \
+   ! compgen -G "${LUMEN_STAGE_ROOT}/lib/ld-linux*.so*" >/dev/null; then
+  lumen_die "Target dynamic loader is missing from the assembled rootfs (/lib64 and /lib are the interpreter paths target binaries use)"
 fi
 
 # 5. Verify base system essentials
@@ -217,17 +277,69 @@ bash "${SCRIPT_DIR}/populate-devices.sh" "${LUMEN_STAGE_ROOT}"
 # 7. Package as cpio archive for QEMU
 if [ "$SKIP_ARCHIVE" = false ]; then
   lumen_step "Packaging rootfs as cpio archive"
+  lumen_require_cmd cpio find sort gzip mktemp stat
+  mkdir -p "${LUMEN_BUILD_DIR}"
   ROOTFS_ARCHIVE="${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
-  (
+  archive_tmp=""
+  archive_list=""
+
+  cleanup_archive() {
+    if [ -n "$archive_tmp" ]; then
+      rm -f -- "$archive_tmp"
+    fi
+    if [ -n "$archive_list" ]; then
+      rm -f -- "$archive_list"
+    fi
+  }
+  trap cleanup_archive EXIT
+  archive_tmp="$(mktemp "${ROOTFS_ARCHIVE}.tmp.XXXXXX")"
+
+  if ! (
     cd "${LUMEN_STAGE_ROOT}"
-    find . | cpio -o -H newc --quiet | gzip -n > "${ROOTFS_ARCHIVE}"
-  )
-  archive_list="$(gzip -dc "${ROOTFS_ARCHIVE}" | cpio -t --quiet)"
-  if ! echo "$archive_list" | grep -E -qx '(\./)?init' || \
-     ! echo "$archive_list" | grep -E -qx '(\./)?sbin/init'; then
-    lumen_die "Initramfs boot assertion failed: expected /init and /sbin/init."
+    find . -print0 | LC_ALL=C sort -z | \
+      cpio --null --create --format=newc --owner=0:0 --reproducible --quiet | \
+      gzip -n -c
+  ) > "$archive_tmp"; then
+    lumen_die "Initramfs archive creation failed"
   fi
-  lumen_ok "Rootfs archive: ${ROOTFS_ARCHIVE}"
+
+  if ! gzip -t -- "$archive_tmp"; then
+    lumen_die "Initramfs archive integrity check failed: gzip validation failed"
+  fi
+  if ! archive_size="$(stat -c '%s' -- "$archive_tmp")"; then
+    lumen_die "Initramfs archive size check failed: could not read ${ROOTFS_ARCHIVE}"
+  fi
+  if [ "$archive_size" -lt 1024 ]; then
+    lumen_die "Initramfs archive size check failed: ${archive_size} bytes is below the 1024-byte minimum"
+  fi
+
+  archive_list="$(mktemp "${LUMEN_BUILD_DIR}/.initramfs-list.XXXXXX")"
+  if ! gzip -dc -- "$archive_tmp" | cpio --list --quiet > "$archive_list"; then
+    lumen_die "Initramfs archive integrity check failed: cpio validation failed"
+  fi
+
+  required_entries=("${REQUIRED_EXECUTABLES[@]}")
+  for service in "${REQUIRED_SERVICES[@]}"; do
+    required_entries+=("etc/services.d/${service}")
+  done
+  missing_entries=()
+  for entry in "${required_entries[@]}"; do
+    if ! grep -Fqx -- "$entry" "$archive_list" && \
+       ! grep -Fqx -- "./${entry}" "$archive_list" && \
+       ! grep -Fqx -- "/${entry}" "$archive_list"; then
+      missing_entries+=("/${entry}")
+    fi
+  done
+  if [ "${#missing_entries[@]}" -gt 0 ]; then
+    lumen_die "Initramfs required-entry check failed: missing ${missing_entries[*]}"
+  fi
+
+  mv -f -- "$archive_tmp" "$ROOTFS_ARCHIVE"
+  archive_tmp=""
+  rm -f -- "$archive_list"
+  archive_list=""
+  trap - EXIT
+  lumen_ok "Rootfs archive: ${ROOTFS_ARCHIVE} (${archive_size} bytes)"
 fi
 
 # 8. Summary
