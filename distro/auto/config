@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+# Keep the release build deterministic and based on Debian stable. ShreeOS uses
+# Debian packages as a derivative rather than mixing Ubuntu and Kali archives.
+lb config noauto \
+  --mode debian \
+  --distribution trixie \
+  --architecture amd64 \
+  --binary-image iso-hybrid \
+  --archive-areas "main contrib non-free-firmware" \
+  --debian-installer live \
+  --debian-installer-gui true \
+  --bootloaders "syslinux grub-efi" \
+  --bootappend-live "boot=live components quiet splash username=shree hostname=shreeos locales=en_US.UTF-8 keyboard-layouts=us" \
+  --iso-application "ShreeOS" \
+  --iso-publisher "ShreeOS Project" \
+  --iso-volume "SHREEOS_LIVE" \
+  --apt-recommends true \
+  --security true \
+  --source false

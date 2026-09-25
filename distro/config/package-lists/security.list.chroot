@@ -1,0 +1,32 @@
+# Security and diagnostics profile inspired by Kali's tool categories.
+# These packages come from Debian repositories; ShreeOS intentionally does not
+# mix Kali repositories into Debian stable.
+nmap
+wireshark
+tshark
+tcpdump
+netcat-openbsd
+socat
+aircrack-ng
+john
+hashcat
+hydra
+sqlmap
+nikto
+gobuster
+dirb
+masscan
+binwalk
+foremost
+sleuthkit
+testdisk
+yara
+gdb
+strace
+ltrace
+dnsutils
+whois
+traceroute
+net-tools
+iproute2
+iputils-ping

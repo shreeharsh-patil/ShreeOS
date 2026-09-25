@@ -1,0 +1,69 @@
+name: ShreeOS Distribution ISO
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'distro/**'
+      - 'docs/DISTRIBUTION_ARCHITECTURE.md'
+      - '.github/workflows/distro-iso.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'distro/**'
+      - '.github/workflows/distro-iso.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shreeos-distro-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-desktop-iso:
+    name: Build and certify desktop ISO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reclaim runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          docker system prune -af || true
+          df -h
+
+      - name: Build inside Debian 13
+        run: |
+          docker run --privileged --rm \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e SHREEOS_VERSION="0.1-${GITHUB_SHA::8}" \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            debian:trixie \
+            bash -lc '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                live-build xorriso squashfs-tools rsync ca-certificates
+              distro/build.sh
+              distro/validate.sh
+            '
+
+      - name: Show artifact metadata
+        run: |
+          ls -lh distro/out/
+          cat distro/out/*.sha256
+
+      - name: Upload certified ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShreeOS-desktop-amd64
+          path: |
+            distro/out/*.iso
+            distro/out/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

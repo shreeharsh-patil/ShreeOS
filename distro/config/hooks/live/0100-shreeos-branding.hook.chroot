@@ -1,0 +1,77 @@
+#!/bin/sh
+set -eu
+
+# Replace distribution identity after all packages have been installed.
+cat >/etc/os-release <<'EOF'
+PRETTY_NAME="ShreeOS 0.1"
+NAME="ShreeOS"
+VERSION_ID="0.1"
+VERSION="0.1 (Trixie)"
+VERSION_CODENAME=trixie
+ID=shreeos
+ID_LIKE=debian
+HOME_URL="https://github.com/shreeharsh-patil/ShreeOS"
+SUPPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues"
+BUG_REPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues"
+EOF
+cp /etc/os-release /usr/lib/os-release
+
+cat >/etc/lsb-release <<'EOF'
+DISTRIB_ID=ShreeOS
+DISTRIB_RELEASE=0.1
+DISTRIB_CODENAME=trixie
+DISTRIB_DESCRIPTION="ShreeOS 0.1"
+EOF
+printf 'ShreeOS 0.1 \\n \\l\n' >/etc/issue
+printf 'shreeos\n' >/etc/hostname
+
+# Brand the desktop installer launcher while retaining Debian Installer itself.
+if [ -f /usr/share/applications/debian-installer-launcher.desktop ]; then
+  sed -i \
+    -e 's/^Name=.*/Name=Install ShreeOS/' \
+    -e 's/^GenericName=.*/GenericName=Install ShreeOS to disk/' \
+    /usr/share/applications/debian-installer-launcher.desktop
+fi
+
+# System-wide GNOME defaults. Users can override every setting normally.
+mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
+cat >/etc/dconf/profile/user <<'EOF'
+user-db:user
+system-db:local
+EOF
+cat >/etc/dconf/db/local.d/00-shreeos <<'EOF'
+[org/gnome/desktop/interface]
+gtk-theme='Yaru'
+icon-theme='Yaru'
+cursor-theme='Yaru'
+color-scheme='prefer-dark'
+
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/shreeos/shreeos-wallpaper.svg'
+picture-uri-dark='file:///usr/share/backgrounds/shreeos/shreeos-wallpaper.svg'
+picture-options='zoom'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/backgrounds/shreeos/shreeos-wallpaper.svg'
+picture-options='zoom'
+
+[org/gnome/shell]
+enabled-extensions=['dash-to-dock@micxgx.gmail.com','ubuntu-appindicators@ubuntu.com']
+favorite-apps=['firefox-esr.desktop','org.gnome.Nautilus.desktop','org.gnome.Terminal.desktop','org.gnome.Software.desktop']
+
+[org/gnome/shell/extensions/dash-to-dock]
+dock-position='LEFT'
+extend-height=true
+dash-max-icon-size=48
+show-trash=false
+click-action='focus-or-previews'
+EOF
+dconf update || true
+
+# Live images should get a fresh identity on every boot/install.
+: >/etc/machine-id
+rm -f /var/lib/dbus/machine-id
+
+# Keep the shipped image lean without removing user-facing functionality.
+apt-get clean
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
