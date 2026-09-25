@@ -29,13 +29,18 @@ xorriso -osirrox on -indev "${ISO}" -extract /live/filesystem.squashfs "${TMP}/f
 
 assert_file() {
   local path="$1"
-  unsquashfs -ll "${TMP}/filesystem.squashfs" "${path#/}" 2>/dev/null | grep -q "${path#/}" || {
+  unsquashfs -ll "${TMP}/filesystem.squashfs" "${path#/}" 2>/dev/null | grep -Fq "${path#/}" || {
     echo "error: live filesystem missing ${path}" >&2
     exit 1
   }
 }
 
-OS_RELEASE="$(unsquashfs -cat "${TMP}/filesystem.squashfs" etc/os-release 2>/dev/null)"
+cat_live_file() {
+  local path="$1"
+  unsquashfs -cat "${TMP}/filesystem.squashfs" "${path#/}" 2>/dev/null
+}
+
+OS_RELEASE="$(cat_live_file /etc/os-release)"
 grep -q '^NAME="ShreeOS"$' <<<"${OS_RELEASE}" || { echo "error: image identity is not ShreeOS" >&2; exit 1; }
 grep -q '^ID=shreeos$' <<<"${OS_RELEASE}" || { echo "error: os-release ID is not shreeos" >&2; exit 1; }
 
@@ -45,6 +50,18 @@ assert_file /usr/bin/firefox-esr
 assert_file /usr/bin/nmap
 assert_file /usr/bin/aircrack-ng
 assert_file /usr/sbin/debian-installer-launcher
+assert_file /usr/share/applications/debian-installer-launcher.desktop
+assert_file '/etc/skel/Desktop/Install ShreeOS.desktop'
+
+INSTALLER_ENTRY="$(cat_live_file '/etc/skel/Desktop/Install ShreeOS.desktop')"
+grep -q '^Name=Install ShreeOS$' <<<"${INSTALLER_ENTRY}" || {
+  echo "error: live Desktop installer launcher is not branded as ShreeOS" >&2
+  exit 1
+}
+grep -Eq '^Exec=.*debian-installer-launcher' <<<"${INSTALLER_ENTRY}" || {
+  echo "error: live Desktop installer launcher does not invoke Debian Installer" >&2
+  exit 1
+}
 
 SHA_FILE="${ISO}.sha256"
 if [[ -f "${SHA_FILE}" ]]; then
