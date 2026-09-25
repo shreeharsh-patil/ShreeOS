@@ -1,0 +1,118 @@
+name: Desktop ISO
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'desktop/**'
+      - 'kernel/**'
+      - 'base-system/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - 'build.conf'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  build-desktop:
+    name: Build and certify native desktop ISO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    env:
+      PROFILE: desktop
+      ALLOW_DEFERRED_GRAPHICS: '0'
+      BIOS_TIMEOUT: '240'
+      UEFI_TIMEOUT: '300'
+      MEMORY: 4096M
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: bash scripts/install-build-deps-apt.sh
+
+      - name: Restore exact toolchain cache
+        id: cache-toolchain
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: |
+            build/tools
+            build/sysroot
+          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
+
+      - name: Prepare validated toolchain
+        env:
+          CACHE_HIT: ${{ steps.cache-toolchain.outputs.cache-hit }}
+        run: |
+          if [[ "$CACHE_HIT" == "true" ]]; then
+            bash scripts/verify-stage.sh toolchain
+            mkdir -p build/.markers
+            touch build/.markers/.toolchain
+          else
+            make PROFILE=desktop toolchain
+          fi
+          bash scripts/verify-stage.sh toolchain
+
+      - name: Save validated toolchain cache
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: |
+            build/tools
+            build/sysroot
+          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
+
+      - name: Build desktop ISO from source
+        run: |
+          mkdir -p build-logs
+          bash scripts/build.sh desktop 2>&1 | tee build-logs/desktop-build.log
+
+      - name: Certify graphical runtime
+        run: |
+          PROFILE=desktop bash scripts/verify-stage.sh desktop
+          PROFILE=desktop bash scripts/graphics-readiness.sh --strict
+          PROFILE=desktop bash scripts/verify-stage.sh rootfs
+          PROFILE=desktop bash scripts/verify-stage.sh iso
+          test "$(tr -d '\r\n' < build/rootfs/etc/shreeos/desktop-native.status)" = ready
+          make PROFILE=desktop test-desktop
+
+      - name: Upload desktop ISO bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-desktop-iso-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            out/*.iso
+            out/*.iso.sha256
+            out/*-manifest.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+      - name: Upload desktop build logs on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-desktop-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build-logs/
+            build/logs/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7
