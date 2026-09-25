@@ -39,16 +39,30 @@ lumen_ok()   { shreeos_ok "$@"; }
 lumen_warn() { shreeos_warn "$@"; }
 lumen_die()  { shreeos_die "$@"; }
 
+# shreeos_source_candidates <url>
+# Prints trusted HTTPS candidates for a pinned upstream source. GNU archives use
+# independent mirrors first because ftp.gnu.org can be intermittently unreachable
+# from hosted CI runners. Integrity is always enforced by the pinned SHA-256.
+shreeos_source_candidates() {
+  local url="$1" rel
+  if [[ "$url" == https://ftp.gnu.org/gnu/* ]]; then
+    rel="${url#https://ftp.gnu.org/gnu/}"
+    printf 'https://ftpmirror.gnu.org/%s\n' "$rel"
+    printf 'https://mirrors.kernel.org/gnu/%s\n' "$rel"
+    printf '%s\n' "$url"
+  else
+    printf '%s\n' "$url"
+  fi
+}
+
 # shreeos_fetch <url> <dest-file> <sha256>
 # Downloads a source tarball and verifies it before publishing it into the
 # shared source cache. Invalid cached/downloaded files are never retained.
-# GNU sources automatically fall back to independent HTTPS mirrors when the
-# canonical ftp.gnu.org endpoint is temporarily unreachable from CI runners.
 shreeos_fetch() {
   local url="$1" dest="$2" expected_sha="$3"
-  local actual_sha="" tmp attempt candidate rel
+  local actual_sha="" tmp attempt candidate
   local downloaded=0
-  local -a urls=("$url")
+  local -a urls=()
 
   if [[ ! "${expected_sha}" =~ ^[0-9a-fA-F]{64}$ ]]; then
     shreeos_die "Invalid SHA-256 pin for $(basename "${dest}"): ${expected_sha}"
@@ -71,21 +85,14 @@ shreeos_fetch() {
     rm -f -- "${dest}"
   fi
 
-  if [[ "$url" == https://ftp.gnu.org/gnu/* ]]; then
-    rel="${url#https://ftp.gnu.org/gnu/}"
-    urls+=(
-      "https://ftpmirror.gnu.org/${rel}"
-      "https://mirrors.kernel.org/gnu/${rel}"
-    )
-  fi
-
+  mapfile -t urls < <(shreeos_source_candidates "$url")
   tmp="${dest}.part.${BASHPID}"
   rm -f -- "${tmp}"
 
   for candidate in "${urls[@]}"; do
     for attempt in 1 2; do
       shreeos_log "Fetching $(basename "${dest}") from ${candidate} (attempt ${attempt}/2) ..."
-      local -a curl_args=(--fail --location --retry 2 --retry-all-errors --connect-timeout 15 --max-time 600 --output "${tmp}")
+      local -a curl_args=(--fail --location --retry 2 --retry-delay 2 --retry-all-errors --connect-timeout 15 --max-time 600 --output "${tmp}")
       if [[ "${candidate}" == file://* ]]; then
         if [[ "${SHREEOS_ALLOW_FILE_FETCH:-0}" != "1" ]]; then
           rm -f -- "${tmp}"
