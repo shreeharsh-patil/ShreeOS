@@ -47,9 +47,9 @@ system-db:local
 EOF
 cat >/etc/dconf/db/local.d/00-shreeos <<'EOF'
 [org/gnome/desktop/interface]
-gtk-theme='Yaru'
-icon-theme='Yaru'
-cursor-theme='Yaru'
+gtk-theme='Adwaita'
+icon-theme='Adwaita'
+cursor-theme='Adwaita'
 color-scheme='prefer-dark'
 
 [org/gnome/desktop/background]
@@ -66,11 +66,16 @@ enabled-extensions=['dash-to-dock@micxgx.gmail.com','ubuntu-appindicators@ubuntu
 favorite-apps=['firefox-esr.desktop','org.gnome.Nautilus.desktop','org.gnome.Terminal.desktop','org.gnome.Software.desktop']
 
 [org/gnome/shell/extensions/dash-to-dock]
-dock-position='LEFT'
-extend-height=true
-dash-max-icon-size=48
+dock-position='BOTTOM'
+extend-height=false
+dash-max-icon-size=52
 show-trash=false
+show-mounts=false
+show-apps-at-top=false
+transparency-mode='DYNAMIC'
+background-opacity=0.72
 click-action='focus-or-previews'
+scroll-action='cycle-windows'
 EOF
 dconf update || true
 
