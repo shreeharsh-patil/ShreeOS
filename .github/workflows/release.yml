@@ -67,6 +67,14 @@ jobs:
       - name: Install build dependencies
         run: bash scripts/install-build-deps-apt.sh
 
+      - name: Bootstrap pinned host tools
+        run: |
+          bash scripts/bootstrap-host-tools.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          meson --version
+          test "$(meson --version)" = "1.6.1"
+
       - name: Restore exact toolchain cache
         id: cache-toolchain
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
