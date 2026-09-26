@@ -51,7 +51,7 @@ The distribution includes:
 
 ## 📌 Project Status
 
-The current development version defined by the build system is **ShreeOS 0.2.0-dev**.
+The current development version defined by the build system is **ShreeOS 0.2.1-dev**.
 
 The `master` branch treats the graphical desktop image as the primary release profile. The release workflow is configured to publish a desktop ISO only after the target desktop stack, root filesystem, ISO structure, checksums, BIOS boot, UEFI boot, and automated test suites pass their release checks.
 
@@ -65,11 +65,11 @@ ShreeOS supports multiple system profiles from the same source tree:
 
 | Profile | Purpose |
 |---|---|
-| `desktop` | Full graphical ShreeOS desktop distribution and primary release profile. |
+| `desktop` | Full graphical ShreeOS desktop distribution and primary/default profile. |
 | `minimal` | Small headless/rescue environment for boot, recovery, and low-level validation. |
 | `server` | Headless networking/server-oriented system profile. |
 
-The default Makefile profile is `minimal`; official desktop release builds explicitly use `PROFILE=desktop`.
+The default Makefile and direct build-script profile is `desktop`. Use `PROFILE=minimal` or `PROFILE=server` explicitly for the alternate editions.
 
 ---
 
@@ -82,7 +82,7 @@ The build is split into seven major phases:
 3. **Kernel** — ShreeOS Linux kernel build and configuration.
 4. **System Packages** — `lpm`, custom init, and hardware services.
 5. **Desktop** — ShreeOS desktop suite and graphical target stack for the desktop profile.
-6. **Root Filesystem** — Final target filesystem, services, authentication, installer assets, and system configuration.
+6. **Root Filesystem** — Final target filesystem, services, authentication, updater, recovery tooling, and system configuration.
 7. **ISO** — Bootable hybrid BIOS/UEFI image plus validation metadata.
 
 ```mermaid
@@ -131,6 +131,7 @@ sequenceDiagram
 | **Linux Kernel** | Linux 6.18 is currently selected by `build.conf`. |
 | **ShreeOS Init** | Custom C-based PID 1 and service supervisor with process management, logging, and IPC. |
 | **`lpm`** | Native ShreeOS package manager with SHA-256 verification, locking, conflict checks, and staged transactions. |
+| **SafeUpdate** | Installed system updater backed by `lpm` transactions, integrity checks, history and rollback tooling. |
 | **Desktop Suite** | ShreeOS graphical shell/window-management components, control utilities, launcher, file-management pieces, branding, and session integration. |
 | **Installer** | Guided disk installer with partitioning, filesystem creation, GRUB installation, account/hostname setup, and first-boot preparation. |
 | **ISO Builder** | Produces hybrid images supporting GRUB BIOS and x86_64 UEFI boot paths. |
@@ -144,9 +145,9 @@ Published images are available from the GitHub Releases page:
 
 **https://github.com/shreeharsh-patil/ShreeOS/releases**
 
-Each release can include:
+A certified desktop release bundle can include:
 
-- `shreeos-<version>.iso`
+- `shreeos-<version>-desktop.iso`
 - ISO SHA-256 checksum
 - build manifest
 - release notes describing the exact validation performed for that image
@@ -156,7 +157,7 @@ Always read the notes attached to the specific release you download, especially 
 ### Verify a Downloaded ISO
 
 ```bash
-sha256sum -c shreeos-<version>.iso.sha256
+sha256sum -c shreeos-<version>-desktop.iso.sha256
 ```
 
 ---
@@ -197,14 +198,14 @@ cd ShreeOS
 make doctor
 make verify-sources
 
-# Build the complete desktop distribution.
-make PROFILE=desktop iso
+# Desktop is the default profile.
+make iso
 
-# Validate the generated image and boot paths.
-make PROFILE=desktop verify-iso
+# Or build and run the complete desktop release-readiness certification.
+make distro
 ```
 
-The release path does **not** enable deferred graphics. A desktop release is expected to satisfy strict target graphics readiness checks.
+`make distro` runs strict stage verification, native graphics readiness, ISO structural and BIOS/UEFI boot verification, and the complete automated test suite.
 
 ### Minimal Build
 
@@ -221,7 +222,8 @@ make PROFILE=server iso
 ### Strict Build Script
 
 ```bash
-bash scripts/build.sh desktop
+# Defaults to desktop.
+bash scripts/build.sh
 ```
 
 ---
@@ -235,7 +237,7 @@ git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
 
 make bootstrap-wsl
-bash scripts/build.sh desktop
+bash scripts/build.sh
 ```
 
 Useful diagnostics:
@@ -244,17 +246,17 @@ Useful diagnostics:
 make doctor
 make verify-sources
 make graphics
-make PROFILE=desktop verify-iso
+make verify-iso
 ```
 
 ---
 
 ## 🧪 Testing and Validation
 
-Run the complete test suite:
+Run the complete desktop test suite:
 
 ```bash
-make PROFILE=desktop test-all
+make test-all
 ```
 
 Important individual targets include:
@@ -274,20 +276,27 @@ Launch the generated ISO manually:
 
 ```bash
 # UEFI
-make PROFILE=desktop qemu
+make qemu
 
 # Legacy BIOS
-make PROFILE=desktop qemu-bios
+make qemu-bios
 ```
 
 ### Release Certification
 
-The GitHub release workflow for the desktop profile is designed to require all of the following before publishing the generated bundle:
+For the primary distribution, use:
 
-- validated toolchain stage
+```bash
+make distro
+```
+
+The desktop certification path requires all of the following before an image is considered release-ready:
+
+- validated toolchain and base-system stages
 - complete desktop ISO build
 - target desktop stage verification
 - root filesystem verification
+- installed SafeUpdate command
 - ISO structure verification
 - strict native graphics readiness
 - desktop-aware automated tests
@@ -302,27 +311,32 @@ This keeps the downloadable release path separate from a build that merely produ
 
 ## 💾 Install to a Disk
 
-ShreeOS contains a guided text-mode installer. The installer can partition the selected disk, create the target filesystem, copy the ShreeOS system, install GRUB, and configure the initial system.
+ShreeOS contains a guided text-mode installer. It can partition a selected disk, create the target filesystem, copy the ShreeOS system, configure accounts and timezone, install GRUB for BIOS/UEFI, generate UUID/PARTUUID-based boot configuration, and verify the completed installation.
 
 ### Interactive Installer
+
+From a checked-out/build environment containing the required GRUB host utilities:
 
 ```bash
 sudo bash installer/scripts/installer-tui.sh
 ```
 
+The persistent installer is tested against virtual disks. A fully self-contained Ubuntu-style **Install ShreeOS** launcher inside the live desktop requires ShreeOS-native GRUB installation utilities to be built into the live root filesystem; that integration is still a distribution milestone rather than something copied from the build host.
+
 ### Installer Test
 
 ```bash
-bash installer/tests/test-install.sh
+bash tests/installer/test-installer-validation.sh
+make test-qemu
 ```
 
-The installer test creates a blank virtual disk, installs ShreeOS, boots the installed system under QEMU, and validates the init startup marker.
+The QEMU validation path exercises the generated boot media and installed-disk boot behavior.
 
 > **Warning:** disk installation is destructive. Always verify the selected target device before confirming installation.
 
 ---
 
-## 📦 Package Management
+## 📦 Package Management and Updates
 
 ShreeOS ships its own package-management tooling under `pkgmanager/` and `repo-tools/`.
 
@@ -334,6 +348,9 @@ The `lpm` design includes:
 - file-conflict detection
 - database locking
 - package/repository tooling for native ShreeOS packages
+- transaction history and rollback support
+
+The built root filesystem also installs `system-update.sh`, which synchronizes the ShreeOS package index, checks or applies upgrades through `lpm`, verifies integrity after updates, and exposes repair/rollback operations used by desktop system-management actions.
 
 The project is building its own package ecosystem rather than using Ubuntu's APT repositories as the native ShreeOS package-management layer.
 
@@ -342,11 +359,18 @@ The project is building its own package ecosystem rather than using Ubuntu's APT
 ## 🔧 Useful Build Commands
 
 ```bash
-# Full end-to-end build for the selected profile
-make PROFILE=desktop all
+# Full end-to-end desktop build (desktop is default)
+make all
+
+# Build + certify the primary distribution
+make distro
 
 # Re-check native graphics readiness
 make graphics
+
+# Build an alternate profile explicitly
+make PROFILE=minimal iso
+make PROFILE=server iso
 
 # Rebuild only selected stages
 make clean-desktop
@@ -359,7 +383,7 @@ make clean-iso
 make distclean
 
 # Force stage reconstruction
-make PROFILE=desktop FORCE=1 iso
+make FORCE=1 iso
 ```
 
 ---
@@ -369,12 +393,13 @@ make PROFILE=desktop FORCE=1 iso
 ```text
 ShreeOS/
 ├── build.conf             # Distribution versions and central build configuration
-├── Makefile               # Top-level build orchestration
+├── Makefile               # Top-level build orchestration and release certification
 ├── toolchain/             # Cross-binutils, GCC, target headers and runtime setup
 ├── base-system/           # Core target userland
 ├── kernel/                # Kernel config and build scripts
 ├── pkgmanager/            # Native lpm package manager
 ├── repo-tools/            # Package repository/index tooling
+├── update/                # SafeUpdate system update/rollback tooling
 ├── init/                  # ShreeOS PID 1 and service configuration
 ├── hardware/              # Hardware/system daemon components
 ├── desktop/               # Native ShreeOS desktop suite
@@ -412,8 +437,7 @@ Before submitting a change, run the relevant checks for the area you modified. F
 
 ```bash
 make doctor
-make PROFILE=desktop test-all
-make PROFILE=desktop verify-iso
+make distro
 ```
 
 ---
