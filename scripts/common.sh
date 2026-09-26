@@ -46,14 +46,14 @@ shreeos_fetch_candidates() {
 
   candidates+=("$url")
 
-  if [[ "$url" =~ ^https://ftp\.gnu\.org/(.+)$ ]]; then
+  if [[ "$url" =~ ^https://ftp\.gnu\.org/gnu/(.+)$ ]]; then
     rel="${BASH_REMATCH[1]}"
     candidates+=("https://ftpmirror.gnu.org/${rel}")
     candidates+=("https://mirrors.kernel.org/gnu/${rel}")
-  elif [[ "$url" =~ ^https://www\.gnu\.org/(.+)$ ]]; then
+  elif [[ "$url" =~ ^https://ftpmirror\.gnu\.org/(.+)$ ]]; then
     rel="${BASH_REMATCH[1]}"
-    candidates+=("https://ftpmirror.gnu.org/${rel}")
     candidates+=("https://mirrors.kernel.org/gnu/${rel}")
+    candidates+=("https://ftp.gnu.org/gnu/${rel}")
   fi
 
   printf '%s\n' "${candidates[@]}"
