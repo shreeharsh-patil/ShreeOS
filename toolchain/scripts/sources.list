@@ -13,7 +13,7 @@ GCC_URL=https://gcc.gnu.org/pub/gcc/releases/gcc-14.2.0/gcc-14.2.0.tar.xz
 GCC_SHA256="a7b39bc69cbf9e25826c5a60ab26477001f7c08d85cec04bc0e29cabed6f3cc9"
 
 # glibc 2.40
-GLIBC_URL=https://ftpmirror.gnu.org/glibc/glibc-2.40.tar.xz
+GLIBC_URL=https://mirrors.kernel.org/gnu/glibc/glibc-2.40.tar.xz
 GLIBC_SHA256="19a890175e9263d748f627993de6f4b1af9cd21e03f080e4bfb3a1fac10205a2"
 
 # Linux kernel 6.18 (LTS)
