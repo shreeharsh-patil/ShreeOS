@@ -20,7 +20,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 "${APT[@]}" update
 "${APT[@]}" install -y --no-install-recommends \
-  git ca-certificates python3 python3-venv python3-mako python3-yaml perl \
+  git ca-certificates python3 python3-venv python3-mako python3-yaml python3-xcbgen perl \
   build-essential gcc g++ make autoconf automake libtool libtool-bin \
   meson ninja-build bison flex gawk texinfo gperf \
   curl wget patch file rsync xsltproc libxml2-utils \
@@ -32,5 +32,10 @@ export DEBIAN_FRONTEND=noninteractive
   grub-pc-bin grub-efi-amd64-bin grub-common grub2-common \
   qemu-system-x86 ovmf \
   shellcheck
+
+# libxcb's source generator runs on the build host even though libxcb itself is
+# cross-compiled for ShreeOS. Fail here instead of tens of minutes into the
+# graphics build if the host-side xcbgen module is unavailable.
+python3 -c 'from xcbgen.state import Module' >/dev/null
 
 echo "[ok] ShreeOS host build dependencies installed."
