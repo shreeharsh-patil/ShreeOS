@@ -38,7 +38,7 @@ PKG="linux-${VER_LINUX_KERNEL}"
 ARCHIVE="${PKG}.tar.xz"
 SRCDIR="$(kernel_srcdir)"
 
-PROFILE="${PROFILE:-minimal}"
+PROFILE="${PROFILE:-desktop}"
 case "$PROFILE" in
   minimal|desktop|server|qemu|qemu-kernel-test) ;;
   *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
