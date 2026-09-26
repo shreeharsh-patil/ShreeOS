@@ -40,7 +40,7 @@ SRCDIR="$(kernel_srcdir)"
 
 PROFILE="${PROFILE:-desktop}"
 case "$PROFILE" in
-  minimal|desktop|server|qemu|qemu-kernel-test) ;;
+  minimal|desktop|security|server|qemu|qemu-kernel-test) ;;
   *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
 esac
 export PROFILE
@@ -78,7 +78,7 @@ fi
 lumen_step "Preparing clean kernel source tree"
 make -C "$SRCDIR" ARCH="${LUMEN_ARCH}" mrproper >/dev/null
 
-lumen_step "Configuring kernel (defconfig + minimal overrides)"
+lumen_step "Configuring kernel (defconfig + profile overrides)"
 mkdir -p "$KERNEL_BUILDDIR"
 KERNEL_PROFILE_MARKER="$KERNEL_BUILDDIR/.shreeos-profile"
 if [ -s "$KERNEL_PROFILE_MARKER" ] && [ "$(cat "$KERNEL_PROFILE_MARKER")" != "$PROFILE" ]; then
@@ -89,9 +89,11 @@ cd "$KERNEL_BUILDDIR"
 
 make -C "$SRCDIR" O="$KERNEL_BUILDDIR" ARCH="${LUMEN_ARCH}" defconfig
 
-# Determine kernel config profile based on active PROFILE
+# Determine kernel config profile based on active PROFILE. Security is a
+# workstation edition, so it intentionally receives the full desktop hardware
+# baseline rather than the headless generic configuration.
 KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/generic.config"
-if [ "$PROFILE" = "desktop" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/desktop.config" ]; then
+if { [ "$PROFILE" = "desktop" ] || [ "$PROFILE" = "security" ]; } && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/desktop.config" ]; then
   KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/desktop.config"
 elif [ "${PROFILE:-}" = "qemu" ] && [ -f "${KERNEL_ROOT_DIR}/kernel/configs/qemu.config" ]; then
   KERNEL_CFG="${KERNEL_ROOT_DIR}/kernel/configs/qemu.config"
@@ -144,6 +146,13 @@ for symbol in "${required_kernel_config[@]}"; do
     lumen_die "Required kernel configuration is not built in: ${symbol}"
 done
 
+if [ "$PROFILE" = "desktop" ] || [ "$PROFILE" = "security" ]; then
+  for symbol in CONFIG_VT CONFIG_INPUT_EVDEV CONFIG_DRM CONFIG_DRM_SIMPLEDRM CONFIG_FRAMEBUFFER_CONSOLE CONFIG_USB_HID CONFIG_SQUASHFS CONFIG_OVERLAY_FS; do
+    grep -Eq "^${symbol}=(y|m)$" "$KERNEL_BUILDDIR/.config" || \
+      lumen_die "Desktop/security kernel capability is missing: ${symbol}"
+  done
+fi
+
 lumen_ok "Kernel configured"
 
 # 4. Build the kernel and modules
@@ -182,6 +191,7 @@ lumen_ok "Kernel build COMPLETE"
 echo "============================================"
 echo "  Kernel:   ${VER_LINUX_KERNEL}"
 echo "  Arch:     ${LUMEN_ARCH}"
+echo "  Profile:  ${PROFILE}"
 echo "  Config:   ${KERNEL_BUILDDIR}/.config"
 echo "  bzImage:  ${BZIMAGE}"
 echo "  Modules:  ${LUMEN_STAGE_ROOT}/lib/modules"
