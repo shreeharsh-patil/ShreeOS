@@ -34,8 +34,9 @@ export DEBIAN_FRONTEND=noninteractive
   shellcheck
 
 # libxcb's source generator runs on the build host even though libxcb itself is
-# cross-compiled for ShreeOS. Fail here instead of tens of minutes into the
-# graphics build if the host-side xcbgen module is unavailable.
-python3 -c 'from xcbgen.state import Module' >/dev/null
+# cross-compiled for ShreeOS. Check that the module can be located without
+# importing xcbgen.state directly: that module is designed to run inside
+# libxcb's c_client.py context and expects generator globals in __main__.
+python3 -c 'import importlib.util; assert importlib.util.find_spec("xcbgen.state") is not None' >/dev/null
 
 echo "[ok] ShreeOS host build dependencies installed."
