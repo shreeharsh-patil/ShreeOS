@@ -26,7 +26,7 @@ source "$LUMEN_ROOT_DIR/scripts/common.sh"
 
 NO_CLEANUP="${NO_CLEANUP:-false}"
 CMDLINE_EXTRA="${CMDLINE_EXTRA:-}"
-PROFILE="${PROFILE:-minimal}"
+PROFILE="${PROFILE:-desktop}"
 case "$PROFILE" in
   minimal|desktop|server) ;;
   *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
