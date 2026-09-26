@@ -1,0 +1,67 @@
+name: Security Edition
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'security/**'
+      - 'base-system/profiles/security.list'
+      - 'kernel/configs/desktop.config'
+      - 'kernel/scripts/build-kernel.sh'
+      - 'desktop/wm/build-all.sh'
+      - 'desktop/apps/install-shreeos'
+      - 'rootfs/scripts/make-rootfs.sh'
+      - 'iso-builder/scripts/build-iso.sh'
+      - 'scripts/build.sh'
+      - 'scripts/verify-stage.sh'
+      - 'scripts/verify-iso.sh'
+      - 'tests/security/**'
+      - 'Makefile'
+      - '.github/workflows/security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  validate-security-edition:
+    name: Validate security edition integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate shell entry points
+        run: |
+          bash -n security/scripts/shree-audit
+          bash -n security/scripts/shree-netdiag
+          bash -n desktop/apps/install-shreeos
+          bash -n desktop/wm/build-all.sh
+          bash -n rootfs/scripts/make-rootfs.sh
+          bash -n kernel/scripts/build-kernel.sh
+          bash -n iso-builder/scripts/build-iso.sh
+          bash -n scripts/build.sh
+          bash -n scripts/verify-stage.sh
+          bash -n scripts/verify-iso.sh
+          bash -n tests/security/test-security-edition.sh
+
+      - name: Validate security profile wiring
+        run: |
+          make PROFILE=security help >/tmp/shreeos-security-help.txt
+          grep -Fq 'security-distro' /tmp/shreeos-security-help.txt
+          grep -Fq '@desktop' base-system/profiles/security.list
+          grep -Fq 'CONFIG_DRM_SIMPLEDRM=y' kernel/configs/desktop.config
+          grep -Fq 'CONFIG_SQUASHFS=y' kernel/configs/desktop.config
+          grep -Fq 'CONFIG_OVERLAY_FS=y' kernel/configs/desktop.config
+
+      - name: Run security edition source checks
+        run: bash tests/security/test-security-edition.sh --source-only
