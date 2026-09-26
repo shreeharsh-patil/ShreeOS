@@ -20,7 +20,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 "${APT[@]}" update
 "${APT[@]}" install -y --no-install-recommends \
-  git ca-certificates python3 python3-mako python3-yaml perl \
+  git ca-certificates python3 python3-venv python3-mako python3-yaml perl \
   build-essential gcc g++ make autoconf automake libtool libtool-bin \
   meson ninja-build bison flex gawk texinfo gperf \
   curl wget patch file rsync xsltproc libxml2-utils \
