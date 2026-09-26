@@ -141,7 +141,10 @@ shreeos_fetch() {
 
   shreeos_die "Failed to download ${url}"
 }
-lumen_fetch() { shreeos_fetch "$@"; }
+
+# Fetch/status output belongs on stderr so command substitutions can capture
+# only the path/value deliberately printed by source-preparation helpers.
+lumen_fetch() { shreeos_fetch "$@" >&2; }
 
 # shreeos_step <description> -- runs and logs a labeled build step
 shreeos_step() {

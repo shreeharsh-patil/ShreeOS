@@ -34,10 +34,14 @@ done
 
 if [ "$profile" = "desktop" ]; then
   bash scripts/verify-sources.sh --fetch --component=desktop
+  bash desktop/graphics/verify-sources.sh
   make PROFILE="$profile" toolchain
   make PROFILE="$profile" base-system
-  bash scripts/graphics-readiness.sh --strict
 fi
 
 make PROFILE="$profile" iso
 make PROFILE="$profile" verify-iso
+
+if [ "$profile" = "desktop" ]; then
+  PROFILE=desktop bash scripts/graphics-readiness.sh --strict
+fi

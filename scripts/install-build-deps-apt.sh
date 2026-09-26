@@ -20,17 +20,17 @@ export DEBIAN_FRONTEND=noninteractive
 
 "${APT[@]}" update
 "${APT[@]}" install -y --no-install-recommends \
-  git ca-certificates python3 perl build-essential gcc g++ make \
-  bison flex gawk texinfo gperf \
-  curl wget patch file rsync \
+  git ca-certificates python3 python3-mako python3-yaml perl \
+  build-essential gcc g++ make autoconf automake libtool libtool-bin \
+  meson ninja-build bison flex gawk texinfo gperf \
+  curl wget patch file rsync xsltproc libxml2-utils \
   bzip2 gzip xz-utils tar cpio bc fakeroot \
-  pkg-config gettext-base \
+  pkg-config gettext gettext-base x11-xkb-utils xutils-dev \
   libgmp-dev libmpfr-dev libmpc-dev \
   libssl-dev libelf-dev libcrypt-dev \
   xorriso mtools dosfstools fdisk util-linux e2fsprogs kmod \
   grub-pc-bin grub-efi-amd64-bin grub-common grub2-common \
   qemu-system-x86 ovmf \
-  libx11-dev libxinerama-dev libxft-dev \
   shellcheck
 
 echo "[ok] ShreeOS host build dependencies installed."
