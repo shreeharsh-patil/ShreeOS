@@ -2,19 +2,6 @@
 # iso-builder/scripts/build-iso.sh — Build a hybrid BIOS/UEFI bootable ISO
 #
 # Assembles the kernel, rootfs, and GRUB into an ISO image using xorriso.
-#
-# Usage:
-#   bash iso-builder/scripts/build-iso.sh                # full build
-#   bash iso-builder/scripts/build-iso.sh --no-cleanup   # keep staging dir
-#
-# Prerequisites:
-#   - Phase 3: kernel bzImage at build/build-kernel/arch/x86/boot/bzImage
-#   - Phase 4: initramfs archive at build/initramfs.cpio.gz
-#   - Host packages: xorriso, grub-pc, grub-efi, grub-common
-#
-# Output:
-#   $LUMEN_OUT/shreeos-<version>.iso
-#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,7 +15,7 @@ NO_CLEANUP="${NO_CLEANUP:-false}"
 CMDLINE_EXTRA="${CMDLINE_EXTRA:-}"
 PROFILE="${PROFILE:-desktop}"
 case "$PROFILE" in
-  minimal|desktop|server) ;;
+  minimal|desktop|security|server) ;;
   *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
 esac
 export PROFILE
@@ -63,7 +50,6 @@ fi
 
 shreeos_step "Building bootable ISO: ${ISO_OUT}"
 
-# 1. Verify prerequisites
 for f in "$BZIMAGE" "$INITRD"; do
   if [ ! -f "$f" ]; then
     shreeos_die "Missing: $f"
@@ -71,19 +57,15 @@ for f in "$BZIMAGE" "$INITRD"; do
 done
 shreeos_ok "All build artifacts found"
 
-# 2. Create ISO staging directory
 rm -rf "$ISO_STAGING"
 mkdir -p "${ISO_STAGING}/boot/grub"
 
-# 3. Copy kernel and initramfs
 cp "$BZIMAGE" "${ISO_STAGING}/boot/bzImage"
 cp "$INITRD" "${ISO_STAGING}/boot/initramfs.cpio.gz"
 shreeos_ok "Kernel and initramfs copied to staging"
 
-# 4. Install GRUB2
 bash "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/bootloader/scripts/install-grub-iso.sh" "$ISO_STAGING" --cmdline="$CMDLINE_EXTRA"
 
-# 5. Build hybrid ISO with xorriso
 lumen_step "Creating hybrid ISO with xorriso"
 mkdir -p "$LUMEN_OUT"
 
@@ -121,7 +103,6 @@ fi
 ISO_SIZE=$(stat -c%s "$ISO_OUT" 2>/dev/null || stat -f%z "$ISO_OUT" 2>/dev/null || echo "unknown")
 lumen_ok "ISO created: ${ISO_OUT} (${ISO_SIZE} bytes)"
 
-# 6. Generate SHA256 Checksum & Build Manifest
 if command -v sha256sum &>/dev/null; then
   (
     cd "$(dirname "$ISO_OUT")"
@@ -154,19 +135,18 @@ cat > "$MANIFEST_OUT" <<MANIFEST
 MANIFEST
 lumen_ok "Generated build manifest: ${MANIFEST_OUT}"
 
-# 7. Cleanup staging
 if [ "$NO_CLEANUP" = false ]; then
   rm -rf "$ISO_STAGING"
   lumen_log "Cleaned up ISO staging directory"
 fi
 
-# 7. Summary
 echo ""
 echo "============================================"
 lumen_ok "ISO build COMPLETE"
 echo "============================================"
 echo "  ISO:          ${ISO_OUT}"
 echo "  Size:         ${ISO_SIZE} bytes"
+echo "  Profile:      ${PROFILE}"
 echo "  Kernel:       ${BZIMAGE}"
 echo "  Initramfs:    ${INITRD}"
 echo "  Bootloader:   GRUB2 (BIOS + UEFI)"

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# shree-netdiag — non-destructive network diagnostics for ShreeOS.
+set -Eeuo pipefail
+
+TARGET="${1:-1.1.1.1}"
+TLS_HOST="${2:-}"
+
+echo "== ShreeOS Network Diagnostics =="
+echo "Target: $TARGET"
+
+section() { printf '\n-- %s --\n' "$1"; }
+
+section "Interfaces"
+if command -v ip >/dev/null 2>&1; then
+  ip -brief link 2>/dev/null || ip link || true
+  ip -brief addr 2>/dev/null || ip addr || true
+elif command -v ifconfig >/dev/null 2>&1; then
+  ifconfig -a || true
+else
+  echo "No interface inspection command available."
+fi
+
+section "Routes"
+if command -v ip >/dev/null 2>&1; then
+  ip route || true
+elif command -v route >/dev/null 2>&1; then
+  route -n || true
+fi
+
+section "DNS"
+if [ -r /etc/resolv.conf ]; then
+  cat /etc/resolv.conf
+else
+  echo "/etc/resolv.conf is not readable"
+fi
+
+section "Reachability"
+if command -v ping >/dev/null 2>&1; then
+  if ping -c 3 -W 3 "$TARGET"; then
+    echo "Reachability: OK"
+  else
+    echo "Reachability: FAILED"
+  fi
+else
+  echo "ping is unavailable"
+fi
+
+section "Listening sockets"
+if command -v ss >/dev/null 2>&1; then
+  ss -lntu 2>/dev/null || true
+elif command -v netstat >/dev/null 2>&1; then
+  netstat -lntu 2>/dev/null || true
+else
+  echo "Neither ss nor netstat is available"
+fi
+
+section "Wireless"
+if command -v wpa_cli >/dev/null 2>&1; then
+  wpa_cli status 2>/dev/null || true
+elif [ -x /usr/sbin/wpa_supplicant ]; then
+  echo "wpa_supplicant is installed; wpa_cli is not available"
+else
+  echo "Wireless userspace tooling is not installed"
+fi
+
+if [ -n "$TLS_HOST" ]; then
+  section "TLS certificate: $TLS_HOST"
+  if command -v openssl >/dev/null 2>&1; then
+    printf '' | openssl s_client -connect "${TLS_HOST}:443" -servername "$TLS_HOST" -brief 2>/dev/null || true
+  else
+    echo "openssl is unavailable"
+  fi
+fi

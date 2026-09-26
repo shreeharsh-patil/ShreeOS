@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# install-shreeos — launch the guided ShreeOS installer from a live desktop.
+set -Eeuo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+  if command -v sudo >/dev/null 2>&1; then
+    exec sudo "$0" "$@"
+  fi
+  echo "Install ShreeOS requires root privileges." >&2
+  exit 1
+fi
+
+for candidate in \
+  /usr/lib/shreeos-installer/installer-tui.sh \
+  /opt/shreeos-installer/installer-tui.sh; do
+  if [ -x "$candidate" ]; then
+    export SHREEOS_INSTALLER_ROOT="$(dirname "$candidate")"
+    exec "$candidate" "$@"
+  fi
+done
+
+echo "The live installer payload is not installed on this image." >&2
+echo "Rebuild the desktop ISO and make sure the installer stage passes verification." >&2
+exit 1

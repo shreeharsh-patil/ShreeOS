@@ -8,6 +8,10 @@ source "$REPO_ROOT/build.conf"
 source "$REPO_ROOT/scripts/common.sh"
 
 profile="${PROFILE:-desktop}"
+case "$profile" in
+  minimal|desktop|security|server) ;;
+  *) shreeos_die "Unsupported PROFILE: $profile" ;;
+esac
 if [ -z "${ISO:-}" ]; then
   if [ "$profile" = "minimal" ]; then
     ISO="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION.iso"
@@ -21,14 +25,14 @@ ALLOW_DEFERRED_GRAPHICS="${ALLOW_DEFERRED_GRAPHICS:-0}"
 shreeos_require_cmd sha256sum xorriso
 
 desktop_deferred=false
-if [ "$profile" = "desktop" ]; then
+if [ "$profile" = "desktop" ] || [ "$profile" = "security" ]; then
   status_file="$SHREEOS_STAGE_ROOT/etc/shreeos/desktop-native.status"
   if [ ! -f "$status_file" ] || [ "$(cat "$status_file" 2>/dev/null || true)" != "ready" ]; then
     desktop_deferred=true
     if [ "$ALLOW_DEFERRED_GRAPHICS" = "1" ]; then
       shreeos_warn "Desktop-native graphics are deferred; continuing only because ALLOW_DEFERRED_GRAPHICS=1."
     else
-      shreeos_die "Desktop-native graphics are not ready. Refusing to certify this desktop ISO."
+      shreeos_die "Desktop-native graphics are not ready. Refusing to certify this graphical ISO."
     fi
   fi
 fi
