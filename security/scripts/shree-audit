@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# shree-audit — local defensive security and integrity audit for ShreeOS.
+set -Eeuo pipefail
+
+PASS=0
+WARN=0
+FAIL=0
+
+section() { printf '\n== %s ==\n' "$1"; }
+ok() { printf '[OK] %s\n' "$1"; PASS=$((PASS + 1)); }
+warn() { printf '[WARN] %s\n' "$1"; WARN=$((WARN + 1)); }
+fail() { printf '[FAIL] %s\n' "$1"; FAIL=$((FAIL + 1)); }
+
+section "Identity"
+printf 'Host: %s\n' "$(hostname 2>/dev/null || printf unknown)"
+printf 'Kernel: %s\n' "$(uname -r 2>/dev/null || printf unknown)"
+if [ -r /etc/os-release ]; then
+  grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release || true
+fi
+
+section "Critical permissions"
+check_mode() {
+  local path="$1" expected="$2"
+  if [ ! -e "$path" ]; then
+    warn "$path is missing"
+    return
+  fi
+  local mode
+  mode="$(stat -c '%a' "$path" 2>/dev/null || printf unknown)"
+  if [ "$mode" = "$expected" ]; then ok "$path mode is $mode"; else warn "$path mode is $mode (expected $expected)"; fi
+}
+check_mode /etc/passwd 644
+check_mode /etc/group 644
+if [ -e /etc/shadow ]; then check_mode /etc/shadow 600; fi
+
+section "Privileged executables"
+if command -v find >/dev/null 2>&1; then
+  suid_count="$(find /bin /sbin /usr/bin /usr/sbin -xdev -type f -perm /6000 2>/dev/null | wc -l | tr -d ' ')"
+  printf 'SUID/SGID executables: %s\n' "$suid_count"
+  find /bin /sbin /usr/bin /usr/sbin -xdev -type f -perm /6000 2>/dev/null | sort || true
+else
+  warn "find is unavailable; skipped SUID/SGID inventory"
+fi
+
+section "Network exposure"
+if command -v ss >/dev/null 2>&1; then
+  ss -lntup 2>/dev/null || ss -lntu 2>/dev/null || true
+  ok "Listening sockets enumerated with ss"
+elif command -v netstat >/dev/null 2>&1; then
+  netstat -lntup 2>/dev/null || netstat -lntu 2>/dev/null || true
+  ok "Listening sockets enumerated with netstat"
+else
+  warn "Neither ss nor netstat is available"
+fi
+
+section "Accounts"
+if [ -r /etc/passwd ]; then
+  awk -F: '$3 == 0 {print "UID 0 account: " $1}' /etc/passwd
+  uid0="$(awk -F: '$3 == 0 {c++} END {print c+0}' /etc/passwd)"
+  if [ "$uid0" -eq 1 ]; then ok "Exactly one UID 0 account"; else warn "$uid0 UID 0 accounts found"; fi
+fi
+
+section "Package integrity"
+if command -v system-update.sh >/dev/null 2>&1; then
+  if system-update.sh --verify; then ok "Installed package verification passed"; else fail "Installed package verification failed"; fi
+elif command -v lpm >/dev/null 2>&1; then
+  warn "system-update.sh unavailable; use lpm verify per installed package"
+else
+  warn "LPM package verification is unavailable"
+fi
+
+section "Boot and update recovery"
+if command -v system-update.sh >/dev/null 2>&1; then
+  if system-update.sh --history >/dev/null 2>&1; then ok "SafeUpdate transaction history is readable"; else warn "SafeUpdate history could not be read"; fi
+fi
+if command -v shree-recovery >/dev/null 2>&1; then ok "Recovery command is installed"; else warn "shree-recovery is not installed"; fi
+
+printf '\nSummary: %s OK, %s warning(s), %s failure(s)\n' "$PASS" "$WARN" "$FAIL"
+[ "$FAIL" -eq 0 ]
