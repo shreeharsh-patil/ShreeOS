@@ -1,20 +1,22 @@
 # ShreeOS top-level build orchestration
 #
 # Profiles:
-#   PROFILE=desktop (default: complete graphical desktop distribution)
-#   PROFILE=minimal (small headless rescue/validation environment)
-#   PROFILE=server  (headless networking/server environment)
+#   PROFILE=desktop  (default: complete graphical desktop distribution)
+#   PROFILE=security (desktop workstation plus defensive/security diagnostics)
+#   PROFILE=minimal  (small headless rescue/validation environment)
+#   PROFILE=server   (headless networking/server environment)
 #
 # Targets:
 #   toolchain       — Phase 1: cross-compilation toolchain
 #   base-system     — Phase 2: base userland packages
 #   kernel          — Phase 3: Linux kernel
 #   packages        — Phase 4: lpm package manager & init binaries
-#   desktop         — Phase 5: window manager & desktop suite (PROFILE=desktop)
+#   desktop         — Phase 5: window manager & desktop suite (graphical profiles)
 #   rootfs          — Phase 6: init & rootfs assembly
 #   iso             — Phase 7: bootable hybrid ISO
 #   all             — Full end-to-end pipeline
 #   distro          — Build and certify the primary desktop distribution
+#   security-distro — Build and certify the security workstation distribution
 #   release-check   — Strict desktop release-readiness certification
 #   test-unit       — LPM package manager unit tests
 #   test-security   — System security audit tests
@@ -30,8 +32,8 @@
 #   qemu-bios       — Launch built ISO in QEMU (BIOS)
 
 PROFILE ?= desktop
-ifeq ($(filter minimal desktop server,$(PROFILE)),)
-$(error Unsupported PROFILE '$(PROFILE)'; expected minimal, desktop, or server)
+ifeq ($(filter minimal desktop security server,$(PROFILE)),)
+$(error Unsupported PROFILE '$(PROFILE)'; expected minimal, desktop, security, or server)
 endif
 BUILD_DIR := build
 MARKER_DIR := $(BUILD_DIR)/.markers
@@ -55,6 +57,7 @@ help:
 	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
 	@echo "  make all                  Build everything end-to-end"
 	@echo "  make distro               Build and certify the primary desktop distribution"
+	@echo "  make security-distro      Build and certify the security workstation ISO"
 	@echo ""
 	@echo "Diagnostic & Verification Targets:"
 	@echo "  make bootstrap-wsl        Install/check supported WSL2 build dependencies"
@@ -63,6 +66,7 @@ help:
 	@echo "  make graphics             Strictly validate target desktop graphics readiness"
 	@echo "  make verify-iso           Validate ISO structure and BIOS/UEFI boot"
 	@echo "  make release-check        Run strict desktop release-readiness certification"
+	@echo "  make security-release-check  Run strict security edition certification"
 	@echo ""
 	@echo "Testing & Execution Targets:"
 	@echo "  make test-unit            Run LPM package manager C unit tests"
@@ -87,8 +91,8 @@ help:
 	@echo "  make distclean            Full reset including build/ and out/"
 	@echo ""
 	@echo "Options:"
-	@echo "  PROFILE=desktop|minimal|server  (default: desktop)"
-	@echo "  FORCE=1                         (rebuild all stages)"
+	@echo "  PROFILE=desktop|security|minimal|server  (default: desktop)"
+	@echo "  FORCE=1                                  (rebuild all stages)"
 
 # Diagnostic & source verification
 .PHONY: bootstrap-wsl
@@ -126,20 +130,16 @@ endif
 .NOTPARALLEL: toolchain base-system kernel packages desktop rootfs iso force
 
 # Source file dependencies for accurate cache invalidation.
-# A marker is rebuilt when its own stage inputs change, so interrupted builds
-# can resume without silently reusing stale outputs.
 COMMON_BUILD_DEPS := build.conf scripts/common.sh Makefile
 TOOLCHAIN_DEPS := $(COMMON_BUILD_DEPS) $(shell find toolchain -type f 2>/dev/null)
 BASE_DEPS := $(COMMON_BUILD_DEPS) $(shell find base-system -type f 2>/dev/null)
 KERNEL_DEPS := $(COMMON_BUILD_DEPS) $(shell find kernel -type f 2>/dev/null)
 PKG_DEPS := $(COMMON_BUILD_DEPS) $(shell find pkgmanager/src init/src hardware -type f 2>/dev/null)
-DESKTOP_DEPS := $(COMMON_BUILD_DEPS) scripts/graphics-readiness.sh $(shell find desktop branding -type f 2>/dev/null)
-ROOTFS_DEPS := $(COMMON_BUILD_DEPS) $(shell find rootfs init/services installer/scripts scripts -type f 2>/dev/null)
+DESKTOP_DEPS := $(COMMON_BUILD_DEPS) scripts/graphics-readiness.sh $(shell find desktop branding security -type f 2>/dev/null)
+ROOTFS_DEPS := $(COMMON_BUILD_DEPS) $(shell find rootfs init/services installer/scripts scripts security -type f 2>/dev/null)
 ISO_DEPS := $(COMMON_BUILD_DEPS) scripts/verify-iso.sh $(shell find iso-builder bootloader -type f 2>/dev/null)
 
-# Marker cache guards. Order-only phony prerequisites execute on every invocation
-# without making a valid marker look stale. They fail fast when a marker exists
-# but its real stage output is gone/corrupt.
+# Marker cache guards.
 .PHONY: check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache check-iso-cache
 check-toolchain-cache:
 	@if [ -f "$(MARKER_DIR)/.toolchain" ]; then bash scripts/verify-stage.sh toolchain; fi
@@ -213,7 +213,7 @@ desktop: $(FORCE_TARGET) $(MARKER_DIR)/.desktop-$(PROFILE)
 	bash scripts/verify-stage.sh desktop
 
 $(MARKER_DIR)/.desktop-$(PROFILE): $(MARKER_DIR)/.toolchain $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel-$(PROFILE) $(MARKER_DIR)/.packages $(DESKTOP_DEPS) | check-toolchain-cache check-base-cache check-kernel-cache check-packages-cache check-desktop-cache
-ifeq ($(PROFILE),desktop)
+ifneq ($(filter desktop security,$(PROFILE)),)
 	bash desktop/wm/build-all.sh
 endif
 	bash scripts/verify-stage.sh desktop
@@ -265,9 +265,31 @@ release-check: iso
 	bash scripts/verify-iso.sh
 	$(MAKE) PROFILE=desktop test-all
 
+.PHONY: security-release-check
+security-release-check: iso
+	@if [ "$(PROFILE)" != "security" ]; then \
+		echo "security-release-check requires: make PROFILE=security security-release-check" >&2; \
+		exit 2; \
+	fi
+	bash scripts/verify-stage.sh toolchain
+	bash scripts/verify-stage.sh base-system
+	bash scripts/verify-stage.sh kernel
+	bash scripts/verify-stage.sh packages
+	bash scripts/verify-stage.sh desktop
+	bash scripts/verify-stage.sh rootfs
+	bash scripts/verify-stage.sh iso
+	bash scripts/graphics-readiness.sh --strict
+	bash scripts/verify-iso.sh
+	bash tests/security/test-security-edition.sh
+	$(MAKE) PROFILE=security test-auth test-installer test-pkgmanager test-desktop test-base-system test-hardware
+
 .PHONY: distro
 distro:
 	$(MAKE) PROFILE=desktop release-check
+
+.PHONY: security-distro
+security-distro:
+	$(MAKE) PROFILE=security security-release-check
 
 # -- QEMU ------------------------------------------------------------
 .PHONY: qemu
@@ -290,6 +312,7 @@ test-init:
 .PHONY: test-security
 test-security:
 	bash tests/security/test-security.sh
+	bash tests/security/test-security-edition.sh --source-only
 
 .PHONY: test-auth
 test-auth:
