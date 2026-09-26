@@ -59,10 +59,17 @@ done
 
 PROFILE="${PROFILE:-desktop}"
 case "$PROFILE" in
-  minimal|desktop|server) ;;
+  minimal|desktop|security|server) ;;
   *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
 esac
 export PROFILE
+
+if [ "$PROFILE" = "desktop" ] || [ "$PROFILE" = "security" ]; then
+  REQUIRED_EXECUTABLES+=(usr/bin/install-shreeos)
+fi
+if [ "$PROFILE" = "security" ]; then
+  REQUIRED_EXECUTABLES+=(usr/bin/shree-audit usr/bin/shree-netdiag)
+fi
 
 lumen_step "Assembling root filesystem in ${LUMEN_STAGE_ROOT}"
 
@@ -87,9 +94,12 @@ if [ -s "$PROFILE_MARKER" ] && [ "$(cat "$PROFILE_MARKER")" != "$PROFILE" ]; the
 fi
 printf '%s\n' "$PROFILE" > "$PROFILE_MARKER"
 chmod 0644 "$PROFILE_MARKER"
+if [ "$PROFILE" = "security" ]; then
+  [ -s "${LUMEN_STAGE_ROOT}/etc/shreeos/security-edition" ] || \
+    lumen_die "Security profile was requested but the desktop stage did not install the security edition marker"
+fi
+
 if [ "$SKIP_INIT" = true ]; then
-  # Rebuild-free rerun: the stage is the source of truth, so a removed service
-  # definition is a corruption signal and must fail closed.
   for service in "${REQUIRED_SERVICES[@]}"; do
     [ -s "${LUMEN_STAGE_ROOT}/etc/services.d/${service}" ] || \
       lumen_die "Missing required rootfs service output: /etc/services.d/${service}"
@@ -98,8 +108,6 @@ else
   if [ -d "${LUMEN_STAGE_ROOT}/etc/services.d" ]; then
     find "${LUMEN_STAGE_ROOT}/etc/services.d" -maxdepth 1 -type f -name '*.conf' -delete
   fi
-  # Full assembly installs the required service definitions after clearing any
-  # stale units from an earlier run or a profile switch.
   mkdir -p "${LUMEN_STAGE_ROOT}/etc/services.d"
   for service in "${REQUIRED_SERVICES[@]}"; do
     [ -s "${LUMEN_ROOT_DIR}/init/services/${service}" ] || \
@@ -250,8 +258,6 @@ if ! grep -q '^shree-hardware:' "${LUMEN_STAGE_ROOT}/etc/group" 2>/dev/null; the
 fi
 
 # 4. Stage the target C/C++ runtime from the compiler sysroot.
-# The toolchain owns glibc and compiler runtime libraries; base packages are
-# dynamically linked against them, so the bootable rootfs must contain them.
 shreeos_step "Staging target runtime libraries from sysroot"
 runtime_dirs=0
 for rel in lib lib64 usr/lib usr/lib64; do
@@ -264,11 +270,6 @@ for rel in lib lib64 usr/lib usr/lib64; do
 done
 [ "$runtime_dirs" -gt 0 ] || lumen_die "No target runtime library directories found in ${LUMEN_SYSROOT}"
 
-# glibc records /lib64/ld-linux-x86-64.so.2 as the ELF interpreter of every
-# dynamically linked target binary, but the toolchain installs the loader itself
-# under /usr/lib because the sysroot is prefixed with /usr. Without these
-# compatibility links the kernel cannot open the interpreter, so each dynamic
-# binary (bash, coreutils, ...) fails to exec with ENOENT (shell exit code 127).
 shreeos_step "Linking the target dynamic loader into the rootfs"
 loader=""
 for candidate in \
@@ -287,8 +288,6 @@ done
 loader_name="$(basename "$loader")"
 loader_rel="${loader#"${LUMEN_STAGE_ROOT}/"}"
 for loader_dir in lib64 lib; do
-  # A prefixed sysroot has no top-level lib/lib64, so these directories do not
-  # exist yet in a fresh staging root.
   mkdir -p "${LUMEN_STAGE_ROOT}/${loader_dir}"
   loader_link="${LUMEN_STAGE_ROOT}/${loader_dir}/${loader_name}"
   if [ ! -e "$loader_link" ]; then
@@ -302,8 +301,6 @@ if ! compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/libc.so*" >/dev/null && \
    ! compgen -G "${LUMEN_STAGE_ROOT}/lib/libc.so*" >/dev/null; then
   lumen_die "Target libc runtime is missing from the assembled rootfs"
 fi
-# Target binaries only record /lib64/ld-linux-x86-64.so.2 (or /lib/...) in
-# PT_INTERP, so one of those paths must resolve in the assembled rootfs.
 if ! compgen -G "${LUMEN_STAGE_ROOT}/lib64/ld-linux*.so*" >/dev/null && \
    ! compgen -G "${LUMEN_STAGE_ROOT}/lib/ld-linux*.so*" >/dev/null; then
   lumen_die "Target dynamic loader is missing from the assembled rootfs (/lib64 and /lib are the interpreter paths target binaries use)"
@@ -371,6 +368,9 @@ if [ "$SKIP_ARCHIVE" = false ]; then
   for service in "${REQUIRED_SERVICES[@]}"; do
     required_entries+=("etc/services.d/${service}")
   done
+  if [ "$PROFILE" = "security" ]; then
+    required_entries+=("etc/shreeos/security-edition")
+  fi
   missing_entries=()
   for entry in "${required_entries[@]}"; do
     if ! grep -Fqx -- "$entry" "$archive_list" && \
@@ -397,6 +397,7 @@ echo "============================================"
 lumen_ok "Root filesystem assembly COMPLETE"
 echo "============================================"
 echo "  Rootfs:       ${LUMEN_STAGE_ROOT}"
+echo "  Profile:      ${PROFILE}"
 echo "  Archive:      ${LUMEN_BUILD_DIR}/initramfs.cpio.gz"
 echo "  Init:         ${LUMEN_STAGE_ROOT}/sbin/init"
 echo "  Config:       /etc/{os-release,fstab,resolv.conf}"
