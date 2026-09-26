@@ -14,7 +14,9 @@ if [ -z "${SHREEOS_MAKE_JOBS:-}" ]; then
   export SHREEOS_MAKE_JOBS="$jobs"
 fi
 
-profile="${1:-minimal}"
+# The graphical desktop edition is the primary ShreeOS product. Minimal and
+# server remain explicit profiles for rescue, CI diagnostics, and headless use.
+profile="${1:-desktop}"
 case "$profile" in
   desktop|minimal|server) ;;
   *)
