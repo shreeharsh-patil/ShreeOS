@@ -37,6 +37,8 @@ export SHREEOS_SYSROOT="$TEST_ROOT/sysroot"
 export SHREEOS_TOOLS="$TEST_ROOT/tools"
 export SHREEOS_OUT="$TEST_ROOT/out"
 export SHREEOS_SOURCES="$TEST_ROOT/sources"
+# Keep this reliability fixture independent from desktop-only artifacts.
+export PROFILE=minimal
 
 bash "$PROJECT_ROOT/base-system/scripts/setup-rootfs.sh" >/dev/null
 assert_mode "$SHREEOS_STAGE_ROOT/root" 700
@@ -54,7 +56,8 @@ for path in \
   usr/bin/bash usr/bin/ls usr/bin/mount usr/bin/false bin/bash bin/sh \
   sbin/init sbin/initctl usr/bin/initctl \
   sbin/shree-auth usr/bin/shree-auth \
-  bin/lpm usr/bin/lpm usr/sbin/shreed usr/bin/shreedctl; do
+  bin/lpm usr/bin/lpm usr/bin/system-update.sh \
+  usr/sbin/shreed usr/bin/shreedctl; do
   make_executable "$SHREEOS_STAGE_ROOT/$path"
 done
 chmod 4755 "$SHREEOS_STAGE_ROOT/sbin/shree-auth" "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
@@ -78,7 +81,7 @@ gzip -dc -- "$ARCHIVE" | cpio --list --quiet > "$TEST_ROOT/archive.list"
 for entry in \
   init sbin/init sbin/initctl usr/bin/initctl \
   sbin/shree-auth usr/bin/shree-auth bin/lpm usr/bin/lpm \
-  usr/sbin/shreed usr/bin/shreedctl \
+  usr/bin/system-update.sh usr/sbin/shreed usr/bin/shreedctl \
   etc/services.d/00-sysinit.conf etc/services.d/05-mdev.conf \
   etc/services.d/10-hostname.conf etc/services.d/20-network.conf \
   etc/services.d/30-shreed.conf \
@@ -109,7 +112,8 @@ chmod 4755 "$SHREEOS_STAGE_ROOT/usr/bin/shree-auth"
 
 for path in \
   sbin/initctl usr/bin/initctl sbin/shree-auth usr/bin/shree-auth \
-  bin/lpm usr/bin/lpm usr/sbin/shreed usr/bin/shreedctl; do
+  bin/lpm usr/bin/lpm usr/bin/system-update.sh \
+  usr/sbin/shreed usr/bin/shreedctl; do
   rm -f "$SHREEOS_STAGE_ROOT/$path"
   if NO_COLOR=1 fakeroot -- bash "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh" --skip-init \
       > "$TEST_ROOT/missing.log" 2>&1; then
