@@ -9,6 +9,10 @@ source "$ROOT_DIR/scripts/common.sh"
 
 stage="${1:-}"
 profile="${PROFILE:-desktop}"
+case "$profile" in
+  minimal|desktop|security|server|qemu|qemu-kernel-test) ;;
+  *) shreeos_die "Unsupported PROFILE: $profile" ;;
+esac
 
 require_file() {
   local path="$1" desc="$2"
@@ -29,8 +33,6 @@ require_glob() {
   local pattern="$1" desc="$2"
   local match
   while IFS= read -r match; do
-    # -s follows shared-library symlinks and rejects both empty regular files
-    # and dangling links left behind by interrupted package installations.
     [ -s "$match" ] && return 0
   done < <(compgen -G "$pattern")
   shreeos_die "$stage cache is invalid: missing/empty $desc ($pattern)"
@@ -71,9 +73,10 @@ case "$stage" in
     require_exec "$ROOT_DIR/hardware/shreed" "hardware daemon"
     ;;
   desktop)
-    if [ "$profile" = "desktop" ]; then
+    if [ "$profile" = "desktop" ] || [ "$profile" = "security" ]; then
       status="$SHREEOS_STAGE_ROOT/etc/shreeos/desktop-native.status"
       require_file "$status" "desktop status"
+      require_exec "$SHREEOS_STAGE_ROOT/usr/bin/install-shreeos" "live installer launcher"
       state="$(tr -d '\r\n' < "$status")"
       case "$state" in
         ready)
@@ -86,6 +89,11 @@ case "$stage" in
           ;;
         *) shreeos_die "desktop cache has invalid state: $state" ;;
       esac
+      if [ "$profile" = "security" ]; then
+        require_exec "$SHREEOS_STAGE_ROOT/usr/bin/shree-audit" "security audit command"
+        require_exec "$SHREEOS_STAGE_ROOT/usr/bin/shree-netdiag" "security network diagnostics command"
+        require_file "$SHREEOS_STAGE_ROOT/etc/shreeos/security-edition" "security edition marker"
+      fi
     fi
     ;;
   rootfs)
@@ -95,6 +103,14 @@ case "$stage" in
     require_file "$SHREEOS_STAGE_ROOT/etc/shreeos/profile" "rootfs profile marker"
     [ "$(tr -d '\r\n' < "$SHREEOS_STAGE_ROOT/etc/shreeos/profile")" = "$profile" ] || \
       shreeos_die "rootfs profile marker does not match active profile: $profile"
+    if [ "$profile" = "desktop" ] || [ "$profile" = "security" ]; then
+      require_exec "$SHREEOS_STAGE_ROOT/usr/bin/install-shreeos" "live installer launcher"
+    fi
+    if [ "$profile" = "security" ]; then
+      require_exec "$SHREEOS_STAGE_ROOT/usr/bin/shree-audit" "security audit command"
+      require_exec "$SHREEOS_STAGE_ROOT/usr/bin/shree-netdiag" "security network diagnostics command"
+      require_file "$SHREEOS_STAGE_ROOT/etc/shreeos/security-edition" "security edition marker"
+    fi
     ;;
   iso)
     if [ "$profile" = "minimal" ]; then
