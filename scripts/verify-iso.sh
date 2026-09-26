@@ -7,11 +7,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$REPO_ROOT/build.conf"
 source "$REPO_ROOT/scripts/common.sh"
 
+profile="${PROFILE:-desktop}"
 if [ -z "${ISO:-}" ]; then
-  if [ "${PROFILE:-minimal}" = "minimal" ]; then
+  if [ "$profile" = "minimal" ]; then
     ISO="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION.iso"
   else
-    ISO="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION-${PROFILE:-minimal}.iso"
+    ISO="$SHREEOS_OUT/$DISTRO_ID-$DISTRO_VERSION-$profile.iso"
   fi
 fi
 SKIP_QEMU="${SKIP_QEMU:-0}"
@@ -20,7 +21,7 @@ ALLOW_DEFERRED_GRAPHICS="${ALLOW_DEFERRED_GRAPHICS:-0}"
 shreeos_require_cmd sha256sum xorriso
 
 desktop_deferred=false
-if [ "${PROFILE:-minimal}" = "desktop" ]; then
+if [ "$profile" = "desktop" ]; then
   status_file="$SHREEOS_STAGE_ROOT/etc/shreeos/desktop-native.status"
   if [ ! -f "$status_file" ] || [ "$(cat "$status_file" 2>/dev/null || true)" != "ready" ]; then
     desktop_deferred=true

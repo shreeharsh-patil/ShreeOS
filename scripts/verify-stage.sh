@@ -8,7 +8,7 @@ source "$ROOT_DIR/build.conf"
 source "$ROOT_DIR/scripts/common.sh"
 
 stage="${1:-}"
-profile="${PROFILE:-minimal}"
+profile="${PROFILE:-desktop}"
 
 require_file() {
   local path="$1" desc="$2"
@@ -90,6 +90,7 @@ case "$stage" in
     ;;
   rootfs)
     require_exec "$SHREEOS_STAGE_ROOT/sbin/init" "rootfs PID 1"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/system-update.sh" "transactional system updater"
     require_file "$SHREEOS_BUILD_DIR/initramfs.cpio.gz" "rootfs initramfs"
     require_file "$SHREEOS_STAGE_ROOT/etc/shreeos/profile" "rootfs profile marker"
     [ "$(tr -d '\r\n' < "$SHREEOS_STAGE_ROOT/etc/shreeos/profile")" = "$profile" ] || \

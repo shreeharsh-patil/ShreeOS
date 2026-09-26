@@ -40,6 +40,7 @@ REQUIRED_EXECUTABLES=(
   usr/bin/shree-auth
   bin/lpm
   usr/bin/lpm
+  usr/bin/system-update.sh
   usr/sbin/shreed
   usr/bin/shreedctl
 )
@@ -56,7 +57,7 @@ for arg in "$@"; do
   esac
 done
 
-PROFILE="${PROFILE:-minimal}"
+PROFILE="${PROFILE:-desktop}"
 case "$PROFILE" in
   minimal|desktop|server) ;;
   *) lumen_die "Unsupported PROFILE: $PROFILE" ;;
@@ -147,7 +148,6 @@ if [ "$SKIP_INIT" = false ]; then
   chmod 4755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/shree-auth"
   shreeos_ok "Installed shree-auth"
 
-
   shreeos_step "Building ShreeOS hardware service"
   make -C "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware" all
   for binary in shreed shreedctl; do
@@ -184,6 +184,13 @@ if [ "$SKIP_INIT" = false ]; then
       chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/${tool}"
     fi
   done
+
+  updater_source="${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/update/scripts/system-update.sh"
+  [ -s "$updater_source" ] || shreeos_die "Missing required system updater: ${updater_source}"
+  cp "$updater_source" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/system-update.sh"
+  chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/system-update.sh"
+  shreeos_ok "Installed transactional updater to /usr/bin/system-update.sh"
+
   if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/scripts/shree-network" ]; then
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/hardware/scripts/shree-network" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-network"
     chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-network"
