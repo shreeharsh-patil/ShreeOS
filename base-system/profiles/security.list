@@ -1,0 +1,15 @@
+# base-system/profiles/security.list — Security workstation profile
+# Extends the graphical desktop with ShreeOS defensive diagnostics and auditing.
+# Intended for administration, troubleshooting, labs, and authorized testing.
+# It does not pull packages from Ubuntu or Kali.
+
+@desktop
+
+# ShreeOS security and diagnostic commands installed by rootfs assembly
+shree-audit
+shree-netdiag
+system-update.sh
+lpm
+openssl
+busybox
+wpa_supplicant
