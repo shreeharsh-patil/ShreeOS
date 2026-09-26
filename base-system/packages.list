@@ -6,55 +6,55 @@
 # Versions aligned with LFS 12.3 stable release
 
 # m4 1.4.19
-m4	1.4.19	https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz	63aede5c6d33b6d9b13511cd0be2cac046f2e70fd0a07aa9573a04a82783af96
+m4	1.4.19	https://ftpmirror.gnu.org/m4/m4-1.4.19.tar.xz	63aede5c6d33b6d9b13511cd0be2cac046f2e70fd0a07aa9573a04a82783af96
 
 # ncurses 6.5
-ncurses	6.5	https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz	136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6
+ncurses	6.5	https://ftpmirror.gnu.org/ncurses/ncurses-6.5.tar.gz	136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6
 
 # zlib 1.3.1
 zlib	1.3.1	https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz	9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
 
 # bison 3.8.2
-bison	3.8.2	https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.xz	9bba0214ccf7f1079c5d59210045227bcf619519840ebfa80cd3849cff5a5bf2
+bison	3.8.2	https://ftpmirror.gnu.org/bison/bison-3.8.2.tar.xz	9bba0214ccf7f1079c5d59210045227bcf619519840ebfa80cd3849cff5a5bf2
 
 # flex 2.6.4
 flex	2.6.4	https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz	e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995
 
 # readline 8.2.13
-readline	8.2.13	https://ftp.gnu.org/gnu/readline/readline-8.2.13.tar.gz	0e5be4d2937e8bd9b7cd60d46721ce79f88a33415dd68c2d738fb5924638f656
+readline	8.2.13	https://ftpmirror.gnu.org/readline/readline-8.2.13.tar.gz	0e5be4d2937e8bd9b7cd60d46721ce79f88a33415dd68c2d738fb5924638f656
 
 # bash 5.2.37
-bash	5.2.37	https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz	9599b22ecd1d5787ad7d3b7bf0c59f312b3396d1e281175dd1f8a4014da621ff
+bash	5.2.37	https://ftpmirror.gnu.org/bash/bash-5.2.37.tar.gz	9599b22ecd1d5787ad7d3b7bf0c59f312b3396d1e281175dd1f8a4014da621ff
 
 # coreutils 9.6
-coreutils	9.6	https://ftp.gnu.org/gnu/coreutils/coreutils-9.6.tar.xz	7a0124327b398fd9eb1a6abde583389821422c744ffa10734b24f557610d3283
+coreutils	9.6	https://ftpmirror.gnu.org/coreutils/coreutils-9.6.tar.xz	7a0124327b398fd9eb1a6abde583389821422c744ffa10734b24f557610d3283
 
 # diffutils 3.11
-diffutils	3.11	https://ftp.gnu.org/gnu/diffutils/diffutils-3.11.tar.xz	a73ef05fe37dd585f7d87068e4a0639760419f810138bd75c61ddaa1f9e2131e
+diffutils	3.11	https://ftpmirror.gnu.org/diffutils/diffutils-3.11.tar.xz	a73ef05fe37dd585f7d87068e4a0639760419f810138bd75c61ddaa1f9e2131e
 
 # file 5.46
 file	5.46	https://astron.com/pub/file/file-5.46.tar.gz	c9cc77c7c560c543135edc555af609d5619dbef011997e988ce40a3d75d86088
 
 # gawk 5.3.1
-gawk	5.3.1	https://ftp.gnu.org/gnu/gawk/gawk-5.3.1.tar.xz	694db764812a6236423d4ff40ceb7b6c4c441301b72ad502bb5c27e00cd56f78
+gawk	5.3.1	https://ftpmirror.gnu.org/gawk/gawk-5.3.1.tar.xz	694db764812a6236423d4ff40ceb7b6c4c441301b72ad502bb5c27e00cd56f78
 
 # grep 3.11
-grep	3.11	https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz	1db2aedde89d0dea42b16d9528f894c8d15dae4e190b59aecc78f5a951276eab
+grep	3.11	https://ftpmirror.gnu.org/grep/grep-3.11.tar.xz	1db2aedde89d0dea42b16d9528f894c8d15dae4e190b59aecc78f5a951276eab
 
 # gzip 1.13
-gzip	1.13	https://ftp.gnu.org/gnu/gzip/gzip-1.13.tar.xz	7454eb6935db17c6655576c2e1b0fabefd38b4d0936e0f87f48cd062ce91a057
+gzip	1.13	https://ftpmirror.gnu.org/gzip/gzip-1.13.tar.xz	7454eb6935db17c6655576c2e1b0fabefd38b4d0936e0f87f48cd062ce91a057
 
 # make 4.4.1
-make	4.4.1	https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz	dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3
+make	4.4.1	https://ftpmirror.gnu.org/make/make-4.4.1.tar.gz	dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3
 
 # patch 2.7.6
-patch	2.7.6	https://ftp.gnu.org/gnu/patch/patch-2.7.6.tar.xz	ac610bda97abe0d9f6b7c963255a11dcb196c25e337c61f94e4778d632f1d8fd
+patch	2.7.6	https://ftpmirror.gnu.org/patch/patch-2.7.6.tar.xz	ac610bda97abe0d9f6b7c963255a11dcb196c25e337c61f94e4778d632f1d8fd
 
 # sed 4.9
-sed	4.9	https://ftp.gnu.org/gnu/sed/sed-4.9.tar.xz	6e226b732e1cd739464ad6862bd1a1aba42d7982922da7a53519631d24975181
+sed	4.9	https://ftpmirror.gnu.org/sed/sed-4.9.tar.xz	6e226b732e1cd739464ad6862bd1a1aba42d7982922da7a53519631d24975181
 
 # tar 1.35
-tar	1.35	https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz	4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16
+tar	1.35	https://ftpmirror.gnu.org/tar/tar-1.35.tar.xz	4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16
 
 # xz 5.6.4
 xz	5.6.4	https://github.com/tukaani-project/xz/releases/download/v5.6.4/xz-5.6.4.tar.xz	829ccfe79d769748f7557e7a4429a64d06858e27e1e362e25d01ab7b931d9c95
@@ -78,7 +78,7 @@ libnl	3.12.0	https://github.com/thom311/libnl/releases/download/libnl3_12_0/libn
 wpa_supplicant	2.11	https://w1.fi/releases/wpa_supplicant-2.11.tar.gz	912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
 
 # ALSA 1.2.14
-alsa-lib	1.2.14	https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.14.tar.bz2	be9c88a0b3604367dd74167a2b754a35e142f670292ae47a2fdef27a2ee97a32
+alsa-lib	1.2.14	https://www.alsa-project.org/files/pub/lib/alsa-lib/alsa-lib-1.2.14.tar.bz2	be9c88a0b3604367dd74167a2b754a35e142f670292ae47a2fdef27a2ee97a32
 alsa-utils	1.2.14	https://www.alsa-project.org/files/pub/utils/alsa-utils-1.2.14.tar.bz2	0794c74d33fed943e7c50609c13089e409312b6c403d6ae8984fc429c0960741
 
 # BlueZ 5.79 (optional until target GLib + D-Bus are staged)
