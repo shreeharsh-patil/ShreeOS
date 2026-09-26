@@ -1,8 +1,8 @@
 # ShreeOS top-level build orchestration
 #
 # Profiles:
-#   PROFILE=minimal (default: minimal headless rescue/embedded environment)
-#   PROFILE=desktop (complete graphical desktop environment)
+#   PROFILE=desktop (default: complete graphical desktop distribution)
+#   PROFILE=minimal (small headless rescue/validation environment)
 #   PROFILE=server  (headless networking/server environment)
 #
 # Targets:
@@ -14,6 +14,8 @@
 #   rootfs          — Phase 6: init & rootfs assembly
 #   iso             — Phase 7: bootable hybrid ISO
 #   all             — Full end-to-end pipeline
+#   distro          — Build and certify the primary desktop distribution
+#   release-check   — Strict desktop release-readiness certification
 #   test-unit       — LPM package manager unit tests
 #   test-security   — System security audit tests
 #   test-auth       — Authentication & credential tests
@@ -27,7 +29,7 @@
 #   qemu            — Launch built ISO in QEMU (UEFI)
 #   qemu-bios       — Launch built ISO in QEMU (BIOS)
 
-PROFILE ?= minimal
+PROFILE ?= desktop
 ifeq ($(filter minimal desktop server,$(PROFILE)),)
 $(error Unsupported PROFILE '$(PROFILE)'; expected minimal, desktop, or server)
 endif
@@ -52,6 +54,7 @@ help:
 	@echo "  make rootfs               Phase 6: Init & rootfs assembly"
 	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
 	@echo "  make all                  Build everything end-to-end"
+	@echo "  make distro               Build and certify the primary desktop distribution"
 	@echo ""
 	@echo "Diagnostic & Verification Targets:"
 	@echo "  make bootstrap-wsl        Install/check supported WSL2 build dependencies"
@@ -59,6 +62,7 @@ help:
 	@echo "  make verify-sources       Verify upstream URLs, checksum format, and downloaded tarballs"
 	@echo "  make graphics             Strictly validate target desktop graphics readiness"
 	@echo "  make verify-iso           Validate ISO structure and BIOS/UEFI boot"
+	@echo "  make release-check        Run strict desktop release-readiness certification"
 	@echo ""
 	@echo "Testing & Execution Targets:"
 	@echo "  make test-unit            Run LPM package manager C unit tests"
@@ -83,7 +87,7 @@ help:
 	@echo "  make distclean            Full reset including build/ and out/"
 	@echo ""
 	@echo "Options:"
-	@echo "  PROFILE=desktop|minimal|server  (default: minimal)"
+	@echo "  PROFILE=desktop|minimal|server  (default: desktop)"
 	@echo "  FORCE=1                         (rebuild all stages)"
 
 # Diagnostic & source verification
@@ -240,9 +244,30 @@ installer:
 	@echo "Installer is executed on-demand (e.g. within live ISO or target disk):"
 	@echo "  bash installer/scripts/install-to-disk.sh /dev/sda"
 
-# -- All -------------------------------------------------------------
+# -- All / Distribution Certification --------------------------------
 .PHONY: all
 all: toolchain base-system kernel packages desktop rootfs iso
+
+.PHONY: release-check
+release-check: iso
+	@if [ "$(PROFILE)" != "desktop" ]; then \
+		echo "release-check certifies the primary desktop distribution; run: make PROFILE=desktop release-check" >&2; \
+		exit 2; \
+	fi
+	bash scripts/verify-stage.sh toolchain
+	bash scripts/verify-stage.sh base-system
+	bash scripts/verify-stage.sh kernel
+	bash scripts/verify-stage.sh packages
+	bash scripts/verify-stage.sh desktop
+	bash scripts/verify-stage.sh rootfs
+	bash scripts/verify-stage.sh iso
+	bash scripts/graphics-readiness.sh --strict
+	bash scripts/verify-iso.sh
+	$(MAKE) PROFILE=desktop test-all
+
+.PHONY: distro
+distro:
+	$(MAKE) PROFILE=desktop release-check
 
 # -- QEMU ------------------------------------------------------------
 .PHONY: qemu
