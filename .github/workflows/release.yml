@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -21,6 +23,7 @@ env:
 
 jobs:
   build:
+    if: ${{ github.ref_type == 'tag' || (github.ref == 'refs/heads/master' && contains(github.event.head_commit.message, '[release]')) }}
     name: Build and certify desktop ISO
     runs-on: ubuntu-24.04
     timeout-minutes: 360
@@ -32,19 +35,24 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       artifact_name: ${{ steps.version.outputs.artifact_name }}
     steps:
-      - name: Check out tagged source
+      - name: Check out release source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Validate release tag
+      - name: Validate release version
         id: version
         run: |
           source build.conf
           expected_tag="v${DISTRO_VERSION}"
-          if [[ "${GITHUB_REF_TYPE:-}" != "tag" || "${GITHUB_REF_NAME:-}" != "$expected_tag" ]]; then
-            echo "Tag ${GITHUB_REF_NAME:-<none>} does not match build.conf ($expected_tag)" >&2
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME:-}" != "$expected_tag" ]]; then
+              echo "Tag ${GITHUB_REF_NAME:-<none>} does not match build.conf ($expected_tag)" >&2
+              exit 1
+            fi
+          elif [[ "${GITHUB_REF:-}" != "refs/heads/master" ]]; then
+            echo "Release builds must come from the matching tag or master" >&2
             exit 1
           fi
           prerelease=false
@@ -186,6 +194,7 @@ jobs:
           retention-days: 7
 
   publish:
+    if: ${{ needs.build.result == 'success' }}
     name: Publish certified desktop release
     needs: build
     runs-on: ubuntu-24.04
@@ -227,5 +236,5 @@ jobs:
             gh release upload "$RELEASE_TAG" release-assets/* --clobber
             gh release edit "$RELEASE_TAG" --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md "${prerelease_arg[@]}"
           else
-            gh release create "$RELEASE_TAG" release-assets/* --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md "${prerelease_arg[@]}"
+            gh release create "$RELEASE_TAG" release-assets/* --target "$GITHUB_SHA" --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md "${prerelease_arg[@]}"
           fi
