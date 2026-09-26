@@ -21,13 +21,14 @@ defaults:
     shell: bash --noprofile --norc -euo pipefail {0}
 
 env:
-  BUILD_PROFILE: minimal
+  BUILD_PROFILE: desktop
+  ALLOW_DEFERRED_GRAPHICS: '0'
 
 jobs:
   build:
-    name: Build and validate minimal ISO
+    name: Build and validate desktop ISO
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 360
     permissions:
       contents: read
     steps:
@@ -84,19 +85,31 @@ jobs:
             build/sysroot
           key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
 
-      - name: Build and verify minimal ISO
+      - name: Build and verify desktop ISO
         run: |
           set -Eeuo pipefail
-          exec > >(tee -a build-logs/build-minimal.log) 2>&1
-          PROFILE="$BUILD_PROFILE" BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M bash scripts/build.sh "$BUILD_PROFILE"
+          exec > >(tee -a build-logs/build-desktop.log) 2>&1
+          PROFILE="$BUILD_PROFILE" ALLOW_DEFERRED_GRAPHICS=0 BIOS_TIMEOUT=240 UEFI_TIMEOUT=300 MEMORY=4096M bash scripts/build.sh "$BUILD_PROFILE"
+
+      - name: Require native desktop readiness
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/desktop-readiness.log) 2>&1
+          PROFILE="$BUILD_PROFILE" bash scripts/verify-stage.sh desktop
+          PROFILE="$BUILD_PROFILE" bash scripts/verify-stage.sh rootfs
+          PROFILE="$BUILD_PROFILE" bash scripts/verify-stage.sh iso
+          PROFILE="$BUILD_PROFILE" bash scripts/graphics-readiness.sh --strict
+          status_file="build/rootfs/etc/shreeos/desktop-native.status"
+          test -s "$status_file"
+          test "$(tr -d '\r\n' < "$status_file")" = ready
 
       - name: Run profile-aware automated tests
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/tests.log) 2>&1
-          PROFILE="$BUILD_PROFILE" BIOS_TIMEOUT=180 UEFI_TIMEOUT=240 MEMORY=2048M make test-all
+          PROFILE="$BUILD_PROFILE" BIOS_TIMEOUT=240 UEFI_TIMEOUT=300 MEMORY=4096M make test-all
 
-      - name: Generate and verify minimal ISO bundle
+      - name: Generate and verify desktop ISO bundle
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/assets.log) 2>&1
@@ -171,12 +184,12 @@ jobs:
           [[ "$(find release-assets -mindepth 1 -maxdepth 1 -type f -print | wc -l)" -eq 4 ]]
           unexpected="$(find release-assets -mindepth 1 -maxdepth 1 ! -type f -print -quit)"
           [[ -z "$unexpected" ]]
-          printf 'Validated release bundle: %s\n' "$iso_name"
+          printf 'Validated desktop distribution bundle: %s\n' "$iso_name"
 
-      - name: Upload tested minimal ISO bundle
+      - name: Upload tested desktop ISO bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-minimal-iso-${{ github.run_id }}-${{ github.run_attempt }}
+          name: shreeos-desktop-iso-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-assets/
           if-no-files-found: error
           overwrite: true
