@@ -11,12 +11,12 @@ TEST_ROOT="$(mktemp -d /tmp/shreeos-build-test.XXXXXX)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 DEFAULT_HELP="$(make -s -C "$PROJECT_ROOT" help)"
-grep -Fq 'Active Profile: minimal' <<<"$DEFAULT_HELP" || {
-  echo "  [FAIL] Minimal is not the default build profile" >&2
+grep -Fq 'Active Profile: desktop' <<<"$DEFAULT_HELP" || {
+  echo "  [FAIL] Desktop is not the default build profile" >&2
   exit 1
 }
-grep -Fq '(default: minimal)' <<<"$DEFAULT_HELP" || {
-  echo "  [FAIL] Help does not report the minimal default profile" >&2
+grep -Fq '(default: desktop)' <<<"$DEFAULT_HELP" || {
+  echo "  [FAIL] Help does not report the desktop default profile" >&2
   exit 1
 }
 
@@ -30,7 +30,7 @@ grep -Fq 'bash desktop/wm/build-all.sh' <<<"$DESKTOP_DRY_RUN" || {
   echo "  [FAIL] Explicit desktop profile no longer builds the desktop suite" >&2
   exit 1
 }
-echo "  [OK] Minimal is default and explicit desktop behavior is preserved"
+echo "  [OK] Desktop is default and explicit minimal/desktop behavior is preserved"
 
 if grep -Eq 'make -C .* clean all' "$PROJECT_ROOT/rootfs/scripts/make-rootfs.sh"; then
   echo "  [FAIL] Rootfs assembly still force-rebuilds Phase 4 packages" >&2
@@ -86,7 +86,7 @@ fi
 echo "  [OK] Package-stage shell variables survive GNU Make expansion"
 
 # DESTDIR-generated Libtool archives contain absolute target paths and must
-# never be copied into the cross sysroot.  Verify that synchronization keeps
+# never be copied into the cross sysroot. Verify that synchronization keeps
 # the real shared library while removing stale .la metadata from both trees.
 (
   export SHREEOS_BUILD_DIR="$TEST_ROOT/build"
