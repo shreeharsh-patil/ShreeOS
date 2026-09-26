@@ -12,12 +12,17 @@ source "$SHREEOS_ROOT_DIR/scripts/common.sh"
 BUILD_START=$(date +%s)
 ALLOW_DEFERRED_GRAPHICS="${ALLOW_DEFERRED_GRAPHICS:-0}"
 STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}"
+ACTIVE_PROFILE="${PROFILE:-desktop}"
 DESKTOP_NATIVE_STATUS="ready"
 
-shreeos_step "Building and assembling ShreeOS desktop environment"
+case "$ACTIVE_PROFILE" in
+  desktop|security) ;;
+  *) shreeos_die "Desktop assembly requires PROFILE=desktop or PROFILE=security" ;;
+esac
+
+shreeos_step "Building and assembling ShreeOS ${ACTIVE_PROFILE} desktop environment"
 
 # 1. Build the actual target graphics stack before compiling any desktop app.
-# A release build must fail here rather than silently linking against host X11.
 if ! bash "$DESKTOP_DIR/graphics/build-all.sh"; then
   DESKTOP_NATIVE_STATUS="deferred"
   if [ "$ALLOW_DEFERRED_GRAPHICS" != "1" ]; then
@@ -129,7 +134,27 @@ if [ -f "${SHREEOS_ROOT_DIR}/installer/scripts/shree-recovery.sh" ]; then
   chmod 755 "${STAGE_ROOT}/usr/bin/shree-recovery"
 fi
 
-# 8. Install branding and design tokens.
+# 8. Security workstation additions. Keep the standard desktop clean when the
+# same staging tree is reused after a security build.
+mkdir -p "${STAGE_ROOT}/etc/shreeos"
+if [ "$ACTIVE_PROFILE" = "security" ]; then
+  for tool in shree-audit shree-netdiag; do
+    src="${SHREEOS_ROOT_DIR}/security/scripts/${tool}"
+    [ -s "$src" ] || shreeos_die "Missing security edition tool: ${src}"
+    cp "$src" "${STAGE_ROOT}/usr/bin/${tool}"
+    chmod 755 "${STAGE_ROOT}/usr/bin/${tool}"
+  done
+  printf 'security\n' > "${STAGE_ROOT}/etc/shreeos/security-edition"
+  chmod 0644 "${STAGE_ROOT}/etc/shreeos/security-edition"
+  shreeos_ok "Installed ShreeOS security workstation diagnostics"
+else
+  rm -f \
+    "${STAGE_ROOT}/usr/bin/shree-audit" \
+    "${STAGE_ROOT}/usr/bin/shree-netdiag" \
+    "${STAGE_ROOT}/etc/shreeos/security-edition"
+fi
+
+# 9. Install branding and design tokens.
 if [ -d "${SHREEOS_ROOT_DIR}/branding/icons" ]; then
   cp "${SHREEOS_ROOT_DIR}/branding/icons/"*.svg "${STAGE_ROOT}/usr/share/icons/shreeos/" 2>/dev/null || true
 fi
@@ -140,7 +165,6 @@ if [ -d "${SHREEOS_ROOT_DIR}/branding/wallpapers" ]; then
   cp "${SHREEOS_ROOT_DIR}/branding/wallpapers/"*.svg "${STAGE_ROOT}/usr/share/wallpapers/" 2>/dev/null || true
   cp "${SHREEOS_ROOT_DIR}/branding/wallpapers/"*.png "${STAGE_ROOT}/usr/share/wallpapers/" 2>/dev/null || true
 fi
-mkdir -p "${STAGE_ROOT}/etc/shreeos"
 if [ -f "${SHREEOS_ROOT_DIR}/branding/theme/tokens.conf" ]; then
   cp "${SHREEOS_ROOT_DIR}/branding/theme/tokens.conf" "${STAGE_ROOT}/etc/shreeos/tokens.conf"
 fi
@@ -152,19 +176,20 @@ printf '%s\n' "$DESKTOP_NATIVE_STATUS" > "${STAGE_ROOT}/etc/shreeos/desktop-nati
 chmod 0644 "${STAGE_ROOT}/etc/shreeos/desktop-native.status"
 
 if [ "$DESKTOP_NATIVE_STATUS" = "ready" ]; then
-  PROFILE=desktop bash "$SHREEOS_ROOT_DIR/scripts/graphics-readiness.sh" --strict
+  PROFILE="$ACTIVE_PROFILE" bash "$SHREEOS_ROOT_DIR/scripts/graphics-readiness.sh" --strict
 fi
 
 BUILD_END=$(date +%s)
 echo ""
 echo "============================================"
 if [ "$DESKTOP_NATIVE_STATUS" = "ready" ]; then
-  shreeos_ok "ShreeOS Desktop build & integration COMPLETE"
+  shreeos_ok "ShreeOS ${ACTIVE_PROFILE} desktop build & integration COMPLETE"
 else
   shreeos_warn "Desktop assets staged; native graphical build is DEFERRED"
 fi
 echo "============================================"
 echo "  Duration:      $((BUILD_END - BUILD_START))s"
+echo "  Profile:       ${ACTIVE_PROFILE}"
 echo "  Native status: ${DESKTOP_NATIVE_STATUS}"
 echo "  Components:    Xorg, software Mesa, dwm, st, dmenu, dock, launcher, settings"
 echo "  Install:       ${STAGE_ROOT}"
