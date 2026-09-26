@@ -50,6 +50,16 @@ jobs:
           exec > >(tee -a build-logs/dependencies.log) 2>&1
           bash scripts/install-build-deps-apt.sh
 
+      - name: Bootstrap pinned host tools
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/host-tools.log) 2>&1
+          bash scripts/bootstrap-host-tools.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          meson --version
+          test "$(meson --version)" = "1.6.1"
+
       - name: Restore exact toolchain cache
         id: cache-toolchain
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
