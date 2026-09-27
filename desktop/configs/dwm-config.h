@@ -72,7 +72,9 @@ static const Layout layouts[] = {
     { MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
 static char dmenumon[2] = "0";
-static const char *launchercmd[] = { "shree-launcher", NULL };
+/* dwm's spawn() special-cases dmenucmd so the launcher opens on the focused
+ * monitor, so the Super+space binding goes through this name. */
+static const char *dmenucmd[]    = { "shree-launcher", NULL };
 static const char *cmdpalette[]  = { "shree-cmdpalette", NULL };
 static const char *clipboardcmd[]= { "shree-clipboard", NULL };
 static const char *filescmd[]    = { "shree-files", NULL };
@@ -82,7 +84,7 @@ static const char *shotregcmd[]  = { "shree-screenshot", "select", NULL };
 
 static const Key keys[] = {
     /* modifier                     key        function        argument */
-    { MODKEY,                       XK_space,  spawn,          {.v = launchercmd } },
+    { MODKEY,                       XK_space,  spawn,          {.v = dmenucmd } },
     { MODKEY,                       XK_k,      spawn,          {.v = cmdpalette } },
     { MODKEY,                       XK_v,      spawn,          {.v = clipboardcmd } },
     { MODKEY,                       XK_e,      spawn,          {.v = filescmd } },
@@ -103,6 +105,13 @@ static const Key keys[] = {
     { MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
     { MODKEY,                       XK_f,      setlayout,      {.v = &layouts[1]} },
     { MODKEY,                       XK_m,      setlayout,      {.v = &layouts[2]} },
+    { MODKEY,                       XK_z,      zoom,           {0} },
+    { MODKEY,                       XK_i,      incnmaster,     {.i = +1 } },
+    { MODKEY,                       XK_d,      incnmaster,     {.i = -1 } },
+    { MODKEY,                       XK_comma,  focusmon,       {.i = -1 } },
+    { MODKEY,                       XK_period, focusmon,       {.i = +1 } },
+    { MODKEY|ShiftMask,             XK_comma,  tagmon,         {.i = -1 } },
+    { MODKEY|ShiftMask,             XK_period, tagmon,         {.i = +1 } },
     TAGKEYS(                        XK_1,                      0)
     TAGKEYS(                        XK_2,                      1)
     TAGKEYS(                        XK_3,                      2)
