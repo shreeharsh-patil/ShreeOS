@@ -368,7 +368,7 @@ Power             — Battery diagnostics & display sleep timeouts
 Date & Time       — Current timezone & network time sync
 Users             — User accounts, credentials & privileges
 Software          — System upgrades, package manager & restore points
-About             — ShreeOS 0.2.0-dev, kernel release & hardware specs"
+About             — ShreeOS 0.2.2-dev, kernel release & hardware specs"
 
 TARGET="${1:-}"
 

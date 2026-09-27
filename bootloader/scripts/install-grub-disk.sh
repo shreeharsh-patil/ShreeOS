@@ -171,7 +171,7 @@ insmod part_msdos
 insmod ext2
 insmod fat
 
-menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.2.0-dev}" {
+menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-0.2.2-dev}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 ${CMDLINE_EXTRA}

@@ -51,7 +51,7 @@ The distribution includes:
 
 ## 📌 Project Status
 
-The current development version defined by the build system is **ShreeOS 0.2.1-dev**.
+The current development version defined by the build system is **ShreeOS 0.2.2-dev**.
 
 The `master` branch treats the graphical desktop image as the primary release profile. The release workflow is configured to publish a desktop ISO only after the target desktop stack, root filesystem, ISO structure, checksums, BIOS boot, UEFI boot, and automated test suites pass their release checks.
 

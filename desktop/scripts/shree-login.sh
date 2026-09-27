@@ -5,7 +5,7 @@
 #   - Centered user avatar monogram [ U ]
 #   - User account selection & display
 #   - Password authentication via audited /usr/bin/shree-auth
-#   - Minimal ShreeOS branding (⟡ ShreeOS 0.2.0-dev)
+#   - Minimal ShreeOS branding (⟡ ShreeOS 0.2.2-dev)
 #   - Quick [Shutdown] and [Reboot] controls
 #   - Strict security: permanent privilege drop, fails closed
 #
@@ -46,7 +46,7 @@ run_login_screen() {
 
   local sel_entry=""
   if command -v dmenu >/dev/null 2>&1; then
-    sel_entry=$(echo -e "$formatted_choices" | dmenu -p "⟡ ShreeOS 0.2.0-dev" -l 6 -c || true)
+    sel_entry=$(echo -e "$formatted_choices" | dmenu -p "⟡ ShreeOS 0.2.2-dev" -l 6 -c || true)
   fi
 
   [ -z "$sel_entry" ] && sel_entry="[  S  ]  ${USER:-shree}"

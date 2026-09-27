@@ -4,7 +4,24 @@
 set -euo pipefail
 
 DISTRO_NAME="ShreeOS"
-DISTRO_VERSION="0.2.0-dev"
+# Report the version the running system was built as. /etc/os-release is
+# generated from build.conf during the rootfs stage; when run from a checkout
+# (no ShreeOS os-release present) fall back to this tree's build.conf, and only
+# then to the compiled-in default, so the reported version cannot go stale.
+resolve_version() {
+  local version=""
+  if [ -r /etc/os-release ] && grep -Eq '^ID=shreeos$' /etc/os-release; then
+    version="$(sed -n 's/^VERSION="\(.*\)"$/\1/p' /etc/os-release | head -n 1)"
+  fi
+  if [ -z "$version" ]; then
+    local conf="${BASH_SOURCE[0]%/*}/../build.conf"
+    if [ -r "$conf" ]; then
+      version="$(sed -n 's/^export DISTRO_VERSION="\(.*\)"$/\1/p' "$conf" | head -n 1)"
+    fi
+  fi
+  printf '%s' "${version:-0.2.2-dev}"
+}
+DISTRO_VERSION="$(resolve_version)"
 KERNEL=$(uname -r 2>/dev/null || echo "6.18")
 ARCH=$(uname -m 2>/dev/null || echo "x86_64")
 HOSTNAME=$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo "shreeos")

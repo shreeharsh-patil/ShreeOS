@@ -3,6 +3,7 @@
 /out/
 /build-logs/
 /release-assets/
+/.ci-logs/
 
 # Downloaded upstream sources (large, re-fetchable, checksum-verified)
 *.tar.gz
