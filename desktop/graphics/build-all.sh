@@ -123,6 +123,14 @@ target_autotools() {
 
   (
     cd "$build"
+    # Every preset cache variable below replaces an autoconf run test that the
+    # cross compiler cannot execute on the build host:
+    #   ac_cv_func_malloc_0_nonnull / ac_cv_func_realloc_0_nonnull — glibc
+    #     malloc(0)/realloc(0) return unique non-NULL pointers.
+    #   xorg_cv_malloc0_returns_null — the same fact as declared by the Xorg
+    #     libraries (libXext/libXi/libXinerama/libXrandr and friends). Without
+    #     it, configure aborts with "cannot run test program while cross
+    #     compiling" instead of building the target library.
     env \
       CC="$CC" CXX="$CXX" AR="$AR" AS="$AS" LD="$LD" RANLIB="$RANLIB" STRIP="$STRIP" \
       CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" \
@@ -133,6 +141,7 @@ target_autotools() {
       PYTHON=python3 \
       ac_cv_func_malloc_0_nonnull=yes \
       ac_cv_func_realloc_0_nonnull=yes \
+      xorg_cv_malloc0_returns_null=no \
       "$src/configure" \
         --build="$BUILD_TRIPLET" \
         --host="$LUMEN_TARGET_TRIPLET" \
@@ -242,15 +251,19 @@ target_autotools xtrans
 target_autotools libX11 --disable-static --enable-shared --disable-malloc0returnsnull --disable-specs --without-perl
 
 # X11 extension/client libraries used by Xorg and the ShreeOS desktop.
-target_autotools libXext --disable-static --enable-shared
+# libXext/libXi/libXinerama/libXrandr probe malloc(0) with a run test and abort
+# when cross compiling; glibc returns a unique non-NULL pointer for malloc(0),
+# so the explicit "no" is the correct target answer (libX11 above is built the
+# same way). The matching cache variable is preset in target_autotools.
+target_autotools libXext --disable-static --enable-shared --disable-malloc0returnsnull
 target_autotools libXfixes --disable-static --enable-shared
 target_autotools libXrender --disable-static --enable-shared
-target_autotools libXi --disable-static --enable-shared
+target_autotools libXi --disable-static --enable-shared --disable-malloc0returnsnull
 target_autotools libXres --disable-static --enable-shared
 target_autotools libXft --disable-static --enable-shared
 target_autotools libXcursor --disable-static --enable-shared
-target_autotools libXinerama --disable-static --enable-shared
-target_autotools libXrandr --disable-static --enable-shared
+target_autotools libXinerama --disable-static --enable-shared --disable-malloc0returnsnull
+target_autotools libXrandr --disable-static --enable-shared --disable-malloc0returnsnull
 target_autotools libXdamage --disable-static --enable-shared
 target_autotools libXxf86vm --disable-static --enable-shared
 target_autotools libICE --disable-static --enable-shared
@@ -290,9 +303,12 @@ target_meson libdrm \
   -Dudev=false \
   -Dvalgrind=disabled \
   -Dtests=false
+# Mesa 24.x names its software rasterizer "swrast" (softpipe + llvmpipe);
+# "softpipe" is no longer an accepted -Dgallium-drivers value, and -Dglx=xlib
+# requires the software rasterizer to be present.
 target_meson mesa \
   -Dplatforms=x11 \
-  -Dgallium-drivers=softpipe \
+  -Dgallium-drivers=swrast \
   -Dvulkan-drivers= \
   -Dllvm=disabled \
   -Dglx=xlib \

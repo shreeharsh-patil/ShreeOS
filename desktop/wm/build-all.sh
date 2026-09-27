@@ -31,11 +31,10 @@ if ! bash "$DESKTOP_DIR/graphics/build-all.sh"; then
   shreeos_warn "Native graphics build failed; continuing only because ALLOW_DEFERRED_GRAPHICS=1"
 fi
 
-if [ "$DESKTOP_NATIVE_STATUS" = "ready" ]; then
-  bash "$SHREEOS_ROOT_DIR/scripts/graphics-readiness.sh" --strict
-else
-  bash "$SHREEOS_ROOT_DIR/scripts/graphics-readiness.sh" || true
-fi
+# Report graphics readiness early for operator feedback. The strict
+# certification also validates the /etc/X11 configuration installed in step 4,
+# so it is run at the end of this script instead of here.
+bash "$SHREEOS_ROOT_DIR/scripts/graphics-readiness.sh" || true
 
 # 2. Build window manager and terminal/launcher tools against the target sysroot.
 if [ "$DESKTOP_NATIVE_STATUS" = "ready" ]; then

@@ -8,7 +8,15 @@ source "$PROJECT_ROOT/build.conf"
 source "$PROJECT_ROOT/scripts/common.sh"
 
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
-ISO="${ISO:-${PROJECT_ROOT}/out/${DISTRO_ID}-${DISTRO_VERSION}.iso}"
+# Profile-aware default: only the minimal profile omits the profile suffix,
+# matching iso-builder/scripts/build-iso.sh and scripts/verify-iso.sh.
+profile="${PROFILE:-desktop}"
+if [ "$profile" = "minimal" ]; then
+  ISO_NAME="${DISTRO_ID}-${DISTRO_VERSION}.iso"
+else
+  ISO_NAME="${DISTRO_ID}-${DISTRO_VERSION}-${profile}.iso"
+fi
+ISO="${ISO:-${PROJECT_ROOT}/out/${ISO_NAME}}"
 MARKER_STRING="${MARKER_STRING:-ShreeOS init: critical services ready}"
 TIMEOUT="${TIMEOUT:-${BIOS_TIMEOUT:-180}}"
 MEMORY="${MEMORY:-1024M}"
