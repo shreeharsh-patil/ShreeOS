@@ -10,7 +10,10 @@ echo "==> Testing ShreeOS build orchestration"
 TEST_ROOT="$(mktemp -d /tmp/shreeos-build-test.XXXXXX)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
-DEFAULT_HELP="$(make -s -C "$PROJECT_ROOT" help)"
+# The default-profile assertions must observe make's own default, so an ambient
+# PROFILE (for example the minimal-profile Kernel workflow, which exports it for
+# the whole job) is cleared before the help target is rendered.
+DEFAULT_HELP="$(env -u PROFILE make -s -C "$PROJECT_ROOT" help)"
 grep -Fq 'Active Profile: desktop' <<<"$DEFAULT_HELP" || {
   echo "  [FAIL] Desktop is not the default build profile" >&2
   exit 1
