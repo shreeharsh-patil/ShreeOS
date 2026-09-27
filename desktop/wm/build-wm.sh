@@ -72,6 +72,7 @@ configure_upstream_makefile() {
     -e "s#^X11LIB = .*#X11LIB = ${SHREEOS_SYSROOT}/usr/lib#" \
     -e "s#^FREETYPEINC = .*#FREETYPEINC = ${SHREEOS_SYSROOT}/usr/include/freetype2#" \
     -e "s#^CC = .*#CC = ${CC}#" \
+    -e "s#^\\# *CC = .*#CC = ${CC}#" \
     "$config_mk"
 }
 
@@ -123,9 +124,12 @@ build_suckless() {
   cp "$distro_config" config.h
   configure_upstream_makefile config.mk
 
-  make clean
-  make -j"${SHREEOS_MAKE_JOBS}"
-  make DESTDIR="${SHREEOS_STAGE_ROOT}" install
+  # Pass the cross compiler explicitly: upstream ships st 0.9.2 with its CC
+  # line commented out, so a config.mk-only override would silently fall back
+  # to the host compiler and produce a non-target binary.
+  make clean CC="$CC"
+  make -j"${SHREEOS_MAKE_JOBS}" CC="$CC"
+  make DESTDIR="${SHREEOS_STAGE_ROOT}" install CC="$CC"
 
   lumen_ok "${name} built with ShreeOS desktop configuration"
 }
