@@ -115,11 +115,12 @@ target_autotools() {
 
   lumen_step "Desktop graphics: building $name-$(pkg_version_graphics "$name")"
 
-  case "$name" in
-    xf86-video-fbdev|xf86-input-keyboard|xf86-input-mouse)
-      (cd "$src" && autoreconf -fi)
-      ;;
-  esac
+  # The pinned Xorg driver release tarballs ship a complete configure script
+  # that was generated from their own xorg-macros at release time. Regenerating
+  # it with autoreconf against the host macros leaves XORG_DRIVER_CHECK_EXT
+  # unexpanded, and the resulting configure dies with a shell syntax error
+  # ("syntax error near unexpected token `RANDR,'"), so the released script is
+  # used as-is.
 
   (
     cd "$build"
