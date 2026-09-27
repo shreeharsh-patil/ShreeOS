@@ -1,7 +1,8 @@
 diff --git a/dmenu.c b/dmenu.c
+index 40f93e0..d7e4c7c 100644
 --- a/dmenu.c
 +++ b/dmenu.c
-@@ -95,6 +95,15 @@ calcoffsets(void)
+@@ -95,6 +95,16 @@ calcoffsets(void)
  			break;
  }
  
@@ -18,7 +19,7 @@ diff --git a/dmenu.c b/dmenu.c
  static void
  cleanup(void)
  {
-@@ -636,6 +645,7 @@ setup(void)
+@@ -636,6 +646,7 @@ setup(void)
  	bh = drw->fonts->h + 2;
  	lines = MAX(lines, 0);
  	mh = (lines + 1) * bh;
@@ -26,7 +27,7 @@ diff --git a/dmenu.c b/dmenu.c
  #ifdef XINERAMA
  	i = 0;
  	if (parentwin == root && (info = XineramaQueryScreens(dpy, &n))) {
-@@ -662,9 +672,15 @@ setup(void)
+@@ -662,9 +673,15 @@ setup(void)
  				if (INTERSECT(x, y, 1, 1, info[i]) != 0)
  					break;
  
@@ -45,7 +46,7 @@ diff --git a/dmenu.c b/dmenu.c
  		XFree(info);
  	} else
  #endif
-@@ -672,9 +688,15 @@ setup(void)
+@@ -672,9 +689,15 @@ setup(void)
  		if (!XGetWindowAttributes(dpy, parentwin, &wa))
  			die("could not get embedding window attributes: 0x%lx",
  			    parentwin);
@@ -64,7 +65,7 @@ diff --git a/dmenu.c b/dmenu.c
  	}
  	promptw = (prompt && *prompt) ? TEXTW(prompt) - lrpad / 4 : 0;
  	inputw = mw / 3; /* input width: ~33% of monitor width */
-@@ -734,6 +756,8 @@ main(int argc, char *argv[])
+@@ -730,6 +753,8 @@ main(int argc, char *argv[])
  		if (!strcmp(argv[i], "-v")) {      /* prints version information */
  			puts("dmenu-"VERSION);
  			exit(0);
@@ -72,3 +73,4 @@ diff --git a/dmenu.c b/dmenu.c
 +			centered = 1;
  		} else if (!strcmp(argv[i], "-b")) /* appears at the bottom of the screen */
  			topbar = 0;
+ 		else if (!strcmp(argv[i], "-f"))   /* grabs keyboard before reading stdin */
