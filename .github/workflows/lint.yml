@@ -48,12 +48,23 @@ jobs:
             [[ -f "$file" ]] || continue
             first_line=""
             if IFS= read -r first_line < "$file"; then
+              # Only shell interpreters may be handed to shellcheck (SC1071).
+              # Interpreted helpers such as the Python audit tool carry a
+              # shebang too, and are syntax-checked with their own interpreter.
               case "$first_line" in
-                '#!'*) shellcheck_files+=("$file") ;;
-              esac
-              case "$first_line" in
-                '#!/usr/bin/env bash'|'#!/bin/bash'|'#!/usr/bin/bash') bash_syntax_files+=("$file") ;;
-                '#!/bin/sh'|'#!/usr/bin/sh') sh_syntax_files+=("$file") ;;
+                '#!/usr/bin/env bash'|'#!/bin/bash'|'#!/usr/bin/bash')
+                  shellcheck_files+=("$file")
+                  bash_syntax_files+=("$file")
+                  ;;
+                '#!/bin/sh'|'#!/usr/bin/sh')
+                  shellcheck_files+=("$file")
+                  sh_syntax_files+=("$file")
+                  ;;
+                '#!/usr/bin/env python3'|'#!/usr/bin/python3')
+                  # -B keeps the tree free of __pycache__ side effects.
+                  python3 -B -m py_compile "$file"
+                  printf 'python syntax OK: %s\n' "$file"
+                  ;;
               esac
             fi
           done
