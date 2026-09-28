@@ -3,6 +3,9 @@
 Status: **complete**. Commit under audit: `d2726fbd64df` (`master`).
 Everything below was read out of the implementation, not out of the README.
 
+Canonical document. Supersedes the earlier `PHASE-1-AUDIT.md`, which has been
+removed to avoid two competing audits of the same commit drifting apart.
+
 ## Headline findings
 
 ShreeOS today is a **bootable Linux system, not a desktop distribution**. It
