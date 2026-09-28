@@ -92,7 +92,12 @@ printf '%s:x:%s:%s:%s:%s:/bin/bash\n' \
 
 mkdir -p "${LUMEN_STAGE_ROOT}${DESKTOP_HOME}"
 chmod 0755 "${LUMEN_STAGE_ROOT}${DESKTOP_HOME}"
-chown "${DESKTOP_UID}:${DESKTOP_GID}" "${LUMEN_STAGE_ROOT}${DESKTOP_HOME}"
+# Ownership is deliberately not set here. This script must run unprivileged --
+# tests/smoke/test-rootfs-reliability.sh invokes it without fakeroot -- and it is
+# also pointless: make-rootfs.sh packs the tree with `cpio --owner=0:0`, which
+# stamps every archive entry as root:root regardless of the staging filesystem.
+# The installed/live session therefore materialises the user's home at runtime;
+# see docs/audit/PHASE-1-AUDIT.md for the ownership gap this leaves in Phase 5.
 
 mkdir -p "${LUMEN_STAGE_ROOT}/nonexistent"
 chmod 0755 "${LUMEN_STAGE_ROOT}/nonexistent"

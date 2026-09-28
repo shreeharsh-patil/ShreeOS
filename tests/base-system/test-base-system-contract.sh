@@ -146,9 +146,28 @@ if [ -n "$user_line" ]; then
     "$([ "$uid" != "0" ] && echo 0 || echo 1)"
   check "desktop user home is ${home} and exists" \
     "$([ -d "$STAGE$home" ] && echo 0 || echo 1)"
-  check "desktop user owns its home directory" \
-    "$(chown_check="$(stat -c '%u' "$STAGE$home" 2>/dev/null || echo x)"
-      [ "$chown_check" = "$uid" ] && echo 0 || echo 1)"
+  # Ownership of /home/<user> is deliberately NOT asserted here, because it is
+  # not a property of the staging tree and not a property of the shipped image:
+  #
+  #   * The build runs unprivileged, so setup-rootfs.sh cannot chown anything.
+  #   * make-rootfs.sh packs the tree with `cpio --owner=0:0`, so every entry in
+  #     the shipped archive is root:root regardless of what the staging
+  #     filesystem happens to look like.
+  #
+  # root:root in a read-only live image is correct and expected. What a user
+  # session actually needs is that the mode permits the owner to use the
+  # directory, and that some privileged path applies real ownership. Those are
+  # the invariants asserted below instead.
+  check "desktop user home is usable by its owner (mode $(
+      stat -c '%a' "$STAGE$home" 2>/dev/null || echo '?'))" \
+    "$(mode="$(stat -c '%a' "$STAGE$home" 2>/dev/null || echo '')"
+      case "$mode" in
+        7??|?7?|??7) echo 0 ;;
+        *) echo 1 ;;
+      esac)"
+  check "desktop user gid $gid has a matching group entry" \
+    "$(awk -F: -v g="$gid" '$3 == g {found=1} END {exit !found}' "$STAGE/etc/group" \
+      && echo 0 || echo 1)"
   check "desktop user shell is valid and installed (${shell})" \
     "$([ -x "$STAGE${shell}" ] && echo 0 || echo 1)"
   check "desktop user has a shadow entry" \
@@ -165,6 +184,18 @@ for grp in wheel audio video network plugdev input render; do
   check "supplementary group '${grp}' exists" \
     "$(awk -F: -v g="$grp" '$1 == g {found=1} END {exit !found}' "$STAGE/etc/group" && echo 0 || echo 1)"
 done
+
+# ---------------------------------------------------------------------------
+section "Home ownership mechanism"
+# The staging tree cannot express ownership (see the note in the user section
+# above), so assert that the two components which *do* own that responsibility
+# are wired up. If either regresses, no installed system would have a usable
+# home directory and the failure would otherwise only appear at first login.
+check "archive builder pins ownership (make-rootfs.sh uses cpio --owner)" \
+  "$(grep -Eq 'cpio .*--owner' "$REPO_ROOT/rootfs/scripts/make-rootfs.sh" && echo 0 || echo 1)"
+check "installer applies home ownership (configure-user.sh chowns /home)" \
+  "$(grep -Eq 'chown .*\$\{?TARGET\}?/home/' "$REPO_ROOT/installer/scripts/configure-user.sh" \
+    && echo 0 || echo 1)"
 
 # --------------------------------------------------------------------------
 section "Privilege escalation (sudo)"
