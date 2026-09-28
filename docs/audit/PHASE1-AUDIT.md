@@ -3,6 +3,28 @@
 Status: **complete**. Commit under audit: `d2726fbd64df` (`master`).
 Everything below was read out of the implementation, not out of the README.
 
+## Headline findings
+
+ShreeOS today is a **bootable Linux system, not a desktop distribution**. It
+boots, mounts a root filesystem, starts Xorg, and shows a graphical session
+driven by ~45 bash/Tcl scripts. It has none of the software a desktop
+distribution is defined by: no firmware, no applications, no systemd, no
+network manager, no installer that writes a disk, and no package repository.
+
+1. **The entire root filesystem is shipped inside the initramfs.**
+   `initramfs.cpio.gz` is 194.31 MiB of the 226.46 MiB ISO. There is no
+   SquashFS, no overlayfs, and no `switch_root`. Every boot decompresses
+   562 MiB into RAM before reaching userspace. → **Phase 5**
+2. **≈ 32% of the shipped bytes are build artifacts that should never reach a
+   user:** 152.99 MiB of static archives, 1,064 C headers (12.37 MiB),
+   8.35 MiB of docs, 7.63 MiB of info pages. → **Phases 2/5**
+3. **Zero firmware, zero compiled applications.** Wireless, audio, discrete
+   graphics and NVMe cannot work on real hardware. → **Phases 4/11**
+4. **No systemd, no NetworkManager, no PipeWire, no installer, no package
+   repository.** → **Phases 3, 8, 9, 10, 12**
+
+Component tally: **24 working · 21 not production-ready · 33 missing.**
+
 Reproduce the machine-readable form with:
 
 ```bash
@@ -42,10 +64,11 @@ archive *is* the live operating system.**
 **ShreeOS currently has no live root filesystem.** It is a kernel wrapped
 around a development sysroot.
 
-Verified against the released ISO:
+Verified against the released ISO and its 10,662-entry rootfs inventory:
 
-- `initramfs.cpio.gz` on the ISO: **196.29 MiB** — it is the payload.
-- Uncompressed: **560.02 MiB**, a **1:2.85** compression ratio.
+- `initramfs.cpio.gz` on the ISO: **194.31 MiB** (203,745,463 bytes) — it is the
+  payload, **85.8% of the 226.46 MiB image**.
+- Uncompressed: **562.47 MiB** (589,787,648 bytes), a **1:2.85** compression ratio.
 - `rootfs/scripts/make-rootfs.sh` stages the tree, then pipes the *whole stage
   root* through `cpio -o -H newc` into that one file.
 - `iso-builder/scripts/build-iso.sh` copies it to `/boot/initramfs.cpio.gz`.
@@ -66,44 +89,95 @@ sysroot in a cpio wrapper. **Phase 5 replaces this.**
 
 ---
 
-## 3. Why the ISO is ~200–237 MB and not several GB
+## 3. Why the ISO is ~226 MB and not several GB
 
-Measured composition of the 560 MiB uncompressed rootfs:
+This is the question the audit must answer precisely, because an ISO that is too
+small usually means software is missing rather than that the build is
+efficient. Here **both** are true, for specific and measurable reasons.
 
-| Category | Size | Share | Should it ship? |
-|---|---|---|---|
-| **Static archives `*.a`** | **100.13 MiB** | 17.9% | **No — pure link-time input** |
-| **Locale `.mo` catalogues** | **38.16 MiB** | 6.8% | Only a few languages |
-| Man pages / docs / info | ~15 MiB | 2.7% | No |
-| Kernel modules | ~60 MiB | 10.7% | Yes |
-| Everything else (real userspace) | ~100 MiB | 17.9% | Yes |
+Measured composition of the 560.50 MiB uncompressed rootfs
+(10,662 regular files), by category:
 
-The single largest waste is `libstdc++.a`, **33.09 MiB, installed twice** — once
-at `/usr/lib/` and again at `/usr/lib64/` — because the GCC build installs into
-both. Adding `libc.a` (22.7 MiB), `libcrypto.a` (10.7 MiB), `libncurses.a`,
-`libreadline.a`, `libhistory.a`, `libform.a`, `libpanel.a` and `libtinfo.a`
-takes static archives past 100 MiB. None of it is reachable at runtime.
+| Category | Count | Size | Share | Should it ship? |
+|---|---:|---:|---:|---|
+| Other (executables, data, X assets) | 4,231 | 164.78 MiB | 29.4% | Partly |
+| **Static archives `*.a`** | **37** | **152.99 MiB** | **27.3%** | **No — link-time only** |
+| Shared objects `*.so*` | 409 | 110.52 MiB | 19.7% | Yes |
+| Kernel modules `*.ko` | 79 | 59.57 MiB | 10.6% | Yes |
+| Locale `.mo` catalogues | 748 | 39.39 MiB | 7.0% | Only a few languages |
+| Documentation (doc + info) | 244 | 15.27 MiB | 2.7% | No |
+| Fonts | 22 | 9.74 MiB | 1.7% | Yes, more needed |
+| Man pages | 4,242 | 7.40 MiB | 1.3% | No |
+| Zoneinfo | 597 | 390.65 KiB | 0.1% | Yes |
+| **Firmware** | **0** | **0 B** | **0.0%** | **Required, absent** |
+| Icons | 11 | 9.47 KiB | 0.0% | Yes, more needed |
+| `.desktop` entries | 0 | 0 B | 0.0% | Required, absent |
 
-So of the ~200 MiB ISO, **roughly 110 MiB is build-time content that should
-never have been installed**, and the genuinely shippable userspace is on the
-order of 100 MiB — of which 60 MiB is kernel modules.
+**Reason 1 — the image ships a development sysroot, not a userspace.**
+Static archives alone are 152.99 MiB, 27.3% of the rootfs, and the four largest
+files in the entire system are pure link-time inputs:
 
-**There is no missing 4 GB.** The ISO is small because the distribution
-contains almost no software:
+| File | Size | Why it must not ship |
+|---|---:|---|
+| `/usr/lib/libstdc++.a` | 31.53 MiB | static libstdc++, needed only to link C++ |
+| `/usr/lib64/libstdc++.a` | 31.53 MiB | **byte-identical duplicate of the above** |
+| `/usr/lib/libc.a` | 21.98 MiB | static glibc, needed only to link binaries |
+| `/usr/lib/libcrypto.a` | 10.67 MiB | static libcrypto, needed only to link binaries |
 
-- **Firmware: 0 files.** No `intel-ucode`, no `amd-ucode`, no Realtek/MediaTek/
-  Broadcom blobs. Wireless, audio, GPU and NVMe devices will not fully work.
-- **Applications: 0 compiled.** Every one of the 45 desktop "apps" in
-  `desktop/apps/` and `desktop/scripts/` is a **bash or Tcl script**. There is
-  no browser, no office suite, no video player, no real file manager.
-- **Fonts: effectively none.** No font package, so the desktop renders with
-  whatever fontconfig fallback exists.
-- **Audio: ALSA utils only** — no sound *server*.
-- **Bluetooth: BlueZ client tools only** — no full stack.
+`libstdc++.a` is installed **twice**, at `/usr/lib` and `/usr/lib64`, with no
+`/usr/lib64 → usr/lib` compatibility symlink, so 31.53 MiB is paid for an exact
+duplicate. None of the 37 archives is reachable at runtime.
 
-Squashing 100 MiB of userspace yields a small ISO. Growing to gigabytes is a
-*consequence* of adding firmware, Mesa, browsers, fonts and applications —
-never a target to hit by itself.
+**Reason 2 — 1,064 C headers are installed into the live system.**
+`/usr/include` holds 1,064 header files totalling 12.37 MiB. `lpm` and `init`
+are linked in-tree at build time, so the headers were installed from the
+sysroot instead of being used from it.
+
+**Reason 3 — documentation and localisation ship in full.**
+`/usr/share` is 18.38 MiB, of which `doc` is 8.35 MiB, `info` 7.63 MiB (autotools
+pages from the base-system builds) and `man` 7.76 MiB, plus 40.20 MiB of locale
+catalogues in `/usr/share/locale`. A desktop ISO carries a curated locale set and
+drops info pages entirely.
+
+Adding reasons 1–3: **≈ 181 MiB of the 560.50 MiB rootfs (32%) is build-time or
+developer content that should never reach a user's machine.**
+
+**Reason 4 — there is almost no software to compress.**
+The genuinely useful runtime content is 79 kernel modules (59.57 MiB) plus a
+few hundred shared objects. A real desktop distribution has 1.5–3 GB of largely
+*incompressible* binary and data — firmware blobs, a browser, an office suite, a
+full graphics driver stack, fonts, media codecs. ShreeOS has **0 bytes of
+firmware and 0 compiled applications**, so there is no large payload present to
+compress.
+
+So the image is small for two independent reasons: **≈ 32% of it is build
+scaffolding that should be deleted**, and the remaining real payload is small
+because the applications, drivers, and firmware that define a desktop
+distribution have not been integrated. Both are fixed by pruning *and* adding —
+never by padding.
+
+### 3.1 What is simply absent
+
+**There is no missing 4 GB.** The ISO is small because the distribution contains
+almost no software:
+
+- **Firmware: 0 bytes, 0 blobs.** No `intel-ucode`, no `amd-ucode`, no
+  Realtek/MediaTek/Qualcomm/Broadcom blobs. Wireless, audio, GPU and NVMe
+  devices will not fully work on real hardware no matter how the kernel is
+  configured.
+- **Applications: 0 compiled.** All 45 entry points in `desktop/apps/` and
+  `desktop/scripts/` are **bash or Tcl scripts**. There is no browser, no
+  office suite, no media player, and no real file manager.
+- **Fonts: 22 files, 9.74 MiB — not zero, but thin.** No proper UI font family
+  or scalable text stack, so text rendering quality is far below a real desktop.
+- **Audio: ALSA `utils` only** — no sound *server*.
+- **Bluetooth: BlueZ client tools only** — no `bluetoothd`, no pairing service.
+- **`.desktop` entries: 0.** Nothing is registered with a display manager or
+  menu, because there is no display manager and no applications to register.
+
+Squashing ~100 MiB of userspace yields a small ISO. Growing to gigabytes is a
+*consequence* of adding firmware, Mesa, browsers, fonts and applications — never
+a target to hit by itself.
 
 ---
 
@@ -146,15 +220,105 @@ Clean. Across all 7 workflows there are **no `continue-on-error:` flags and no
 
 ---
 
+## 4.1 ISO artifact breakdown
+
+For reference when Phase 5 restructures this, the released `v0.2.2-dev` desktop
+ISO (`shreeos-0.2.2-dev-desktop.iso`, SHA-256 `c191bcb6…`) breaks down as:
+
+| Artifact | Size | Share of ISO |
+|---|---:|---:|
+| `initramfs.cpio.gz` — the entire OS | 194.31 MiB | 85.8% |
+| Bootloader images (`*.img`, 3 files) | 16.32 MiB | 7.2% |
+| `bzImage` kernel | 12.14 MiB | 5.4% |
+| EFI bootloader (`*.efi`) | 0.77 MiB | 0.3% |
+| `grub.cfg` + boot catalog | 0.01 MiB | ~0% |
+| **Total ISO** | **226.46 MiB** | 100% |
+| **Compressed live root filesystem** | **absent** | — |
+
+The ISO contains only **8 regular files**. There is no
+`/live/filesystem.squashfs`, no `/casper/`, no persistent-storage layer, and no
+second initramfs variant.
+
+---
+
+## 4.2 Critical findings, ranked
+
+1. **Whole rootfs in the initramfs (Phase 5).** 194.31 MiB of compressed cpio
+   *is* the OS. No SquashFS, no overlayfs, no `switch_root`. Every boot
+   decompresses 562 MiB before userspace. This is the structural blocker.
+2. **No firmware at all (Phase 4).** Zero bytes of GPU, Wi-Fi, Bluetooth or
+   storage-controller firmware. Wireless, audio, discrete graphics and NVMe
+   cannot work on real hardware regardless of kernel support.
+3. **No applications (Phase 11).** No browser, no media player, no office
+   tooling, no Software Center — and nothing to install software *with*.
+4. **No network manager (Phase 8).** BusyBox `udhcpc` only. No Wi-Fi UI, no VPN,
+   no static configuration, no reconnect handling.
+5. **No real init system (Phase 3).** A custom C init replaces systemd, so there
+   are no service dependencies, no journal, no logind, no session management.
+6. **Dev artifacts ship in the live image (Phases 2/5).** 152.99 MiB of static
+   archives, 12.37 MiB of C headers, 8.35 MiB of docs, 7.63 MiB of info pages.
+7. **No installer that installs (Phase 12).** `install-shreeos` is a 698-byte
+   launcher; nothing partitions, formats, or installs a bootloader.
+8. **No package repository (Phase 10).** `lpm` handles local `.lpkg` files
+   only — no index, no dependencies, no signatures, no upgrade path.
+9. **Duplicated static archive.** `libstdc++.a` installed twice, 31.53 MiB
+   wasted on an exact duplicate.
+10. **No accessibility, locale generation, printing or scanning (Phase 14).**
+
+---
+
+## 4.3 Physical-hardware status
+
+Everything measured in this audit is structural: source reading, ISO parsing,
+and CI job results. The following **REQUIRES PHYSICAL HARDWARE VALIDATION** and
+is explicitly *not* claimed as working:
+
+```
+REQUIRES PHYSICAL HARDWARE VALIDATION
+  Wi-Fi hardware (any chipset)       - no firmware, no NetworkManager
+  Bluetooth hardware                 - BlueZ client tools only, never paired
+  Laptop battery / charging state    - no upower, no power daemon
+  Suspend / resume on a real laptop  - no logind power management
+  Discrete NVIDIA GPU                - no firmware, no nouveau/NVIDIA driver
+  Discrete AMD GPU                   - no firmware, no Vulkan driver
+  Intel integrated GPU               - Mesa built, never run on real silicon
+  Webcam                             - no uvcvideo runtime verification
+  Microphone / speakers              - ALSA utils only, no sound server
+  Touchpad                           - libinput present, no device exercised
+  USB 2.0 / 3.0 / Type-C peripherals - not exercised
+  Real printer / scanner             - CUPS and SANE absent entirely
+  Lid close / ACPI events            - not exercised
+```
+
+QEMU tests that *are* meaningful cover boot, `init` startup, PCI/USB
+enumeration, virtio drivers, and module loading — not device behaviour.
+
+---
+
 ## 5. Phase 1 exit criteria
 
 | Criterion | Status |
 |---|---|
 | Audit complete | ✅ this document + `tools/shreeos-audit.py` |
 | Architecture understood | ✅ §1–2 |
-| Current ISO contents documented | ✅ §3, measured |
-| Critical missing areas identified | ✅ §4 |
-| GitHub audit workflow green | ✅ `audit.yml`, 25 self-tests passing |
+| Current ISO contents documented | ✅ §3–4.1, all figures measured |
+| Critical missing areas identified | ✅ §4, §4.2 |
+| GitHub audit workflow green | ✅ `audit.yml`; 25 self-tests passing locally |
+
+### Reproduction
+
+```bash
+make audit        # repo audit -> build/audit/repo-audit.{json,txt}
+make test-audit   # 25 self-tests for the audit tool itself
+
+# Full ISO audit (downloads the latest release asset):
+python3 tools/shreeos-audit.py iso shreeos-0.2.2-dev-desktop.iso \
+  --out iso-audit.json --text
+```
+
+CI runs `audit-source` on every push and `audit-iso` downloads and inspects the
+latest release ISO. Both publish machine-readable JSON as workflow artifacts,
+so ISO composition is trackable over time rather than re-derived by hand.
 
 ## 6. Finding from building the audit tool
 
@@ -164,6 +328,10 @@ checksums. Those are a supply-chain hole; the speculative entries were reverted
 rather than committed unpinned, and `audit-source` now rejects them.
 `HEAD` is fully pinned (29/29, 44/44, 3/3, 1/1).
 
+This is the tool doing its job: it will refuse to certify an image whose
+provenance is unverified, which is the same standard Phase 13 requires of
+package metadata.
+
 ## 7. Ordered plan from here
 
 Phase 2 onward follows the brief. The ordering constraint that matters most:
@@ -171,3 +339,9 @@ Phase 2 onward follows the brief. The ordering constraint that matters most:
 distribution**, and Phases 2–3 (userspace + systemd) must land before it,
 because a live SquashFS layer is only useful once there is a real userspace and
 a real init to `switch_root` into.
+
+One consequence worth flagging now: pruning the 181 MiB of build artifacts
+(§3) will make the ISO *smaller* before it gets bigger. A drop from 226 MiB to
+roughly 120–150 MiB during Phases 2–5 is the expected and correct outcome, not
+a regression. Size should only grow once firmware, Mesa drivers, browsers and
+applications are genuinely added.
