@@ -54,3 +54,7 @@ test-manifest
 *.pem
 *.sec
 private/
+
+# Python bytecode from the audit tool (CI runs it; nothing depends on the cache)
+__pycache__/
+*.py[cod]

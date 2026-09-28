@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- `tools/shreeos-audit.py`: a machine-readable distribution audit tool with
+  `repo`, `rootfs`, and `iso` subcommands. It parses `build.conf` without
+  sourcing it, audits every source manifest for pinned checksums, reads ISO
+  9660 + Rock Ridge + El Torito and newc cpio and SquashFS superblocks in
+  pure Python, and reports the live payload broken down by category plus
+  desktop-component coverage.
+- `tests/audit/test-shreeos-audit.py`: 25 self-tests covering the manifest,
+  `build.conf`, cpio and SquashFS parsers, plus an end-to-end audit of the
+  real tree. Wired into `make test-audit` and `make test-all`.
+- `.github/workflows/audit.yml`: an audit gate that publishes
+  `repo-audit.json` and, optionally, inspects a released ISO and publishes
+  `iso-audit.json` as a build artifact.
+- `docs/audit/PHASE1-AUDIT.md`: the Phase 1 audit, with measured ISO
+  contents, the explanation of the current ISO size, and the component
+  status table.
+- `make audit`, `make audit-iso ISO=...`, `make test-audit` targets.
+
+### Fixed
+- Unpinned placeholder checksums in `base-system/packages.list` are no longer
+  part of the tree; the audit job now fails if any manifest declares a source
+  without a real SHA-256.
+
 ## [0.2.2-dev] - 2026-09-27
 
 Publishes `shreeos-0.2.2-dev-desktop.iso` under the `v0.2.2-dev` tag, following

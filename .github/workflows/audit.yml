@@ -1,0 +1,240 @@
+name: Distribution Audit
+
+# Phase 1 audit gate. Produces the machine-readable build report
+# (audit/repo-audit.json, audit/iso/iso-audit.json) describing exactly what is
+# in the tree and, when a released ISO is inspected, exactly what is inside
+# that image.
+#
+# This job is a *reporting* gate, not a release gate: it must not fail merely
+# because ShreeOS is still missing desktop components -- that is the whole
+# point of the audit. It fails only when the audit cannot run, or when
+# invariants that must already hold are violated.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'tools/shreeos-audit.py'
+      - 'build.conf'
+      - 'VERSION'
+      - 'base-system/**'
+      - 'desktop/**'
+      - 'kernel/**'
+      - 'iso-builder/**'
+      - 'rootfs/**'
+      - 'tests/audit/**'
+      - 'docs/audit/**'
+      - '.github/workflows/audit.yml'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      iso_url:
+        description: 'Optional URL of a released ISO to inspect (empty = latest release)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  audit-source:
+    name: Audit source tree
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Audit source tree
+        run: |
+          mkdir -p audit
+          python3 tools/shreeos-audit.py repo --root . \
+            --out audit/repo-audit.json --text | tee audit/repo-audit.txt
+
+      - name: Verify audit tool integrity
+        run: |
+          # The audit is only trustworthy if the tool itself is sound, so
+          # self-test it against a synthetic ISO and rootfs.
+          python3 -m py_compile tools/shreeos-audit.py
+          python3 tests/audit/test-shreeos-audit.py
+
+      - name: Assert audit invariants
+        run: |
+          # Invariants that must already hold for the audit to be meaningful.
+          python3 - <<'PY'
+          import json, sys
+          report = json.load(open("audit/repo-audit.json"))
+          failures = []
+          unpinned = []
+          for name, info in report["pinned_sources"].items():
+              for bad in info["invalid"]:
+                  unpinned.append("%s:%s %s" % (name, bad["line"], bad["name"]))
+          if unpinned:
+              print("Sources declared without a pinned checksum:")
+              for item in unpinned:
+                  print("  " + item)
+              failures.append("%d source(s) not pinned to a checksum" % len(unpinned))
+          if not report.get("toolchain", {}).get("triplet"):
+              failures.append("build.conf did not yield a target triplet")
+          if not report.get("kernel", {}).get("version"):
+              failures.append("build.conf did not yield a kernel version")
+          if not report["workflows"]:
+              failures.append("no GitHub Actions workflows found")
+          if failures:
+              for item in failures:
+                  print("FAIL: " + item, file=sys.stderr)
+              sys.exit(1)
+          print("Audit invariants hold.")
+          PY
+
+      - name: Upload source audit report
+        uses: actions/upload-artifact@b4b15b8c7c6a21e08e33b7a4c3f0f6a3d2c8e3f1
+        with:
+          name: shreeos-source-audit
+          path: audit/
+          if-no-files-found: error
+          retention-days: 90
+
+  audit-iso:
+    name: Audit released ISO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: audit-source
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Download requested ISO
+        id: iso
+        env:
+          INPUT_URL: ${{ inputs.iso_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit/iso
+          if [ -z "${INPUT_URL:-}" ]; then
+            echo "source=none" >> "$GITHUB_OUTPUT"
+            echo "No ISO URL supplied; will fall back to the latest release."
+            exit 0
+          fi
+          echo "source=direct" >> "$GITHUB_OUTPUT"
+          echo "Downloading ${INPUT_URL}"
+          curl --fail --location --retry 3 --retry-delay 5 --max-time 900 \
+            --output audit/iso/download.iso "${INPUT_URL}"
+
+      - name: Download latest release ISO
+        id: fetch
+        if: steps.iso.outputs.source == 'none'
+        run: |
+          set -euo pipefail
+          mkdir -p audit/iso
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest"
+          echo "Querying ${api}"
+          json="$(curl --fail --silent --show-error --location \
+            --header 'Accept: application/vnd.github+json' "${api}")"
+          url="$(printf '%s' "${json}" | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          assets = data.get("assets", [])
+          def pick(suffixes):
+              for suffix in suffixes:
+                  for asset in assets:
+                      if asset["name"].endswith(suffix):
+                          return asset["browser_download_url"]
+              return ""
+          print(pick(("-desktop.iso", ".iso")))
+          ')"
+          if [ -z "${url}" ]; then
+            echo "No ISO asset on the latest release; skipping ISO audit."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "Inspecting ${url}"
+          curl --fail --location --retry 3 --retry-delay 5 --max-time 900 \
+            --output audit/iso/download.iso "${url}"
+
+      - name: Inspect ISO contents
+        if: steps.iso.outputs.source == 'direct' || steps.fetch.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          iso="audit/iso/download.iso"
+          [ -s "${iso}" ] || { echo "ISO download is empty" >&2; exit 1; }
+          sha="$(sha256sum "${iso}" | cut -d' ' -f1)"
+          echo "ISO sha256: ${sha}"
+          echo "${sha}  download.iso" > audit/iso/download.iso.sha256
+          python3 tools/shreeos-audit.py iso "${iso}" \
+            --out audit/iso/iso-audit.json --text | tee audit/iso/iso-audit.txt
+
+      - name: Summarise ISO payload
+        if: steps.iso.outputs.source == 'direct' || steps.fetch.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          report = json.load(open("audit/iso/iso-audit.json"))
+          live = report.get("live_rootfs", {})
+          summary = live.get("summary", {})
+          categories = summary.get("categories", {})
+
+          def mib(count):
+              return count / 1048576.0
+
+          print("ISO size            : %.2f MiB (%s profile)" % (
+              mib(report["iso_bytes"]), report.get("profile", "unknown")))
+          if live.get("format") == "squashfs":
+              print("Live rootfs         : SquashFS (%s)"
+                    % live["superblock"]["compression"])
+              print("Compressed rootfs   : %.2f MiB" % mib(live["compressed_bytes"]))
+              print("Uncompressed rootfs : %.2f MiB"
+                    % mib(live["superblock"]["bytes_used"]))
+          elif live.get("format") == "initramfs-cpio":
+              print("Live rootfs         : initramfs cpio (NO SquashFS live layer)")
+              print("Compressed rootfs   : %.2f MiB" % mib(live["compressed_bytes"]))
+              print("Uncompressed rootfs : %.2f MiB" % mib(live["uncompressed_bytes"]))
+              print("Files in rootfs     : %d" % summary.get("regular_files", 0))
+              print("Kernel modules      : %d"
+                    % live.get("kernel_modules", {}).get("count", 0))
+              print("Firmware files      : %d"
+                    % live.get("firmware_files", {}).get("count", 0))
+          for label in ("static_archives", "locale", "man_pages", "documentation"):
+              if label in categories:
+                  print("%-19s: %.2f MiB in %d files"
+                        % (label, mib(categories[label]["bytes"]),
+                           categories[label]["count"]))
+          missing = [r["component"] for r in live.get("requirements", [])
+                     if not r["satisfied"]]
+          if missing:
+              print("Missing components  : " + ", ".join(missing))
+          PY
+
+      - name: Upload ISO audit report
+        if: steps.iso.outputs.source == 'direct' || steps.fetch.outputs.found == 'true'
+        uses: actions/upload-artifact@b4b15b8c7c6a21e08e33b7a4c3f0f6a3d2c8e3f1
+        with:
+          name: shreeos-iso-audit
+          path: audit/iso/
+          if-no-files-found: error
+          retention-days: 90

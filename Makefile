@@ -77,6 +77,7 @@ help:
 	@echo "  make test-hardware        Run shreed daemon IPC lifecycle tests"
 	@echo "  make test-smoke           Run desktop & system smoke suite"
 	@echo "  make test-qemu            Run automated QEMU ISO & installed disk tests"
+	@echo "  make test-audit           Run the distribution audit tool self-tests"
 	@echo "  make test-all             Run all automated test suites"
 	@echo "  make qemu                 Launch built ISO in QEMU (UEFI mode)"
 	@echo "  make qemu-bios            Launch built ISO in QEMU (BIOS mode)"
@@ -106,6 +107,24 @@ doctor:
 .PHONY: verify-sources
 verify-sources:
 	bash scripts/verify-sources.sh
+
+# Phase 1 audit: machine-readable report of what the tree and any built ISO
+# actually contain. Reporting only -- it does not fail on missing desktop
+# components, because recording those gaps is its job.
+.PHONY: audit audit-iso audit-test
+audit:
+	@mkdir -p build/audit
+	python3 tools/shreeos-audit.py repo --root . \
+	  --out build/audit/repo-audit.json --text | tee build/audit/repo-audit.txt
+
+audit-iso:
+	@test -n "$(ISO)" || { echo "Usage: make audit-iso ISO=path/to/image.iso" >&2; exit 1; }
+	@mkdir -p build/audit
+	python3 tools/shreeos-audit.py iso "$(ISO)" \
+	  --out build/audit/iso-audit.json --text | tee build/audit/iso-audit.txt
+
+audit-test:
+	python3 tests/audit/test-shreeos-audit.py
 
 .PHONY: graphics
 graphics: toolchain base-system
@@ -346,8 +365,12 @@ test-smoke:
 test-qemu:
 	bash tests/qemu/run-all-qemu-tests.sh --strict
 
+.PHONY: test-audit
+test-audit:
+	python3 tests/audit/test-shreeos-audit.py
+
 .PHONY: test-all
-test-all: test-toolchain test-unit test-init test-security test-auth test-installer test-pkgmanager test-desktop test-base-system test-hardware test-qemu
+test-all: test-toolchain test-unit test-init test-security test-auth test-installer test-pkgmanager test-desktop test-base-system test-hardware test-audit test-qemu
 
 .PHONY: tests
 tests: test-smoke
