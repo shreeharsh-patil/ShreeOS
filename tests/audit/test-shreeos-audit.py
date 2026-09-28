@@ -324,5 +324,60 @@ class RepoAuditTest(unittest.TestCase):
         json.dumps(self.report, sort_keys=True, default=str)
 
 
+class WorkflowSelectionTest(unittest.TestCase):
+    """The ISO audit must inspect the newest release, not a stale one.
+
+    `/releases/latest` excludes pre-releases. ShreeOS publishes every ISO as a
+    pre-release, so that endpoint returns the *oldest* published image and the
+    audit would silently report on stale contents forever.
+    """
+
+    WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "audit.yml")
+
+    @classmethod
+    def setUpClass(cls):
+        with open(cls.WORKFLOW, "r", encoding="utf-8") as handle:
+            cls.text = handle.read()
+
+    def test_does_not_use_releases_latest_endpoint(self):
+        # Match the endpoint in real use, not inside an explanatory comment.
+        self.assertNotRegex(self.text, r"api\.github\.com[^\"']*/releases/latest",
+                            "audit must not use /releases/latest; it hides pre-releases")
+
+    def test_lists_releases_including_pre_releases(self):
+        self.assertIn("/releases?per_page=", self.text)
+
+    def test_prefers_desktop_profile_iso(self):
+        self.assertIn('"-desktop.iso", ".iso"', self.text)
+
+    def test_no_suppressed_failures(self):
+        self.assertNotIn("|| true", self.text)
+        self.assertNotIn("continue-on-error", self.text)
+
+    def test_artifacts_are_uploaded(self):
+        self.assertIn("actions/upload-artifact@", self.text)
+
+
+class MakefileTargetTest(unittest.TestCase):
+    """`make audit` and `make test-audit` must stay wired to the tool."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(REPO_ROOT, "Makefile"), "r",
+                  encoding="utf-8") as handle:
+            cls.text = handle.read()
+
+    def test_audit_target_runs_the_tool(self):
+        self.assertRegex(self.text, r"(?m)^audit:")
+        self.assertIn("tools/shreeos-audit.py repo", self.text)
+
+    def test_test_audit_target_runs_the_suite(self):
+        self.assertRegex(self.text, r"(?m)^test-audit:")
+        self.assertIn("tests/audit/test-shreeos-audit.py", self.text)
+
+    def test_audit_runs_as_part_of_the_full_test_suite(self):
+        self.assertRegex(self.text, r"(?m)^test-all:.*\btest-audit\b")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

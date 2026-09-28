@@ -144,30 +144,43 @@ jobs:
           curl --fail --location --retry 3 --retry-delay 5 --max-time 900 \
             --output audit/iso/download.iso "${INPUT_URL}"
 
-      - name: Download latest release ISO
+      - name: Download newest release ISO
         id: fetch
         if: steps.iso.outputs.source == 'none'
         run: |
           set -euo pipefail
           mkdir -p audit/iso
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=20"
           echo "Querying ${api}"
           json="$(curl --fail --silent --show-error --location \
             --header 'Accept: application/vnd.github+json' "${api}")"
           url="$(printf '%s' "${json}" | python3 -c '
           import json, sys
-          data = json.load(sys.stdin)
-          assets = data.get("assets", [])
-          def pick(suffixes):
-              for suffix in suffixes:
+          releases = json.load(sys.stdin)
+          if isinstance(releases, dict):
+              # An API error object, not a list of releases.
+              print("")
+              raise SystemExit(0)
+          def pick(assets):
+              for suffix in ("-desktop.iso", ".iso"):
                   for asset in assets:
                       if asset["name"].endswith(suffix):
                           return asset["browser_download_url"]
               return ""
-          print(pick(("-desktop.iso", ".iso")))
+          # /releases is newest-first and includes pre-releases, unlike
+          # /releases/latest, which hides pre-releases and would silently
+          # audit a stale image.
+          for release in releases:
+              if release.get("draft"):
+                  continue
+              found = pick(release.get("assets", []))
+              if found:
+                  print(found)
+                  raise SystemExit(0)
+          print("")
           ')"
           if [ -z "${url}" ]; then
-            echo "No ISO asset on the latest release; skipping ISO audit."
+            echo "No published release carries an ISO asset; skipping ISO audit."
             echo "found=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
