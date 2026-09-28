@@ -124,8 +124,11 @@ check "root account exists with uid 0" \
 root_shell="$(awk -F: '$1 == "root" {print $7}' "$STAGE/etc/passwd")"
 check "root shell is /bin/bash (got '${root_shell:-none}')" \
   "$([ "$root_shell" = "/bin/bash" ] && echo 0 || echo 1)"
-check "root shell resolves to an installed interpreter" \
-  "$([ -x "$STAGE/bin/bash" ] || [ -x "$STAGE/usr/bin/bash" ]; echo $?)"
+if [ -x "$STAGE/bin/bash" ] || [ -x "$STAGE/usr/bin/bash" ]; then
+  check "root shell resolves to an installed interpreter" 0
+else
+  check "root shell resolves to an installed interpreter" 1
+fi
 
 # --------------------------------------------------------------------------
 section "Normal user account"
