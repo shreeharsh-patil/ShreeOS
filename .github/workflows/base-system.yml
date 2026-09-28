@@ -1,0 +1,155 @@
+name: Base System
+
+# Fast feedback loop for the Phase 2 base userland.
+#
+# The ISO workflow builds the entire distribution and takes hours, so a broken
+# package build in base-system/ would not surface for a long time. This workflow
+# builds and validates only the base-system stage so per-package failures are
+# reported within minutes, and so the toolchain cache stays warm and shared with
+# the ISO workflow.
+#
+# It shares the exact toolchain cache key with iso.yml, so whichever workflow
+# runs first pays the toolchain cost and the other restores it.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'base-system/**'
+      - 'toolchain/**'
+      - 'scripts/common.sh'
+      - 'scripts/verify-stage.sh'
+      - 'scripts/install-build-deps-apt.sh'
+      - 'scripts/bootstrap-host-tools.sh'
+      - 'build.conf'
+      - 'Makefile'
+      - 'tests/base-system/**'
+      - '.github/workflows/base-system.yml'
+  pull_request:
+    paths:
+      - 'base-system/**'
+      - 'toolchain/**'
+      - 'scripts/common.sh'
+      - 'scripts/verify-stage.sh'
+      - 'scripts/install-build-deps-apt.sh'
+      - 'scripts/bootstrap-host-tools.sh'
+      - 'build.conf'
+      - 'Makefile'
+      - 'tests/base-system/**'
+      - '.github/workflows/base-system.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  BUILD_PROFILE: desktop
+
+jobs:
+  build:
+    name: Build and validate base system
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Initialize build logs
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build-logs
+          printf 'ref=%s\nsha=%s\nprofile=%s\n' "$GITHUB_REF" "$GITHUB_SHA" "$BUILD_PROFILE" > build-logs/context.txt
+
+      - name: Install build dependencies
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/dependencies.log) 2>&1
+          bash scripts/install-build-deps-apt.sh
+
+      - name: Bootstrap pinned host tools
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/host-tools.log) 2>&1
+          bash scripts/bootstrap-host-tools.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          meson --version
+
+      - name: Restore exact toolchain cache
+        id: cache-toolchain
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: |
+            build/tools
+            build/sysroot
+          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
+
+      - name: Build or validate toolchain
+        env:
+          CACHE_HIT: ${{ steps.cache-toolchain.outputs.cache-hit }}
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/toolchain.log) 2>&1
+          if [[ "${CACHE_HIT}" = "true" ]]; then
+            bash scripts/verify-stage.sh toolchain
+          else
+            make PROFILE="$BUILD_PROFILE" toolchain
+          fi
+          bash scripts/verify-stage.sh toolchain
+          bash tests/smoke/test-toolchain.sh
+          mkdir -p build/.markers
+          touch build/.markers/.toolchain
+
+      - name: Save validated toolchain cache
+        if: steps.cache-toolchain.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: |
+            build/tools
+            build/sysroot
+          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
+
+      - name: Build base system
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/base-system.log) 2>&1
+          make PROFILE="$BUILD_PROFILE" base-system
+
+      - name: Validate base system contract
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee -a build-logs/base-system-validation.log) 2>&1
+          bash scripts/verify-stage.sh base-system
+          bash tests/base-system/test-base-system-contract.sh
+
+      - name: Report installed base system
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          source build.conf
+          python3 tools/shreeos-audit.py rootfs "$SHREEOS_STAGE_ROOT" \
+            --out build-logs/base-system-audit.json --text \
+            | tee build-logs/base-system-audit.txt
+
+      - name: Upload base system logs
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6a21e08e33b7a4c3f0f6a3d2c8e3f1
+        with:
+          name: shreeos-base-system-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-logs/
+          if-no-files-found: warn
+          retention-days: 30

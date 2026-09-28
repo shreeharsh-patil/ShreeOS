@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # 37-pam.sh — Build Linux-PAM (pluggable authentication modules)
 #
-# PAM 1.7 builds with meson; the configure-looking helper in the tarball is
-# a wrapper. Cross compilation goes through meson with a target cross file
+# Linux-PAM 1.7 builds with meson; the configure-looking helper in the tarball
+# is a wrapper. Cross compilation goes through meson with a target cross file
 # generated from the toolchain variables common.sh exports.
+#
+# The option names below are taken verbatim from the v1.7.0 meson_options.txt.
+# They are easy to get wrong (`pamlocking`, not `pam locking`; `docs`, not
+# `doc`; and there is no `tests` option at all), and meson rejects an unknown
+# option outright, so they are spelled out here rather than abbreviated.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,10 +46,21 @@ meson setup "$BUILDDIR/build" "$SRCDIR" \
   --prefix=/usr \
   --sysconfdir=/etc \
   --localstatedir=/var \
-  -Dexamples=disabled \
-  -Dtests=disabled \
-  -Dpam locking=false \
-  -Ddoc=disabled
+  -Dexamples=false \
+  -Dxtests=false \
+  -Ddocs=disabled \
+  -Di18n=disabled \
+  -Dpamlocking=false \
+  -Dselinux=disabled \
+  -Deconf=disabled \
+  -Dnis=disabled \
+  -Ddb=disabled \
+  -Dopenssl=disabled \
+  -Daudit=disabled \
+  -Dlogind=disabled \
+  -Dsconfigdir=/etc/security \
+  -Dmailspool=/var/mail \
+  -Drandomdev=/dev/urandom
 
 meson compile -C "$BUILDDIR/build" -j"${LUMEN_MAKE_JOBS}"
 DESTDIR="${LUMEN_STAGE_ROOT}" meson install -C "$BUILDDIR/build"

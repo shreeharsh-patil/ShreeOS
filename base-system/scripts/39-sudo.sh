@@ -26,10 +26,12 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --without-sssd \
   --disable-nls \
   --disable-static-sudoers \
-  --enable-zlib=builtin
+  --enable-zlib
 
 make -j"${LUMEN_MAKE_JOBS}"
 make DESTDIR="${LUMEN_STAGE_ROOT}" install
+
+base_sync_sysroot
 
 [ -e "${LUMEN_STAGE_ROOT}/usr/bin/sudo" ] || \
   lumen_die "Target sudo binary was not staged"
@@ -37,5 +39,11 @@ make DESTDIR="${LUMEN_STAGE_ROOT}" install
 mode="$(stat -c '%a' "${LUMEN_STAGE_ROOT}/usr/bin/sudo")"
 [ "$mode" = "4755" ] || \
   lumen_die "sudo was installed without mode 4755 (got $mode); privilege escalation would be broken"
+# Without an executable helper sudo cannot validate a password against the
+# target's PAM stack, so a build that silently dropped it would still pass the
+# setuid check above while being unusable.
+[ -x "${LUMEN_STAGE_ROOT}/usr/libexec/sudo/sudoers.so" ] || \
+  [ -x "${LUMEN_STAGE_ROOT}/usr/lib/sudo/sudoers.so" ] || \
+  lumen_die "sudoers policy plugin was not staged; sudo could not evaluate policy"
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
