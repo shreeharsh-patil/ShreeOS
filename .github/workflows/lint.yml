@@ -112,6 +112,13 @@ jobs:
             python3 tools/check-workflow-shell.py "$workflow"
           done
 
+      - name: Verify every action pin resolves to a real commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          python3 tools/check-action-pins.py --root .
+
       - name: Run actionlint when already installed
         run: |
           set -Eeuo pipefail

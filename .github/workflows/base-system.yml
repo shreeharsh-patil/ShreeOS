@@ -147,7 +147,7 @@ jobs:
 
       - name: Upload base system logs
         if: always()
-        uses: actions/upload-artifact@b4b15b8c7c6a21e08e33b7a4c3f0f6a3d2c8e3f1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: shreeos-base-system-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: build-logs/
