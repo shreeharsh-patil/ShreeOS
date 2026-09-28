@@ -381,23 +381,47 @@ class IsoImage:
         self.handle.seek(lba * SECTOR)
         return self.handle.read(size)
 
-    def find(self, *needles) -> object:
-        """Locate a file by any case-insensitive path component.
+    @staticmethod
+    def _mangled(name: str) -> str:
+        """Normalise one path component the way ISO 9660 without Rock Ridge does.
 
-        ISO 9660 mangles names unless Rock Ridge is present: everything is
-        uppercased and a ``;1`` version suffix is appended, and images written
-        with no version get a bare trailing ``.``. Matching on a normalised
-        basename avoids reporting a present kernel as absent.
+        Without Rock Ridge a writer uppercases the name, replaces every ``.``
+        with ``_`` in the file name, appends ``;1`` when a version is present,
+        and leaves a bare trailing ``.`` when it is not. ``initramfs.cpio.gz``
+        therefore lands on the image as ``INITRAMFS_CPIO.GZ``, so a needle must
+        be folded the same way or it can never match.
         """
-        wanted = [n.upper() for n in needles]
+        base = name.rsplit("/", 1)[-1]
+        if base.endswith(";1"):
+            base = base[:-2]
+        return base.rstrip(".").upper().replace(".", "_")
+
+    def find(self, *needles) -> object:
+        """Locate a file by any case-insensitive, mangling-tolerant name.
+
+        Both the requested name and the on-disk name are folded through
+        :meth:`_mangled`, so ``find("initramfs.cpio.gz")`` matches
+        ``BOOT/INITRAMFS_CPIO.GZ`` on an image with no Rock Ridge extensions.
+        """
+        wanted = {self._mangled(n) for n in needles}
         for entry in self.files:
             if entry[3]:
                 continue
-            base = entry[0].rsplit("/", 1)[-1]
-            if base.endswith(";1"):
-                base = base[:-2]
-            base = base.rstrip(".").upper()
-            if base in wanted:
+            if self._mangled(entry[0]) in wanted:
+                return entry
+        return None
+
+    def find_prefix(self, *prefixes) -> object:
+        """Locate the first non-directory whose mangled name starts with a prefix.
+
+        Used for boot blobs whose exact spelling varies between writers
+        (``initrd.img`` vs ``initramfs.cpio.gz``).
+        """
+        wanted = tuple(p.upper() for p in prefixes)
+        for entry in self.files:
+            if entry[3]:
+                continue
+            if self._mangled(entry[0]).startswith(wanted):
                 return entry
         return None
 
@@ -731,21 +755,45 @@ def audit_rootfs(root: str) -> dict:
     }
 
 
-def audit_iso(path: str) -> dict:
+def detect_profile(path: str, distro_id: str = "shreeos") -> str:
+    """Infer the build profile from the image filename.
+
+    ShreeOS names images two ways (see scripts/verify-stage.sh):
+      * `<id>-<version>.iso`            -> the minimal profile (no suffix)
+      * `<id>-<version>-<profile>.iso`  -> every other profile
+
+    Both cases matter. The version itself contains a dash (`0.2.2-dev`), so the
+    minimal image cannot be recognised by "the last component" -- it has to be
+    recognised by the *absence* of a known profile suffix after the id prefix.
+
+    A name that is not a ShreeOS image, or whose trailing component is not a
+    known profile, returns "unknown" rather than a guess. Guessing changes
+    which coverage gaps are reported, so a wrong answer would make the audit
+    quietly mislabel a desktop image as a server image.
+    """
+    stem = os.path.basename(path)
+    if stem.endswith(".iso"):
+        stem = stem[:-len(".iso")]
+    prefix = distro_id + "-"
+    if not stem.startswith(prefix):
+        return "unknown"
+    remainder = stem[len(prefix):]
+    for profile in ("desktop", "server", "security", "minimal"):
+        if remainder.endswith("-" + profile):
+            return profile
+    # `<id>-<version>.iso` is the minimal profile.
+    return "minimal" if remainder else "unknown"
+
+
+def audit_iso(path: str, profile_override: str = None) -> dict:
     """Audit a built ISO, including a recursive inventory of its live root."""
     iso_bytes = os.path.getsize(path)
     report = {"kind": "iso", "path": path, "iso_bytes": iso_bytes}
 
-    # The ISO name encodes the profile (`shreeos-<ver>-<profile>.iso`, or
-    # `shreeos-<ver>.iso` for minimal). Coverage gaps are only meaningful
-    # relative to the profile, so report it alongside the findings.
-    stem = os.path.basename(path).rsplit(".", 1)[0]
-    for profile in ("desktop", "server", "security", "minimal"):
-        if stem.endswith("-" + profile):
-            report["profile"] = profile
-            break
-    else:
-        report["profile"] = "minimal"
+    # Coverage gaps are only meaningful relative to the profile, so record it
+    # next to the findings. Callers that renamed the file (CI downloads to
+    # `download.iso`) must pass the real name via profile_override.
+    report["profile"] = profile_override or detect_profile(path)
 
     with IsoImage(path) as image:
         report["volume"] = {
@@ -769,14 +817,7 @@ def audit_iso(path: str) -> dict:
         }
         # The live root currently ships inside the initramfs; a future live
         # layout moves it to SquashFS. Record whichever is present.
-        blobs["initramfs"] = None
-        for entry in image.files:
-            if entry[3]:
-                continue
-            base = entry[0].rsplit("/", 1)[-1].upper()
-            if base.startswith("INITRAMFS") or base.startswith("INITRD"):
-                blobs["initramfs"] = entry
-                break
+        blobs["initramfs"] = image.find_prefix("INITRAMFS", "INITRD")
 
         report["boot_assets"] = {
             key: ({"path": entry[0], "bytes": entry[1]} if entry else None)
@@ -976,6 +1017,10 @@ def main(argv=None) -> int:
 
     iso = sub.add_parser("iso", parents=[common], help="audit a built ISO image")
     iso.add_argument("path", help="path to the ISO image")
+    iso.add_argument("--profile", choices=("desktop", "server", "security",
+                                           "minimal"),
+                     help="override the profile normally inferred from the "
+                          "filename (needed when the file has been renamed)")
 
     args = parser.parse_args(argv)
 
@@ -990,7 +1035,7 @@ def main(argv=None) -> int:
         if not os.path.isfile(args.path):
             print("error: not a file: %s" % args.path, file=sys.stderr)
             return 1
-        report = audit_iso(args.path)
+        report = audit_iso(args.path, profile_override=args.profile)
 
     # Output selection: --out always writes JSON; stdout gets the text summary
     # unless --json was requested. With neither flag, print both so a bare

@@ -104,6 +104,14 @@ jobs:
           print(f"Parsed {len(paths)} workflow files")
           PY
 
+      - name: Syntax-check every workflow run block
+        run: |
+          set -Eeuo pipefail
+          for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$workflow" ] || continue
+            python3 tools/check-workflow-shell.py "$workflow"
+          done
+
       - name: Run actionlint when already installed
         run: |
           set -Eeuo pipefail

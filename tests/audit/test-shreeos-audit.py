@@ -13,7 +13,10 @@ import gzip
 import importlib.util
 import io
 import os
+import re
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -219,12 +222,20 @@ class IsoNameNormalisationTest(unittest.TestCase):
     """
 
     class FakeImage:
-        """Minimal stand-in that reuses the real IsoImage.find implementation."""
+        """Minimal stand-in that reuses the real IsoImage name-matching logic.
 
-        find = audit.IsoImage.find
+        Built with ``__new__`` so ``find``/``find_prefix`` and their
+        ``_mangled`` helper are the production implementations rather than
+        reimplementations that could drift from them.
+        """
 
         def __init__(self, files):
+            real = audit.IsoImage.__new__(audit.IsoImage)
+            real.files = files
             self.files = files
+            self.find = real.find
+            self.find_prefix = real.find_prefix
+            self._mangled = real._mangled
 
     def setUp(self):
         self.image = self.FakeImage([
@@ -324,6 +335,65 @@ class RepoAuditTest(unittest.TestCase):
         json.dumps(self.report, sort_keys=True, default=str)
 
 
+class ProfileDetectionTest(unittest.TestCase):
+    """The profile is read from the filename; a wrong one mislabels coverage.
+
+    ShreeOS names images `shreeos-<version>-<profile>.iso`, and the minimal
+    profile `shreeos-<version>.iso`. Guessing "minimal" for an unrecognised
+    name would quietly under-report a desktop image's missing components, so
+    the tool must say "unknown" instead.
+    """
+
+    def test_recognises_each_profile(self):
+        cases = {
+            "shreeos-0.2.2-dev-desktop.iso": "desktop",
+            "shreeos-0.2.2-dev-server.iso": "server",
+            "shreeos-0.2.2-dev-security.iso": "security",
+            # The minimal image carries no profile suffix. The version itself
+            # contains a dash, so this is the case a naive "last component"
+            # parse gets wrong.
+            "shreeos-0.2.2-dev.iso": "minimal",
+            "shreeos-1.0.iso": "minimal",
+            "shreeos-0.2.2-dev-minimal.iso": "minimal",
+        }
+        for name, expected in cases.items():
+            self.assertEqual(audit.detect_profile(name), expected, name)
+
+    def test_unrecognised_name_is_unknown_not_minimal(self):
+        # A non-ShreeOS image must not be labelled with a ShreeOS profile.
+        self.assertEqual(audit.detect_profile("download.iso"), "unknown")
+        self.assertEqual(audit.detect_profile("ubuntu-24.04-desktop.iso"), "unknown")
+        self.assertEqual(audit.detect_profile("shreeos.iso"), "unknown")
+        self.assertEqual(audit.detect_profile("shreeos-.iso"), "unknown")
+        # An unknown trailing component is not a profile either.
+        self.assertEqual(audit.detect_profile("shreeos-1.0-workstation.iso"),
+                         "minimal")
+
+    def test_version_containing_a_profile_word_is_not_mistaken(self):
+        # A hypothetical future version must not be read as a profile.
+        self.assertEqual(audit.detect_profile("shreeos-2.0-server.iso"), "server")
+        self.assertEqual(audit.detect_profile("shreeos-2.0-desktoprc.iso"),
+                         "minimal")
+
+    def test_distro_id_prefix_is_honoured(self):
+        self.assertEqual(
+            audit.detect_profile("shreeos-1.0-desktop.iso", distro_id="shreeos"),
+            "desktop")
+        self.assertEqual(
+            audit.detect_profile("shreeos-1.0-desktop.iso", distro_id="other"),
+            "unknown")
+
+    def test_directory_component_is_ignored(self):
+        self.assertEqual(
+            audit.detect_profile("/tmp/artifacts/shreeos-1.0-desktop.iso"),
+            "desktop")
+
+    def test_audit_iso_accepts_explicit_profile(self):
+        self.assertEqual(
+            audit.audit_iso.__defaults__, (None,),
+            "profile_override must default to None so the filename is used")
+
+
 class WorkflowSelectionTest(unittest.TestCase):
     """The ISO audit must inspect the newest release, not a stale one.
 
@@ -377,6 +447,95 @@ class MakefileTargetTest(unittest.TestCase):
 
     def test_audit_runs_as_part_of_the_full_test_suite(self):
         self.assertRegex(self.text, r"(?m)^test-all:.*\btest-audit\b")
+
+
+class WorkflowShellSyntaxTest(unittest.TestCase):
+    """Every `run: |` block in every workflow must be valid shell.
+
+    A workflow is only executed on a runner, so a shell typo inside a `run:`
+    block would otherwise surface as a CI failure long after the edit. This
+    test is skipped when no bash is available, because its purpose is to parse
+    the blocks, not to run them.
+    """
+
+    TOOL = os.path.join(REPO_ROOT, "tools", "check-workflow-shell.py")
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            subprocess.run([os.environ.get("BASH", "bash"), "-n"],
+                           input="", text=True, capture_output=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            raise unittest.SkipTest("no usable bash for shell syntax checking")
+        cls.workflow_dir = os.path.join(REPO_ROOT, ".github", "workflows")
+        cls.workflows = sorted(
+            os.path.join(cls.workflow_dir, name)
+            for name in os.listdir(cls.workflow_dir)
+            if name.endswith((".yml", ".yaml"))
+        )
+
+    def test_at_least_one_workflow_exists(self):
+        self.assertTrue(self.workflows)
+
+    def test_every_run_block_parses(self):
+        self.assertTrue(self.workflows, "no workflows found")
+        for workflow in self.workflows:
+            with self.subTest(workflow=os.path.basename(workflow)):
+                result = subprocess.run(
+                    [sys.executable, self.TOOL, workflow],
+                    capture_output=True, text=True,
+                    env=dict(os.environ, BASH=os.environ.get("BASH", "bash")))
+                self.assertEqual(
+                    result.returncode, 0,
+                    "%s:\n%s%s" % (workflow, result.stdout, result.stderr))
+                self.assertIn("0 failed", result.stdout)
+
+    def test_reports_blocks_it_actually_found(self):
+        # A silent zero-block pass would make the test above meaningless.
+        result = subprocess.run(
+            [sys.executable, self.TOOL, self.workflows[0]],
+            capture_output=True, text=True,
+            env=dict(os.environ, BASH=os.environ.get("BASH", "bash")))
+        found = re.search(r"(\d+) run blocks checked", result.stdout)
+        self.assertIsNotNone(found, result.stdout)
+        self.assertGreater(int(found.group(1)), 0)
+
+    def test_missing_file_is_an_error_not_a_pass(self):
+        result = subprocess.run(
+            [sys.executable, self.TOOL,
+             os.path.join(self.workflow_dir, "does-not-exist.yml")],
+            capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+
+
+class IsoParseTest(unittest.TestCase):
+    """The ISO walker must be exercised against a real image, not a stub."""
+
+    ISO = os.path.join(REPO_ROOT, "build", "audit", "cur",
+                       "shreeos-0.2.2-dev-desktop.iso")
+
+    def setUp(self):
+        if not os.path.isfile(self.ISO):
+            self.skipTest("released ISO not present locally")
+        self.iso = audit.IsoImage(self.ISO)
+        self.addCleanup(self.iso.close)
+
+    def test_reads_volume_id_and_el_torito(self):
+        self.assertTrue(self.iso.volume_id)
+        self.assertTrue(self.iso.el_torito)
+
+    def test_finds_the_three_boot_assets(self):
+        self.assertIsNotNone(self.iso.find("bzImage"))
+        self.assertIsNotNone(self.iso.find("initramfs.cpio.gz"))
+        self.assertIsNotNone(self.iso.find("grub.cfg"))
+
+    def test_initramfs_dominates_the_image(self):
+        """Guards the audit's central claim: the live OS rides in the cpio."""
+        entry = self.iso.find("initramfs.cpio.gz")
+        self.assertGreater(entry[1], os.path.getsize(self.ISO) // 2)
+
+    def test_uefi_entry_point_present(self):
+        self.assertIsNotNone(self.iso.find("BOOTX64.EFI"))
 
 
 if __name__ == "__main__":

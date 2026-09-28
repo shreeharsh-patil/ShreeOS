@@ -141,8 +141,12 @@ jobs:
           fi
           echo "source=direct" >> "$GITHUB_OUTPUT"
           echo "Downloading ${INPUT_URL}"
+          # Keep the asset's real filename: the audit infers the build profile
+          # from it, and a generic name would silently mislabel the report.
+          name="$(basename "${INPUT_URL}")"
           curl --fail --location --retry 3 --retry-delay 5 --max-time 900 \
-            --output audit/iso/download.iso "${INPUT_URL}"
+            --output "audit/iso/${name}" "${INPUT_URL}"
+          echo "iso=audit/iso/${name}" >> "$GITHUB_OUTPUT"
 
       - name: Download newest release ISO
         id: fetch
@@ -186,18 +190,24 @@ jobs:
           fi
           echo "found=true" >> "$GITHUB_OUTPUT"
           echo "Inspecting ${url}"
+          # Keep the asset's real filename: the audit infers the build profile
+          # from it, and a generic name would silently mislabel the report.
+          name="$(basename "${url}")"
           curl --fail --location --retry 3 --retry-delay 5 --max-time 900 \
-            --output audit/iso/download.iso "${url}"
+            --output "audit/iso/${name}" "${url}"
+          echo "iso=audit/iso/${name}" >> "$GITHUB_OUTPUT"
 
       - name: Inspect ISO contents
         if: steps.iso.outputs.source == 'direct' || steps.fetch.outputs.found == 'true'
+        env:
+          ISO_PATH: ${{ steps.iso.outputs.iso || steps.fetch.outputs.iso }}
         run: |
           set -euo pipefail
-          iso="audit/iso/download.iso"
-          [ -s "${iso}" ] || { echo "ISO download is empty" >&2; exit 1; }
-          sha="$(sha256sum "${iso}" | cut -d' ' -f1)"
-          echo "ISO sha256: ${sha}"
-          echo "${sha}  download.iso" > audit/iso/download.iso.sha256
+          iso="${ISO_PATH}"
+          [ -n "${iso}" ] && [ -s "${iso}" ] || {
+            echo "ISO download is empty: ${iso}" >&2; exit 1; }
+          ( cd "$(dirname "${iso}")" && sha256sum "$(basename "${iso}")" \
+              > "$(basename "${iso}").sha256" )
           python3 tools/shreeos-audit.py iso "${iso}" \
             --out audit/iso/iso-audit.json --text | tee audit/iso/iso-audit.txt
 

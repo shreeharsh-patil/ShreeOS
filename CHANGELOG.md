@@ -22,11 +22,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   contents, the explanation of the current ISO size, and the component
   status table.
 - `make audit`, `make audit-iso ISO=...`, `make test-audit` targets.
+- `tools/check-workflow-shell.py`: extracts every `run: |` block from a
+  workflow, neutralises GitHub expressions, and parses it with `bash -n`, so a
+  shell typo inside CI is caught by `make test-audit` and the lint job instead
+  of only on a runner.
 
 ### Fixed
 - Unpinned placeholder checksums in `base-system/packages.list` are no longer
   part of the tree; the audit job now fails if any manifest declares a source
   without a real SHA-256.
+- `tools/shreeos-audit.py iso` inferred the build profile from the filename
+  only, and fell back to `minimal` for any unrecognised name. The audit job
+  downloads release assets as `download.iso`, so every published desktop ISO
+  was reported as a minimal image and its missing desktop components were
+  measured against the wrong profile. The profile is now read from the
+  `shreeos-<version>[-<profile>].iso` name, an unrecognised name reports
+  `unknown` instead of guessing, `--profile` overrides the inference, and the
+  workflow preserves the asset's real filename.
 
 ## [0.2.2-dev] - 2026-09-27
 
