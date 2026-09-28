@@ -88,3 +88,87 @@ bluez	5.79	https://www.kernel.org/pub/linux/bluetooth/bluez-5.79.tar.xz	4164a530
 # tzdata supplies the source rules installed as target TZif data.
 tzcode	2025b	https://data.iana.org/time-zones/releases/tzcode2025b.tar.gz	05f8fedb3525ee70d49c87d3fae78a8a0dbae4fe87aa565c65cda9948ae135ec
 tzdata	2025b	https://data.iana.org/time-zones/releases/tzdata2025b.tar.gz	11810413345fc7805017e27ea9fa4885fd74cd61b2911711ad038f5d28d71474
+
+# ---------------------------------------------------------------------------
+# Phase 2 -- service-management stack prerequisites and core userspace
+#
+# systemd and udev cannot be built without the first set: find/xargs at
+# build time, libcap for capability handling, kmod for module loading,
+# libseccomp for sandboxing, PAM + shadow for login, dbus for the system
+# bus. The second set adds the diagnostics/transfer tools a desktop user
+# and the installer both need.
+#
+# Every URL below was resolved against live upstream hosts on 2026-09-28
+# (several previously listed mirrors 404) and every checksum was computed
+# from the actual downloaded tarball -- none are placeholders. Verify with:
+#   bash base-system/scripts/update-pins.sh --check
+# ---------------------------------------------------------------------------
+
+# libcap -- POSIX capability utilities. udev and systemd require it.
+libcap	2.70	https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.70.tar.gz	d3b777ed413c9fafface03b917e171854709b5e4be38dbfb9219aaf7dfd4eea6
+
+# attr/libattr + acl -- extended attributes and POSIX ACLs on the target
+# filesystem; systemd's ACL access-control path needs libacl.
+attr	2.5.2	https://download-mirror.savannah.gnu.org/releases/attr/attr-2.5.2.tar.gz	39bf67452fa41d0948c2197601053f48b3d78a029389734332a6309a680c6c87
+acl	2.3.2	https://download.savannah.nongnu.org/releases/acl/acl-2.3.2.tar.gz	5f2bdbad629707aa7d85c623f994aa8a1d2dec55a73de5205bac0bf6058a2f7c
+
+# libseccomp -- system call filtering for sandboxed services.
+libseccomp	2.6.0	https://github.com/seccomp/libseccomp/releases/download/v2.6.0/libseccomp-2.6.0.tar.gz	83b6085232d1588c379dc9b9cae47bb37407cf262e6e74993c61ba72d2a784dc
+
+# lz4, zstd, bzip2 -- journald compression backends and archive support.
+lz4	1.10.0	https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz	537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b
+zstd	1.5.7	https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz	eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+bzip2	1.0.8	https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz	ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
+
+# findutils -- find/xargs.
+findutils	4.10.0	https://ftp.gnu.org/gnu/findutils/findutils-4.10.0.tar.xz	1387e0b67ff247d2abde998f90dfbf70c1491391a59ddfecb8ae698789f0a4f5
+
+# kmod -- modprobe/lsmod/depmod. udev loads modules through libkmod.
+# Upstream never released 31.1; 31 is the real tarball (verified 2026-09-28).
+kmod	31	https://www.kernel.org/pub/linux/utils/kernel/kmod/kmod-31.tar.xz	f5a6949043cc72c001b728d8c218609c5a15f3c33d75614b78c79418fcf00d80
+
+# shadow -- account database and user management (useradd, groupadd,
+# passwd, login). Required by PAM's pam_unix and by util-linux login/su.
+shadow	4.18.0	https://github.com/shadow-maint/shadow/releases/download/4.18.0/shadow-4.18.0.tar.xz	add4604d3bc410344433122a819ee4154b79dd8316a56298c60417e637c07608
+
+# Linux-PAM -- pluggable authentication. Provides pam_unix plus the service
+# and session stack that a login manager and sudo both consume.
+pam	1.7.0	https://github.com/linux-pam/linux-pam/releases/download/v1.7.0/linux-pam-1.7.0.tar.xz	57dcd7a6b966ecd5bbd95e1d11173734691e16b68692fa59661cdae9b13b1697
+
+# dbus -- system bus. Session and hardware services communicate over it.
+dbus	1.14.10	https://dbus.freedesktop.org/releases/dbus/dbus-1.14.10.tar.xz	ba1f21d2bd9d339da2d4aa8780c09df32fea87998b73da24f49ab9df1e36a50f
+
+# systemd -- the service manager itself, cross-compiled for the target.
+# GitHub does not attach a release tarball for v258, so the tag archive is
+# the pinned source (verified 2026-09-28).
+systemd	258	https://github.com/systemd/systemd/archive/refs/tags/v258.tar.gz	07a580cf21856f468f82b77b82973a926f42ccc696462459b53f8b88893dff8e
+
+# sudo -- privilege escalation for the standard desktop user.
+sudo	1.9.17p1	https://www.sudo.ws/sudo/dist/sudo-1.9.17p1.tar.gz	ff607ea717072197738a78f778692cd6df9a7e3e404565f51de063ca27455d32
+
+# libmnl + libelf are required by iproute2's configure.
+# The git.netfilter.org snapshot URL serves an HTML error page, not a
+# tarball; netfilter.org/projects is the real file host (verified 2026-09-28).
+libmnl	1.0.5	https://netfilter.org/projects/libmnl/files/libmnl-1.0.5.tar.bz2	274b9b919ef3152bfb3da3a13c950dd60d6e2bcd54230ffeca298d03b40d0525
+# elfutils ships only .tar.bz2 from sourceware (verified 2026-09-28).
+elfutils	0.192	https://sourceware.org/elfutils/ftp/0.192/elfutils-0.192.tar.bz2	616099beae24aba11f9b63d86ca6cc8d566d968b802391334c91df54eab416b4
+
+# mirrors.edge.kernel.org does not mirror /linux/net; cdn.kernel.org does.
+iproute2	6.15.0	https://cdn.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.15.0.tar.xz	8041854a882583ad5263466736c9c8c68c74b1a35754ab770d23343f947528fb
+iputils	20250605	https://github.com/iputils/iputils/archive/refs/tags/20250605.tar.gz	19e680c9eef8c079da4da37040b5f5453763205b4edfb1e2c114de77908927e4
+procps-ng	4.0.4	https://downloads.sourceforge.net/project/procps-ng/Production/procps-ng-4.0.4.tar.xz	22870d6feb2478adb617ce4f09a787addaf2d260c5a8aa7b17d889a962c5e42e
+curl	8.14.1	https://curl.se/download/curl-8.14.1.tar.xz	f4619a1e2474c4bbfedc88a7c2191209c8334b48fa1f4e53fd584cc12e9120dd
+# GNU ships wget 1.25.0 as .tar.gz only (verified 2026-09-28).
+wget	1.25.0	https://mirrors.kernel.org/gnu/wget/wget-1.25.0.tar.gz	766e48423e79359ea31e41db9e5c289675947a7fcf2efdcedb726ac9d0da3784
+# popt has no upstream tarball host; the tagged release archive is the
+# source of record (verified 2026-09-28).
+popt	1.19	https://github.com/rpm-software-management/popt/archive/refs/tags/popt-1.19-release.tar.gz	6eb40d650526cb9fe63eb4415bcecdf9cf306f7556e77eff689abc5a44670060
+rsync	3.4.1	https://download.samba.org/pub/rsync/src/rsync-3.4.1.tar.gz	2924bcb3a1ed8b551fc101f740b9f0fe0a202b115027647cf69850d65fd88c52
+# pciutils has no 4.x series; 3.15.0 is the current release (verified
+# 2026-09-28). The old download.pciutils.net snapshot URL is dead.
+pciutils	3.15.0	https://www.kernel.org/pub/software/utils/pciutils/pciutils-3.15.0.tar.gz	985cf8afa04e097fe47981feb134ecf4ec2ce8167e65b09e194a16880ebe7271
+# download.sourceforge.net 404s for usbutils; kernel.org is the upstream host.
+usbutils	017	https://www.kernel.org/pub/linux/utils/usb/usbutils/usbutils-017.tar.xz	a6a25ffdcf9103e38d7a44732aca17073f4e602b92e4ae55625231a82702e05b
+# dmidecode is published on Savannah; this mirror host is reachable and the
+# canonical savannah host redirects to it.
+dmidecode	3.7	https://download-mirror.savannah.nongnu.org/releases/dmidecode/dmidecode-3.7.tar.xz	2c3aed12c85a1e6a9410d406d5e417c455466dc1bc7c89278bb32cf7cad91e8a

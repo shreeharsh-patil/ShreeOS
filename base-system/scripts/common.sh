@@ -65,6 +65,75 @@ pkg_builddir() {
   echo "${BASE_BUILDDIR}/build-${name}"
 }
 
+# Upstream tarballs do not agree on their top-level directory name: GNU
+# projects use "<name>-<version>", GitHub tag archives use "<repo>-<tag>"
+# (e.g. systemd-258/ or popt-popt-1.19-release/), and a few use neither.
+# Every build script needs the same thing from that directory, so resolve it
+# in exactly one place instead of letting each script guess.
+#
+# Usage: srcdir="$(base_pkg_extract <package-name>)"
+#
+# The returned directory is always normalised to "${BASE_SOURCES}/<name>-<ver>"
+# so pkg_srcdir() and the extracted tree agree for the rest of the build.
+base_pkg_extract() {
+  local name="$1"
+  local url ver archive dest
+  url="$(pkg_url "$name")"
+  ver="$(pkg_version "$name")"
+  archive="$(pkg_archive "$name")"
+  dest="${BASE_SOURCES}/${archive}"
+
+  if [ -z "$url" ] || [ -z "$ver" ]; then
+    lumen_die "No packages.list entry for '${name}'"
+  fi
+
+  lumen_fetch "$url" "$dest" "$(pkg_sha256 "$name")" >&2
+
+  local target="${BASE_SOURCES}/${name}-${ver}"
+  if [ -d "$target" ]; then
+    printf '%s\n' "$target"
+    return 0
+  fi
+
+  # Snapshot the directory listing so the newly created tree can be
+  # identified without depending on the archive's internal path names.
+  local before after created=""
+  before="$(mktemp)"
+  after="$(mktemp)"
+  ls -1A "${BASE_SOURCES}" > "$before"
+
+  local -a xflags=(-x -f)
+  case "$archive" in
+    *.tar.xz)  xflags=(-x -J -f) ;;
+    *.tar.bz2) xflags=(-x -j -f) ;;
+    *.tar.zst) xflags=(--zstd -x -f) ;;
+  esac
+  tar "${xflags[@]}" "$dest" -C "${BASE_SOURCES}"
+
+  ls -1A "${BASE_SOURCES}" > "$after"
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    if ! grep -Fxq -- "$entry" "$before" && [ -d "${BASE_SOURCES}/${entry}" ]; then
+      if [ -n "$created" ]; then
+        rm -f "$before" "$after"
+        lumen_die "Archive ${archive} unpacked more than one top-level directory (${created} and ${entry})"
+      fi
+      created="$entry"
+    fi
+  done < "$after"
+  rm -f "$before" "$after"
+
+  if [ -z "$created" ]; then
+    lumen_die "Archive ${archive} did not create a top-level source directory"
+  fi
+  if [ "$created" != "${name}-${ver}" ]; then
+    lumen_log "Normalizing source directory ${created} -> ${name}-${ver}"
+    mv -f "${BASE_SOURCES}/${created}" "$target"
+  fi
+  [ -d "$target" ] || lumen_die "Source directory missing after extraction: $target"
+  printf '%s\n' "$target"
+}
+
 # Synchronize target development headers/libraries into the compiler sysroot.
 # Base packages are installed into the target rootfs via DESTDIR, while later
 # packages must link against those same target libraries through the sysroot.
