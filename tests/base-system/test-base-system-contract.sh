@@ -197,6 +197,19 @@ check "installer applies home ownership (configure-user.sh chowns /home)" \
   "$(grep -Eq 'chown .*\$\{?TARGET\}?/home/' "$REPO_ROOT/installer/scripts/configure-user.sh" \
     && echo 0 || echo 1)"
 
+# Regression guard. setup-rootfs.sh runs unprivileged in CI and on a developer
+# machine, so any chown/chgrp/mknod it issues aborts the whole build with
+# "Operation not permitted". The ownership guarantee is carried by cpio
+# --owner=0:0 instead, so such a call can only ever be a bug. Grep for the
+# command form only, so the explanatory comments may still mention the word.
+check "setup-rootfs.sh issues no privileged ownership commands" \
+  "$(grep -Eq '^[[:space:]]*(chown|chgrp|mknod)[[:space:]]' \
+      "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" && echo 1 || echo 0)"
+check "setup-rootfs.sh sets the security modes those commands implied" \
+  "$(for m in 'chmod 0600 .*/etc/shadow' 'chmod 0440 .*/etc/sudoers"'; do
+       grep -Eq "$m" "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" || exit 1
+     done && echo 0 || echo 1)"
+
 # --------------------------------------------------------------------------
 section "Privilege escalation (sudo)"
 check "sudo binary is installed" \

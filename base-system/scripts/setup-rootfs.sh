@@ -187,7 +187,11 @@ if awk -F: 'NF >= 3 && $1 !~ /^#/ && $3 != "" && $3 !~ /^[0-9]+$/ { found = 1 }
   lumen_die "Generated /etc/shadow has a non-numeric last-change field"
 fi
 chmod 0600 "${LUMEN_STAGE_ROOT}/etc/shadow"
-chown 0:0 "${LUMEN_STAGE_ROOT}/etc/shadow"
+# Ownership is intentionally not set here. The build runs unprivileged, so chown
+# would fail outright, and it would be a no-op regardless: make-rootfs.sh packs
+# the tree with `cpio --owner=0:0`, so every entry in the shipped archive is
+# root:root no matter what the staging filesystem looks like. The mode is the
+# part that carries security meaning, and chmod applies it unprivileged.
 
 # ---------------------------------------------------------------------------
 # Privilege escalation
@@ -224,11 +228,12 @@ mkdir -p "${LUMEN_STAGE_ROOT}/etc/sudoers.d"
 # sudoers itself must be 0440: sudo refuses to start if it is group- or
 # world-writable, because a writable policy is equivalent to passwordless root.
 chmod 0440 "${LUMEN_STAGE_ROOT}/etc/sudoers"
-chown 0:0 "${LUMEN_STAGE_ROOT}/etc/sudoers"
 # The drop-in directory is 0750 root:wheel so only the administrator group can
 # add policy; world-write here would be the same defect as a writable sudoers.
 chmod 0750 "${LUMEN_STAGE_ROOT}/etc/sudoers.d"
-chown 0:0 "${LUMEN_STAGE_ROOT}/etc/sudoers.d"
+# See the note above /etc/shadow: ownership is pinned by `cpio --owner=0:0` at
+# archive time, so no chown is issued here. Both modes are set because sudo
+# refuses to start when its policy is group- or world-writable.
 
 cat > "${LUMEN_STAGE_ROOT}/etc/os-release" <<EOF
 NAME="${DISTRO_NAME}"
