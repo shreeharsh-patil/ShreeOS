@@ -167,3 +167,112 @@ base_verify_toolchain() {
   fi
   lumen_ok "Cross-compiler found: $(${CC} --version | head -1)"
 }
+
+# Assert that staged files are genuine target objects and not host binaries.
+#
+# A package script that copies a file from the build host into the target root,
+# or one whose install step silently falls back to a prebuilt artifact, produces
+# an ISO that builds cleanly and then fails at runtime in the live session. That
+# is the single most expensive class of bug in this project, because nothing
+# notices until a user boots the image. Detecting it at package-build time turns
+# a mysterious boot failure into a build failure with a precise message.
+#
+# Two properties are checked for every path:
+#
+#   1. Program interpreter. A dynamically linked target object must request
+#      ld-linux-x86-64.so.2. A host Ubuntu binary requests the same path, so
+#      the interpreter alone is not sufficient evidence; it is checked because a
+#      foreign loader (musl, a 32-bit loader, a cross-architecture path) is an
+#      unambiguous failure. A static object legitimately has no interpreter.
+#
+#   2. .note.package. Debian and Ubuntu rebuild every binary with a
+#      .note.package section naming the source package and version. Upstream
+#      tarballs never contain it, so its presence proves the file came from a
+#      distribution package rather than from our cross toolchain.
+#
+# Usage: base_assert_no_host_binary <path> [path...]
+#
+# Paths are glob-expanded by the caller or here, and a pattern that matches
+# nothing is an error rather than a silent pass. A missing artifact usually
+# means the install step did not do what the script assumed, and that is worth
+# failing on at build time.
+base_assert_no_host_binary() {
+  [ "$#" -gt 0 ] || lumen_die "base_assert_no_host_binary called with no arguments"
+
+  # Resolve the inspector up front. Without this guard the function fails OPEN:
+  # a missing readelf makes every `readelf -h` fail, which the "not an ELF"
+  # branch would treat as "nothing to check", so contaminated binaries would be
+  # reported as passing. A check that cannot run must not report success.
+  local readelf_bin=""
+  local candidate
+  for candidate in "${READELF:-}" readelf "${LUMEN_TARGET_TRIPLET}-readelf"; do
+    if [ -n "$candidate" ] && command -v "$candidate" >/dev/null 2>&1; then
+      readelf_bin="$candidate"
+      break
+    fi
+  done
+  [ -n "$readelf_bin" ] || lumen_die \
+    "base_assert_no_host_binary requires readelf, but no readelf was found in PATH"
+
+  local pattern path checked=0
+  for pattern in "$@"; do
+    # Expand globs ourselves so an unexpanded pattern is detectable. The
+    # caller's shell may or may not have expanded it, and a literal '*' reaching
+    # this function means the caller expected a match that did not happen.
+    local -a matches=()
+    if [ -e "$pattern" ]; then
+      matches=("$pattern")
+    else
+      # compgen exits non-zero when nothing matches. That is an answer, not an
+      # error, so it is captured in a condition rather than aborted.
+      local glob_list=""
+      if glob_list="$(compgen -G "$pattern")"; then
+        :
+      else
+        glob_list=""
+      fi
+      while IFS= read -r path; do
+        [ -n "$path" ] && matches+=("$path")
+      done <<< "$glob_list"
+    fi
+
+    if [ "${#matches[@]}" -eq 0 ]; then
+      lumen_die "Host-binary check found no file matching '${pattern}'."
+    fi
+
+    for path in "${matches[@]}"; do
+      [ -f "$path" ] || continue
+
+      # Text files (pkgconfig, .la stubs, version scripts) are legitimately
+      # installed beside the binaries and carry no ELF header to inspect.
+      # Reading the header rather than matching the magic bytes keeps this
+      # working regardless of locale or grep's binary handling of 0x7F.
+      if ! "$readelf_bin" -h "$path" >/dev/null 2>&1; then
+        continue
+      fi
+
+      local interp
+      interp="$("$readelf_bin" -l "$path" 2>/dev/null \
+        | sed -n 's/.*program interpreter: \(.*\)\]/\1/p' | head -n1)"
+      case "$interp" in
+        ""|/lib64/ld-linux-x86-64.so.2|/lib/ld-linux-x86-64.so.2)
+          ;;
+        *)
+          lumen_die "Host-binary check failed: ${path} requests a foreign dynamic loader: ${interp}"
+          ;;
+      esac
+
+      if "$readelf_bin" -S "$path" 2>/dev/null | grep -q 'note\.package'; then
+        lumen_die "Host-binary check failed: ${path} carries a distribution .note.package section (host contamination)"
+      fi
+
+      checked=$((checked + 1))
+    done
+  done
+
+  [ "$checked" -gt 0 ] || lumen_die \
+    "Host-binary check inspected no ELF objects; refusing to report a pass"
+
+  lumen_ok "Host-binary check passed on ${checked} target object(s)"
+}
+

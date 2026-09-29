@@ -42,6 +42,6 @@ base_sync_sysroot
 [ -f "${LUMEN_STAGE_ROOT}/usr/lib/libcap.so" ] || \
   [ -f "${LUMEN_STAGE_ROOT}/usr/lib/libcap.so.2" ] || \
   lumen_die "Target libcap shared library was not staged"
-base_assert_no_host_binary "${LUMEN_STAGE_ROOT}/usr/lib/libcap.so.2"* 2>/dev/null || true
+base_assert_no_host_binary "${LUMEN_STAGE_ROOT}/usr/lib/libcap.so.2"*
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

@@ -374,6 +374,55 @@ check "no Ubuntu host metadata in /etc (os-release not overridden)" \
   "$([ -s "$STAGE/etc/os-release" ] && ! grep -qi 'ubuntu' "$STAGE/etc/os-release" && echo 0 || echo 1)"
 
 # --------------------------------------------------------------------------
+section "Host-contamination guard behaviour"
+# base_assert_no_host_binary is the per-package guard against copying a build
+# host binary into the target root. These cases test the guard itself rather
+# than the rootfs, because a guard that cannot fail is worse than no guard: it
+# would report success while contaminated binaries shipped.
+# shellcheck source=/dev/null
+source "$REPO_ROOT/base-system/scripts/common.sh"
+
+guard() {
+  ( base_assert_no_host_binary "$@" ) >/dev/null 2>&1
+}
+
+if [ -x "$STAGE/usr/bin/bash" ]; then
+  if guard "$STAGE/usr/bin/bash"; then
+    check "guard accepts a genuine target binary" 0
+  else
+    fail "guard rejected our own target binary: $STAGE/usr/bin/bash"
+  fi
+else
+  printf '  [skip] guard cases needing a target binary (bash not staged)\n'
+fi
+
+if guard "$STAGE/usr/bin/definitely-not-installed-xyz"; then
+  fail "guard passed a path that does not exist"
+else
+  check "guard rejects a path that does not exist" 0
+fi
+
+scratch="$(mktemp -d)"
+printf 'this is not an ELF object\n' > "$scratch/plain.txt"
+if guard "$scratch/plain.txt"; then
+  fail "guard reported a pass when no ELF object was inspected"
+else
+  check "guard refuses to report a pass when nothing was inspected" 0
+fi
+rm -rf "$scratch"
+
+# The fail-closed case. If readelf is unavailable, the ELF header probe fails
+# for every file, which the "not an ELF" branch would otherwise treat as
+# "nothing to check" -- turning the guard into a no-op that always passes.
+empty_path="$(mktemp -d)"
+if ( PATH="$empty_path" base_assert_no_host_binary "$STAGE/usr/bin/bash" ) >/dev/null 2>&1; then
+  fail "guard reported a pass with no readelf in PATH"
+else
+  check "guard fails closed when readelf is unavailable" 0
+fi
+rm -rf "$empty_path"
+
+# --------------------------------------------------------------------------
 printf '\n== Summary ==\n'
 printf 'checks run : %d\n' "$checks"
 printf 'failures   : %d\n' "$failures"
