@@ -128,6 +128,14 @@ jobs:
             printf 'actionlint is not installed; YAML parsing completed without downloading it\n'
           fi
 
+      - name: Check base-system build recipes against the contract
+        # The static mode validates every recipe without a cross-compiler, so a
+        # broken recipe is caught in seconds here instead of after the full
+        # ~18 minute base-system build.
+        run: |
+          set -Eeuo pipefail
+          bash tests/base-system/test-base-system-contract.sh --static
+
       - name: Verify file permissions
         run: |
           set -Eeuo pipefail

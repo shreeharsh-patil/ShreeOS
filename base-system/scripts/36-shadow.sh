@@ -4,6 +4,20 @@
 # The account-management tools a desktop user creation flow needs. login is
 # disabled because util-linux login and the session manager own that path;
 # shadow still supplies the account database tools.
+#
+# --without-libbsd is mandatory, and upstream help text is misleading here.
+# shadow 4.18.0 declares the knob at configure.ac:203-205 with the fallback
+# [with_libbsd=yes], so libbsd support is ON unconditionally unless the switch
+# is passed explicitly. Its help string (configure:1630) claims a default of
+# yes-if-found, which is an intent the macro does not implement. Left unpinned,
+# configure reaches configure.ac:357-359 and aborts with
+#   checking for library containing readpassphrase... no
+#   configure: error: readpassphrase() is missing, either from libc or libbsd
+# because glibc supplies neither readpassphrase() nor readpassphrase.h, and
+# libbsd is not in the Phase 2 package set. That is the 2026-09-29 CI failure at
+# package 36/51. No functionality is lost: the AM_CONDITIONAL at
+# configure.ac:376 drives lib/Makefile.am:294-299, which compiles the vendored
+# lib/readpassphrase.c and lib/freezero.c when WITH_LIBBSD is false.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +45,7 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --without-skey \
   --without-tcb \
   --without-btrfs \
+  --without-libbsd \
   --disable-login \
   --disable-su
 

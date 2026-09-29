@@ -15,7 +15,9 @@
 # (sudo actually elevating, DNS actually resolving) is additionally covered by
 # the QEMU suite once the base system is bootable.
 #
-# Usage: bash tests/base-system/test-base-system-contract.sh [--stage DIR]
+# Usage:
+#   bash tests/base-system/test-base-system-contract.sh [--stage DIR]
+#   bash tests/base-system/test-base-system-contract.sh --static
 
 set -Eeuo pipefail
 
@@ -24,9 +26,27 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/build.conf"
 
 STAGE="${SHREEOS_STAGE_ROOT}"
-if [ "${1:-}" = "--stage" ]; then
-  STAGE="${2:?--stage requires a directory}"
-fi
+STATIC_ONLY=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --stage)
+      STAGE="${2:?--stage requires a directory}"
+      shift 2
+      ;;
+    --static)
+      # Run only the checks that inspect repository sources. Recipe, hygiene
+      # and guard contracts do not need a built root, so `--static` surfaces
+      # those in seconds instead of after a full cross-compile of every
+      # package. CI runs the full test after the build.
+      STATIC_ONLY=1
+      shift
+      ;;
+    *)
+      printf 'Unknown argument: %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+done
 
 failures=0
 checks=0
@@ -54,14 +74,23 @@ section() {
   printf '\n== %s ==\n' "$1"
 }
 
-if [ ! -d "$STAGE" ]; then
+if [ "$STATIC_ONLY" -eq 0 ] && [ ! -d "$STAGE" ]; then
   printf 'Base system contract FAILED: stage root does not exist: %s\n' "$STAGE" >&2
-  printf 'Run `make base-system` before this test.\n' >&2
+  printf 'Run `make base-system` before this test, or pass --static to check only\n'
+  printf 'the build-script contracts without an assembled root.\n' >&2
   exit 1
 fi
 
 printf 'ShreeOS base-system contract test\n'
 printf 'Stage root: %s\n' "$STAGE"
+if [ "$STATIC_ONLY" -eq 1 ]; then
+  printf 'Mode      : static (build-script contracts only)\n'
+fi
+
+# Everything below this point inspects the assembled target root. In --static
+# mode there is no root yet, so the whole block is skipped and only the
+# build-script contracts (guards, recipes, hygiene) run.
+if [ "$STATIC_ONLY" -eq 0 ]; then
 
 # --------------------------------------------------------------------------
 section "Filesystem hierarchy"
@@ -373,6 +402,8 @@ fi
 check "no Ubuntu host metadata in /etc (os-release not overridden)" \
   "$([ -s "$STAGE/etc/os-release" ] && ! grep -qi 'ubuntu' "$STAGE/etc/os-release" && echo 0 || echo 1)"
 
+fi  # end of assembled-root checks
+
 # --------------------------------------------------------------------------
 section "Host-contamination guard behaviour"
 # base_assert_no_host_binary is the per-package guard against copying a build
@@ -503,6 +534,25 @@ for recipe in 29-attr.sh 30-acl.sh; do
     fail "$recipe leaves AM_GNU_GETTEXT([external]) to pick up host gettext"
   fi
 done
+
+# --------------------------------------------------------------------------
+section "Unpinned host-dependent configure knob contract"
+# shadow 4.18's configure hard-requires readpassphrase() plus
+# <readpassphrase.h> unless --without-libbsd is passed (upstream
+# configure.ac:358-370). glibc provides neither and libbsd is not in the
+# Phase 2 package set, so an unpinned knob aborts configure -- which the
+# 2026-09-29 CI run demonstrated at package 36/51, 18 minutes into a build
+# whose earlier packages had all succeeded. Like the bzip2 section below,
+# these static checks catch the mistake in seconds instead.
+#
+# A recipe that already disables the feature must keep doing so; a recipe
+# that drops the flag silently re-exposes the host-dependent probe.
+shadow_recipe="$REPO_ROOT/base-system/scripts/36-shadow.sh"
+if grep -q -- '--without-libbsd' "$shadow_recipe"; then
+  check "shadow recipe disables libbsd support explicitly" 0
+else
+  fail "shadow recipe leaves --with-libbsd to a host-dependent default; configure aborts without host libbsd"
+fi
 
 # --------------------------------------------------------------------------
 section "Multi-call binary install contract"
