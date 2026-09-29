@@ -505,6 +505,57 @@ for recipe in 29-attr.sh 30-acl.sh; do
 done
 
 # --------------------------------------------------------------------------
+section "Multi-call binary install contract"
+# bzip2's Makefile builds only `bzip2` and `bzip2recover`. `bunzip2` and
+# `bzcat` are the *same* executable: bzip2.c copies argv[0], strips the
+# directory, and switches on strstr(progName, "unzip"/"zcat"). An earlier
+# revision of this recipe tried to `install` those names as separate build
+# products, which fails late in the 50-minute build with
+# "install: cannot stat 'bunzip2'".
+#
+# These static checks catch that class of mistake in seconds.
+# Referenced by full path so this section does not depend on a variable that
+# a later section defines; the test runs under `set -u`.
+bzip2_recipe="$REPO_ROOT/base-system/scripts/34-bzip2.sh"
+
+# Only real build products may be installed. bunzip2/bzcat must be aliases.
+for phantom in bunzip2 bzcat; do
+  if grep -qE "^[[:space:]]*install[[:space:]]+(-[a-zA-Z0-9]+[[:space:]]+)*\b${phantom}\b" \
+      "$bzip2_recipe"; then
+    fail "bzip2 recipe installs ${phantom} as if it were a separate build product"
+  else
+    check "bzip2 recipe does not install ${phantom} as a build product" 0
+  fi
+done
+
+# The aliases must exist and must be symlinks, since the dispatcher only sees
+# argv[0] -- a copied binary would be indistinguishable from plain bzip2.
+for alias in bunzip2 bzcat; do
+  if grep -qE "ln -sfn[[:space:]]+\"?bzip2\"?[[:space:]].*\/usr\/bin\/${alias}\"" \
+      "$bzip2_recipe"; then
+    check "bzip2 recipe installs ${alias} as a symlink to the multi-call binary" 0
+  else
+    fail "bzip2 recipe does not symlink ${alias} to the multi-call binary"
+  fi
+done
+
+# bzip2recover is a genuinely separate program; aliasing it to the compressor
+# would silently produce a broken "recover" that instead re-compresses.
+if grep -qE "ln -sfn[[:space:]]+\"?bzip2\"?[[:space:]].*bzip2recover" "$bzip2_recipe"; then
+  fail "bzip2 recipe aliases bzip2recover to bzip2; it is a separate program"
+else
+  check "bzip2 recipe keeps bzip2recover as a separate program" 0
+fi
+
+# The recipe must build the two real targets explicitly, since upstream's
+# "all" target runs the host test suite against a cross-built binary.
+if grep -qE "^[[:space:]]*make .*\bbzip2[[:space:]]+bzip2recover\b" "$bzip2_recipe"; then
+  check "bzip2 recipe builds only real targets, avoiding the host test suite" 0
+else
+  fail "bzip2 recipe does not build bzip2 and bzip2recover explicitly"
+fi
+
+# --------------------------------------------------------------------------
 section "Build-script hygiene"
 # Static analysis of the build scripts themselves. These checks need no
 # cross-compiled rootfs, so they catch a broken package recipe in seconds
