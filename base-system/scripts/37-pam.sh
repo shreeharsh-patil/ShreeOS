@@ -99,7 +99,44 @@ base_sync_sysroot
 
 compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/libpam.so*" >/dev/null || \
   lumen_die "Target libpam shared library was not staged"
-[ -f "${LUMEN_STAGE_ROOT}/etc/pam.d/other" ] || \
-  lumen_die "Linux-PAM default policy (/etc/pam.d/other) was not staged"
+
+# pam 1.7's meson build ships no /etc/pam.d policy at all: upstream installs
+# only conf/pam.conf (the legacy pre-pam.d format) behind an interactive
+# script (conf/install_conf), and every modern distribution writes its own
+# /etc/pam.d. Nothing else in the base-system tree creates one either, but
+# sudo (39) is built --with-pam, so a policy file must exist before any
+# service authenticates. Stage a default-deny policy for unknown services:
+# /etc/pam.d/other is what PAM falls back to when a service has no file, and
+# routing it through pam_deny.so (built above) means an unconfigured service
+# fails closed instead of authenticating nobody. This is also the file the
+# earlier recipe assertion expected to find -- it was right about the
+# requirement and wrong about who produces it.
+for mod in \
+  "${LUMEN_STAGE_ROOT}/usr/lib/security/pam_deny.so" \
+  "${LUMEN_STAGE_ROOT}/usr/lib/*/security/pam_deny.so"; do
+  if compgen -G "$mod" >/dev/null; then
+    found_deny=1
+    break
+  fi
+done
+[ "${found_deny:-0}" = 1 ] || \
+  lumen_die "pam_deny.so was not staged; /etc/pam.d/other would deny nothing"
+
+mkdir -p "${LUMEN_STAGE_ROOT}/etc/pam.d"
+# Atomic and re-runnable, like the sudoers write in setup-rootfs.sh: write to
+# a temp file, tighten the mode, then move over any previous copy.
+pam_other_tmp="$(mktemp "${LUMEN_STAGE_ROOT}/etc/pam.d/.other.XXXXXX")"
+cat > "$pam_other_tmp" <<'EOF'
+# /etc/pam.d/other - fallback policy for services without their own file.
+# Default-deny: an unconfigured service must not authenticate.
+auth     required    pam_deny.so
+account  required    pam_deny.so
+password required    pam_deny.so
+session  required    pam_deny.so
+EOF
+chmod 0644 "$pam_other_tmp"
+mv -f "$pam_other_tmp" "${LUMEN_STAGE_ROOT}/etc/pam.d/other"
+[ -s "${LUMEN_STAGE_ROOT}/etc/pam.d/other" ] || \
+  lumen_die "Failed to stage the Linux-PAM default policy (/etc/pam.d/other)"
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

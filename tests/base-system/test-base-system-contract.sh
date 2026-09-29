@@ -808,6 +808,22 @@ else
   fail "pam recipe neither patches nor fails on the upstream dangling libintl reference"
 fi
 
+# pam 1.7's meson build installs no /etc/pam.d policy at all, but the base
+# system (sudo is built --with-pam) cannot authenticate without one. The
+# recipe must stage the default-deny fallback policy itself, fail closed if
+# the pam_deny module it points at is missing, and never leave a temp file.
+if grep -qF 'etc/pam.d/other' "$pam_recipe" && \
+   grep -qF 'pam_deny.so' "$pam_recipe"; then
+  check "pam recipe stages the default-deny /etc/pam.d/other policy" 0
+else
+  fail "pam recipe does not stage /etc/pam.d/other; services would have no PAM policy"
+fi
+if grep -qF 'pam_deny.so was not staged' "$pam_recipe"; then
+  check "pam recipe fails closed when pam_deny.so is missing" 0
+else
+  fail "pam recipe writes /etc/pam.d/other without checking pam_deny.so exists"
+fi
+
 # --------------------------------------------------------------------------
 printf '\n== Summary ==\n'
 printf 'checks run : %d\n' "$checks"
