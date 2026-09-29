@@ -46,7 +46,9 @@ HELP2MAN=/bin/true \
 make -j"${LUMEN_MAKE_JOBS}"
 make DESTDIR="${LUMEN_STAGE_ROOT}" install
 
-# Create lex symlink
-ln -sf flex "${LUMEN_STAGE_ROOT}/usr/bin/lex" 2>/dev/null || true
+# flex installs only the flex driver, but POSIX tooling and many build systems
+# invoke lex, so its absence is a real defect rather than a tolerable gap.
+ln -sfn flex "${LUMEN_STAGE_ROOT}/usr/bin/lex"
+[ -L "${LUMEN_STAGE_ROOT}/usr/bin/lex" ] || lumen_die "failed to create the lex symlink"
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

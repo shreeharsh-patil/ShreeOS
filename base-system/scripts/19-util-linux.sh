@@ -77,14 +77,32 @@ make DESTDIR="${LUMEN_STAGE_ROOT}" install
 # later package to link against this stage.
 if command -v readelf >/dev/null 2>&1; then
   while IFS= read -r -d '' binary; do
-    dynamic="$(readelf -d "$binary" 2>/dev/null || true)"
+    # Shell scripts and other non-ELF helpers legitimately live in these
+    # directories and carry no dynamic section to inspect.
+    if ! readelf -h "$binary" >/dev/null 2>&1; then
+      continue
+    fi
+
+    sections="$(readelf -S "$binary")" || lumen_die \
+      "cannot read the section headers of ${binary}; refusing to skip the host-linkage check"
+    # A statically linked object has no .dynamic section. That is legitimate,
+    # so it is skipped rather than treated as a failure.
+    if ! grep -q '\.dynamic' <<<"$sections"; then
+      continue
+    fi
+
+    # An ELF object that does have a .dynamic section must be readable. If
+    # readelf fails here, both checks below would compare against an empty
+    # string and accept a binary that is in fact linked against host libraries.
+    dynamic="$(readelf -d "$binary")" || lumen_die \
+      "cannot read the dynamic section of ${binary}; refusing to skip the host-linkage check"
     if grep -Eq 'NEEDED.*libtinfo\.so' <<<"$dynamic"; then
       lumen_die "util-linux output has an unexpected libtinfo dependency: $binary"
     fi
     if grep -Eq '(RPATH|RUNPATH).*(/usr/lib/x86_64-linux-gnu|/lib/x86_64-linux-gnu)' <<<"$dynamic"; then
       lumen_die "util-linux output contains a host multiarch runtime path: $binary"
     fi
-  done < <(find "${LUMEN_STAGE_ROOT}/usr/bin" "${LUMEN_STAGE_ROOT}/usr/sbin" -type f -perm /111 -print0 2>/dev/null)
+  done < <(find "${LUMEN_STAGE_ROOT}/usr/bin" "${LUMEN_STAGE_ROOT}/usr/sbin" -type f -perm /111 -print0)
 fi
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
