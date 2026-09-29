@@ -794,6 +794,20 @@ else
   fail "iputils recipe leaves USE_GETTEXT to auto; the host gettext could leak in"
 fi
 
+# pam 1.7.0 carries an upstream meson bug: libpam/meson.build:54 lists
+# libintl unconditionally while meson.build:214-215 only defines it when
+# i18n is NOT disabled, so our reproducible -Di18n=disabled dies with
+#   Unknown variable "libintl"
+# at configure time. The recipe must neutralize the dangling reference in
+# the staged source and must verify the anchor still matched (a silent
+# no-op sed would reintroduce the failure on a future upgrade).
+if grep -qF 'libpam/meson.build' "$pam_recipe" && \
+   grep -qF 'libpam/meson.build still references libintl' "$pam_recipe"; then
+  check "pam recipe neutralizes the upstream dangling libintl reference" 0
+else
+  fail "pam recipe neither patches nor fails on the upstream dangling libintl reference"
+fi
+
 # --------------------------------------------------------------------------
 printf '\n== Summary ==\n'
 printf 'checks run : %d\n' "$checks"

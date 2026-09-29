@@ -37,6 +37,22 @@ BUILDDIR="$(pkg_builddir "$PKG_NAME")"
 
 lumen_step "Building ${PKG_NAME}-${PKG_VER}"
 
+# Upstream bug: libpam/meson.build:54 lists libintl in the shared_library
+# dependencies unconditionally, but meson.build:214-215 only defines the
+# variable when i18n is NOT disabled. With -Di18n=disabled -- our
+# reproducibility requirement, same as every autoconf recipe here -- setup
+# dies with `Unknown variable "libintl"`. Upstream never sees this because
+# they always build with i18n enabled. The C side handles a non-NLS build
+# correctly (libpam/include/pam_i18n.h falls back to an identity _() macro
+# when ENABLE_NLS is undefined), so the source-level fix is dropping the one
+# dangling reference. The staged tree under $BUILDDIR is a private copy, so
+# editing it does not disturb the cached sources; the pattern is anchored so
+# an upstream repair (defining or removing libintl) makes this sed a no-op.
+sed -i 's/\(dependencies: \[[^]]*\), libintl\]/\1]/' \
+  "${SRCDIR}/libpam/meson.build"
+grep -q 'libintl' "${SRCDIR}/libpam/meson.build" && \
+  lumen_die "libpam/meson.build still references libintl; the sed anchor no longer matches upstream 1.7.0"
+
 CROSSFILE="${BUILDDIR}/cross.txt"
 mkdir -p "$BUILDDIR"
 cat > "$CROSSFILE" <<EOF
