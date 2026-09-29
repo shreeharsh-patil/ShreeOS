@@ -4,6 +4,14 @@
 # iputils 20250605 builds with meson. Only the setuid-free, cap-free tools a
 # desktop user needs are enabled; ping uses ICMP sockets (ping_group_range)
 # instead of raw sockets so it does not need file capabilities.
+#
+# Every -D name below is verified against this release's meson_options.txt.
+# meson rejects unknown option names outright (unlike autoconf, which
+# silently ignores configure flags it does not recognise), and earlier
+# releases of iputils had a different option set: rarpd/rdisc/ninfod and
+# USE_ROOTNO no longer exist in 20250605, so passing them aborts the build.
+# USE_GETTEXT must be disabled explicitly or meson probes the host's
+# msgfmt/intl library and the cross build stops being reproducible.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,12 +48,9 @@ meson setup "$BUILDDIR/build" "$SRCDIR" \
   --cross-file "$CROSSFILE" \
   --prefix=/usr \
   -DNO_SETCAP_OR_SUID=true \
-  -DUSE_ROOTNO=false \
   -DUSE_CAP=false \
   -DUSE_IDN=false \
-  -DBUILD_RARPD=false \
-  -DBUILD_RDISC=false \
-  -DBUILD_NINFOD=false \
+  -DUSE_GETTEXT=false \
   -DBUILD_MANS=false
 
 meson compile -C "$BUILDDIR/build" -j"${LUMEN_MAKE_JOBS}"

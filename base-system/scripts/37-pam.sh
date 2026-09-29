@@ -9,6 +9,19 @@
 # They are easy to get wrong (`pamlocking`, not `pam locking`; `docs`, not
 # `doc`; and there is no `tests` option at all), and meson rejects an unknown
 # option outright, so they are spelled out here rather than abbreviated.
+#
+# `db` is not a feature option: it is a combo with choices db/gdbm/ndbm/auto
+# (meson_options.txt:91-92), so passing it "disabled" is not merely ignored --
+# meson validates every -D value during setup, before any build logic runs,
+# and aborts the whole package (the 2026-09-29 CI failure at 37/51,
+#   ERROR: Value "disabled" (of type "string") for option "db" is not one of
+#   the choices. Possible choices are (as string): "db", "gdbm", "ndbm", "auto".
+# ). pam_userdb is the only consumer of the db backend (meson.build:336-398
+# reads get_option('db') solely inside the not-disabled pam_userdb branch), so
+# the deterministic contract is: disable pam_userdb explicitly, and leave db
+# at auto, which upstream then never consults. Leaving pam_userdb at auto
+# would let a host libdb/libgdbm leak into the cross build through meson's
+# find_library probe.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +67,8 @@ meson setup "$BUILDDIR/build" "$SRCDIR" \
   -Dselinux=disabled \
   -Deconf=disabled \
   -Dnis=disabled \
-  -Ddb=disabled \
+  -Dpam_userdb=disabled \
+  -Ddb=auto \
   -Dopenssl=disabled \
   -Daudit=disabled \
   -Dlogind=disabled \

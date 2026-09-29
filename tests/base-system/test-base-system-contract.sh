@@ -740,6 +740,61 @@ subs="$(grep -ohE '[A-Za-z_][A-Za-z0-9_]*="\$\((base_pkg_extract|pkg_[a-z_]+)' \
 printf 'command-substituted helpers: %s\n' "${subs:-none}"
 
 # --------------------------------------------------------------------------
+section "Meson option value contract"
+# meson validates every -D value during setup, before any build logic runs.
+# A boolean/feature option accepts enabled/disabled/true/false, but a combo
+# only accepts its declared choices -- passing "disabled" to one aborts the
+# whole package. That is how Linux-PAM 1.7.0 failed at 37/51:
+#   ERROR: Value "disabled" (of type "string") for option "db" is not one
+#   of the choices. Possible choices are (as string): "db", "gdbm", "ndbm", "auto".
+# The pam recipe is the only meson consumer in the base system, so pin the
+# exact -D lines that must (and must not) appear.
+pam_recipe="$REPO_ROOT/base-system/scripts/37-pam.sh"
+
+# -Ddb=disabled is illegal: 'db' is a combo (db/gdbm/ndbm/auto).
+if grep -q -- '-Ddb=disabled' "$pam_recipe"; then
+  fail "pam recipe passes -Ddb=disabled; 'db' is a combo whose choices are db/gdbm/ndbm/auto"
+else
+  check "pam recipe does not pass the illegal -Ddb=disabled value" 0
+fi
+
+# pam_userdb is the only consumer of the db backend (pam meson.build:336-398
+# reads get_option('db') solely inside the not-disabled pam_userdb branch).
+# It must be disabled explicitly, or meson's cc.find_library probe could pull
+# a host libdb/libgdbm into the cross build.
+if grep -q -- '-Dpam_userdb=disabled' "$pam_recipe"; then
+  check "pam recipe disables pam_userdb explicitly" 0
+else
+  fail "pam recipe leaves pam_userdb at auto; the db backend probe could bind to the host"
+fi
+
+# ...and db itself must stay at a legal combo choice.
+if grep -q -- '-Ddb=auto' "$pam_recipe"; then
+  check "pam recipe leaves the db combo at its legal 'auto' choice" 0
+else
+  fail "pam recipe does not pass -Ddb=auto; the combo value must be one of db/gdbm/ndbm/auto"
+fi
+
+# iputils 20250605 is the other meson consumer. Its option set changed
+# between releases: rarpd/rdisc/ninfod and USE_ROOTNO were removed upstream,
+# so the flag names from older releases are now unknown options that abort
+# meson setup. The recipe is pinned to the 20250605 names.
+iputils_recipe="$REPO_ROOT/base-system/scripts/43-iputils.sh"
+for stale in USE_ROOTNO BUILD_RARPD BUILD_RDISC BUILD_NINFOD; do
+  if grep -q -- "-D${stale}=" "$iputils_recipe"; then
+    fail "iputils recipe passes -D${stale}=; that option does not exist in 20250605"
+  else
+    check "iputils recipe does not pass the removed option -D${stale}" 0
+  fi
+done
+# gettext must be pinned off, or meson probes the host msgfmt/intl.
+if grep -q -- '-DUSE_GETTEXT=false' "$iputils_recipe"; then
+  check "iputils recipe disables USE_GETTEXT explicitly" 0
+else
+  fail "iputils recipe leaves USE_GETTEXT to auto; the host gettext could leak in"
+fi
+
+# --------------------------------------------------------------------------
 printf '\n== Summary ==\n'
 printf 'checks run : %d\n' "$checks"
 printf 'failures   : %d\n' "$failures"
