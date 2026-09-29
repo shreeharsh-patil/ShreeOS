@@ -824,6 +824,19 @@ else
   fail "pam recipe writes /etc/pam.d/other without checking pam_deny.so exists"
 fi
 
+# sudo 1.9.17 hardcodes install_uid=0/install_gid=0 in every Makefile.in and
+# passes them through INSTALL_OWNER="-o 0 -g 0", which runs chown during
+# 'make install'. The base build is unprivileged, so that chown aborts with
+# EPERM (the 2026-09-29 CI failure at 39/51). The recipe must override the
+# owner variables on the make command line; image ownership is carried by
+# cpio --owner=0:0 in make-rootfs.sh like every other recipe.
+sudo_recipe="$REPO_ROOT/base-system/scripts/39-sudo.sh"
+if grep -Eq 'make DESTDIR=.*install .*install_uid=0 install_gid=0 INSTALL_OWNER=' "$sudo_recipe"; then
+  check "sudo recipe neutralizes the hardcoded install owner" 0
+else
+  fail "sudo recipe lets 'make install' chown to root; unprivileged builds die with EPERM"
+fi
+
 # --------------------------------------------------------------------------
 printf '\n== Summary ==\n'
 printf 'checks run : %d\n' "$checks"

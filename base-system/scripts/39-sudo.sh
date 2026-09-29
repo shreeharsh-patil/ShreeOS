@@ -29,7 +29,17 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --enable-zlib
 
 make -j"${LUMEN_MAKE_JOBS}"
-make DESTDIR="${LUMEN_STAGE_ROOT}" install
+# Every sudo Makefile.in hardcodes install_uid=0/install_gid=0 and passes
+# them through INSTALL_OWNER="-o 0 -g 0" to its install-sh, which runs chown
+# on every staged file. The base build is unprivileged (CI and dev machines
+# alike), so that chown aborts the install -- the 2026-09-29 CI failure at
+# 39/51. There is no configure knob (configure.ac only exposes
+# --with-sudoers-uid/-gid for the sudoers file, not the install owner), so
+# the make variables are overridden on the command line instead. Ownership
+# is not lost: make-rootfs.sh packs the whole stage with
+# `cpio --owner=0:0`, so the shipped image is root-owned regardless, which is
+# the same contract every other unprivileged recipe relies on.
+make DESTDIR="${LUMEN_STAGE_ROOT}" install install_uid=0 install_gid=0 INSTALL_OWNER=
 
 base_sync_sysroot
 
