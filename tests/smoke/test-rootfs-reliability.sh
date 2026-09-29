@@ -1,9 +1,27 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# -E makes the ERR trap fire inside functions and subshells as well as at the
+# top level, so a failure nested in a helper is reported, not just a bare
+# top-level command.
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
+
+# Several build steps are captured to a log file under TEST_ROOT. When one of
+# them fails, `set -e` aborts immediately and the cleanup trap deletes
+# TEST_ROOT, destroying the only record of why. This dumps every captured log to
+# stderr first, so a CI failure is diagnosable from the workflow log alone.
+dump_captured_logs() {
+  local log
+  for log in "$TEST_ROOT"/*.log; do
+    [ -f "$log" ] || continue
+    echo "----- $(basename "$log") (last 80 lines) -----" >&2
+    tail -n 80 "$log" >&2
+    echo "----- end $(basename "$log") -----" >&2
+  done
+}
+
 cleanup_test_root() {
   if [ "${KEEP_TEST_ROOT:-0}" = "1" ]; then
     printf 'Retained rootfs test directory: %s\n' "$TEST_ROOT"
@@ -12,6 +30,7 @@ cleanup_test_root() {
   fi
 }
 trap cleanup_test_root EXIT
+trap 'dump_captured_logs' ERR
 
 fail() {
   echo "  [FAIL] $*" >&2
