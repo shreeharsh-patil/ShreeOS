@@ -210,6 +210,43 @@ check "setup-rootfs.sh sets the security modes those commands implied" \
        grep -Eq "$m" "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" || exit 1
      done && echo 0 || echo 1)"
 
+# Re-runnability guard. make-rootfs.sh invokes setup-rootfs.sh against a stage
+# directory that already holds the previous run's output, so a second pass is
+# the normal path, not an edge case. Any file the script writes and then
+# tightens to a mode that is not owner-writable (e.g. /etc/sudoers at 0440)
+# cannot then be truncated in place, and the second run dies with EACCES. This
+# is a behavioural test rather than a grep, because the failure depends on the
+# ordering of the writes and the chmods, which no single pattern can express.
+check_setup_rootfs_reruns() {
+  # Behave as the guard in the section above: no privileged calls, and the
+  # restrictive modes those calls used to imply are set explicitly.
+  local dir status mode
+  dir="$(mktemp -d)"
+  # shellcheck disable=SC2064  # expand $dir now, not at trap time
+  trap "rm -rf '$dir'" RETURN
+
+  # Twice, because the second run is the one that finds the first run's output.
+  local pass=0
+  for _ in 1 2; do
+    if SHREEOS_STAGE_ROOT="$dir" \
+        bash "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" >/dev/null 2>&1; then
+      pass=$((pass + 1))
+    fi
+  done
+  status=0
+  [ "$pass" -eq 2 ] || status=1
+
+  # The policy must survive intact and keep the mode sudo requires.
+  grep -Eq '^[^#]*%wheel[[:space:]]+ALL=' "$dir/etc/sudoers" || status=1
+  mode="$(stat -c '%a' "$dir/etc/sudoers" 2>/dev/null || echo '?')"
+  [ "$mode" = "440" ] || status=1
+  # No temporary file from the atomic write may be left behind.
+  [ -z "$(find "$dir/etc" -maxdepth 1 -name '.sudoers.*' -print -quit)" ] || status=1
+  return "$status"
+}
+check "setup-rootfs.sh is re-runnable and leaves no temp files" \
+  "$(setup_rootfs_reruns && echo 0 || echo 1)"
+
 # --------------------------------------------------------------------------
 section "Privilege escalation (sudo)"
 check "sudo binary is installed" \

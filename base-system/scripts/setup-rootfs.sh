@@ -198,7 +198,15 @@ chmod 0600 "${LUMEN_STAGE_ROOT}/etc/shadow"
 # ---------------------------------------------------------------------------
 # sudo refuses to load a sudoers file that is group- or world-writable, so the
 # mode is part of the contract rather than a cosmetic detail: 0440 root:wheel.
-cat > "${LUMEN_STAGE_ROOT}/etc/sudoers" <<'EOF'
+#
+# It is written via a temporary file and renamed into place rather than with
+# `cat >`. The end state must be 0440, which removes the owner's write bit, so a
+# second run's `cat >` would fail with EACCES trying to truncate it. Renaming
+# over an existing file needs write permission on the *directory* only, which
+# the build has, so re-running against a populated stage stays correct and the
+# file is never observable in a half-written state.
+sudoers_tmp="$(mktemp "${LUMEN_STAGE_ROOT}/etc/.sudoers.XXXXXX")"
+cat > "$sudoers_tmp" <<'EOF'
 ## ShreeOS sudo policy
 ##
 ## The desktop account escalates through the `wheel` group only. Granting
@@ -225,9 +233,10 @@ root    ALL=(ALL:ALL) ALL
 %wheel  ALL=(ALL:ALL) ALL
 EOF
 mkdir -p "${LUMEN_STAGE_ROOT}/etc/sudoers.d"
-# sudoers itself must be 0440: sudo refuses to start if it is group- or
-# world-writable, because a writable policy is equivalent to passwordless root.
-chmod 0440 "${LUMEN_STAGE_ROOT}/etc/sudoers"
+# Set the final mode on the temporary file *before* the rename so the policy is
+# never visible at 0644, and so the rename cannot race another reader.
+chmod 0440 "$sudoers_tmp"
+mv -f "$sudoers_tmp" "${LUMEN_STAGE_ROOT}/etc/sudoers"
 # The drop-in directory is 0750 root:wheel so only the administrator group can
 # add policy; world-write here would be the same defect as a writable sudoers.
 chmod 0750 "${LUMEN_STAGE_ROOT}/etc/sudoers.d"
