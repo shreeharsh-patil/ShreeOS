@@ -87,6 +87,9 @@ base_pkg_extract() {
     lumen_die "No packages.list entry for '${name}'"
   fi
 
+  # stdout is this function's return value; force every byte to stderr.
+  # lumen_fetch routes all of its own output to stderr, so the diagnostics
+  # below cannot leak into the captured stdout either.
   lumen_fetch "$url" "$dest" "$(pkg_sha256 "$name")" >&2
 
   local target="${BASE_SOURCES}/${name}-${ver}"
@@ -127,7 +130,12 @@ base_pkg_extract() {
     lumen_die "Archive ${archive} did not create a top-level source directory"
   fi
   if [ "$created" != "${name}-${ver}" ]; then
-    lumen_log "Normalizing source directory ${created} -> ${name}-${ver}"
+    # NOTE: this function's stdout *is* its return value (callers use
+    # srcdir="$(base_pkg_extract <pkg>)"). Every diagnostic must therefore go
+    # to stderr, or the message is captured into ${srcdir} and the build
+    # directory becomes a log string. shreeos_log/shreeos_ok print to stdout,
+    # so redirect explicitly -- do not "simplify" this away.
+    shreeos_log "Normalizing source directory ${created} -> ${name}-${ver}" >&2
     mv -f "${BASE_SOURCES}/${created}" "$target"
   fi
   [ -d "$target" ] || lumen_die "Source directory missing after extraction: $target"

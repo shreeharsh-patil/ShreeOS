@@ -693,6 +693,53 @@ else
 fi
 
 # --------------------------------------------------------------------------
+section "Command-substitution stdout hygiene"
+# base_pkg_extract() is consumed as  srcdir="$(base_pkg_extract <pkg>)"  so
+# its stdout IS its return value. Any diagnostic written to stdout there is
+# captured into ${srcdir}, turning the build directory into a log string --
+# which is how Linux-PAM-1.7.0 failed with
+#   "build directory '[shreeos] Normalizing source directory ...'"
+#
+# shreeos_log/shreeos_ok print to stdout; shreeos_warn/shreeos_die to stderr.
+# So inside base_pkg_extract every logging call needs an explicit >&2.
+extract_body="$(awk '
+  /^base_pkg_extract\(\)/ { inside = 1 }
+  inside               { print }
+  inside && /^}/       { exit }
+' "$scripts_dir/common.sh" | sed -e 's/[[:space:]]*#.*$//')"
+
+leaked="$(printf '%s\n' "$extract_body" | awk '
+  # Report logging calls that are not explicitly redirected to stderr.
+  /shreeos_log|shreeos_ok|lumen_log|lumen_ok/ {
+    if ($0 !~ />&[[:space:]]*2/) print FNR ":" $0
+  }
+')"
+
+if [ -n "$leaked" ]; then
+  fail "base_pkg_extract writes a diagnostic to stdout; it would be captured
+       into \${srcdir} by srcdir=\"\$(base_pkg_extract <pkg>)\":
+${leaked}"
+else
+  check "base_pkg_extract sends every diagnostic to stderr" 0
+fi
+
+# The function must still emit exactly the source directory on stdout: a
+# caller that captured only the warnings would silently build in ${PWD}.
+if [ "$(printf '%s\n' "$extract_body" | grep -c "printf '%s" )" -ge 1 ]; then
+  check "base_pkg_extract still returns its path via stdout printf" 0
+else
+  fail "base_pkg_extract no longer prints the source directory on stdout"
+fi
+
+# Other helpers consumed in command substitution must have the same property.
+# lumen's historical name is retained here so a future rename cannot silently
+# reintroduce the bug under a new spelling.
+subs="$(grep -ohE '[A-Za-z_][A-Za-z0-9_]*="\$\((base_pkg_extract|pkg_[a-z_]+)' \
+  "$scripts_dir"/[0-9][0-9]-*.sh 2>/dev/null | sed -E 's/.*"\$\(//' \
+  | sort -u | tr '\n' ' ')"
+printf 'command-substituted helpers: %s\n' "${subs:-none}"
+
+# --------------------------------------------------------------------------
 printf '\n== Summary ==\n'
 printf 'checks run : %d\n' "$checks"
 printf 'failures   : %d\n' "$failures"
