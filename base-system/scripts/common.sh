@@ -168,6 +168,53 @@ base_verify_toolchain() {
   lumen_ok "Cross-compiler found: $(${CC} --version | head -1)"
 }
 
+# Assert that a dependency this package needs for cross-compilation is really
+# present in the compiler sysroot, before configure is allowed to run.
+#
+# Why this exists rather than a plain `pkg-config --exists <name>`:
+#
+#   * Host `pkg-config` searches host paths only. The target metadata lives in
+#     ${LUMEN_SYSROOT}, so an unqualified lookup reports "missing" even when the
+#     dependency built correctly -- that is a false negative, and acting on it
+#     would block a healthy build order.
+#
+#   * Not every consumer uses pkg-config. acl, for example, locates libattr with
+#     AC_CHECK_LIB/AC_CHECK_HEADERS, so its real requirement is the shared
+#     object and the header, not a .pc file. A pkg-config-only guard would
+#     describe a requirement the build does not have.
+#
+# Therefore the check asserts on the artifacts a cross compiler actually
+# consumes -- headers under usr/include and linkable objects under usr/lib --
+# and is deliberately independent of the host's .pc database.
+#
+# Usage: base_require_sysroot_dependency <package-name> [path ...]
+#
+# Each path is relative to the sysroot. A caller that passes no paths is
+# asserting the dependency provides at least one of them and the build should
+# fail closed rather than pass vacuously.
+base_require_sysroot_dependency() {
+  local pkg="${1:-}" ; shift || true
+  [ -n "$pkg" ] || lumen_die "base_require_sysroot_dependency called without a package name"
+
+  if [ "$#" -eq 0 ]; then
+    lumen_die "base_require_sysroot_dependency ${pkg}: no sysroot paths given; refusing to pass vacuously"
+  fi
+
+  local rel path
+  for rel in "$@"; do
+    # Accept "usr/include/attr/xattr.h" and "/usr/include/attr/xattr.h" alike so
+    # callers do not have to agree on a leading-slash convention.
+    rel="${rel#/}"
+    path="${LUMEN_SYSROOT}/${rel}"
+    if [ -e "$path" ]; then
+      lumen_ok "Dependency ${pkg}: found ${rel} in the ShreeOS sysroot"
+      return 0
+    fi
+  done
+
+  lumen_die "Dependency ${pkg} is not in the ShreeOS sysroot. Looked for: $* (under ${LUMEN_SYSROOT}). Build it earlier, or correct the path list."
+}
+
 # Assert that staged files are genuine target objects and not host binaries.
 #
 # A package script that copies a file from the build host into the target root,

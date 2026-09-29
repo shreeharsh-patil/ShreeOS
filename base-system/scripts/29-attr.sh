@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # 29-attr.sh — Build attr (extended attribute utilities and libattr)
+# attr pulls in AM_GNU_GETTEXT([external]). gettext is not part of the Phase 2
+# base system, so NLS is disabled explicitly. Without this, attr silently links
+# against whatever gettext the build host happens to provide, which makes the
+# result depend on the CI runner image rather than on the pinned package set.
+# Phase 14 re-enables NLS together with a real gettext package.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +24,8 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
-  --target="${LUMEN_TARGET_TRIPLET}"
+  --target="${LUMEN_TARGET_TRIPLET}" \
+  --disable-nls
 
 make -j"${LUMEN_MAKE_JOBS}"
 make DESTDIR="${LUMEN_STAGE_ROOT}" install

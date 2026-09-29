@@ -423,6 +423,88 @@ fi
 rm -rf "$empty_path"
 
 # --------------------------------------------------------------------------
+section "Cross-dependency guard behaviour"
+# base_require_sysroot_dependency is what stops a package from configuring
+# against a dependency that is not really in the target sysroot. An earlier
+# version used a bare `pkg-config --exists attr`, which reported a healthy
+# sysroot as empty because host pkg-config never searches ${LUMEN_SYSROOT}.
+# These cases pin the correct behaviour, including the fail-closed cases.
+dep_scratch="$(mktemp -d)"
+dep_saved_sysroot="${LUMEN_SYSROOT}"
+
+dep_guard() {
+  ( LUMEN_SYSROOT="$dep_scratch/sysroot" base_require_sysroot_dependency "$@" ) \
+    >/dev/null 2>&1
+}
+
+mkdir -p "$dep_scratch/sysroot/usr/include/attr" "$dep_scratch/sysroot/usr/lib"
+printf '/* header */\n' > "$dep_scratch/sysroot/usr/include/attr/xattr.h"
+: > "$dep_scratch/sysroot/usr/lib/libattr.so"
+
+if dep_guard "attr" "usr/include/attr/xattr.h" "usr/lib/libattr.so"; then
+  check "dependency guard accepts a sysroot holding the header and library" 0
+else
+  fail "dependency guard rejected a sysroot that does contain libattr"
+fi
+
+# A leading slash must be tolerated: callers should not have to agree on a
+# slash convention for sysroot-relative paths.
+if dep_guard "attr" "/usr/lib/libattr.so"; then
+  check "dependency guard tolerates a leading slash on the path" 0
+else
+  fail "dependency guard rejects an otherwise valid absolute-style path"
+fi
+
+# Any one of the listed artifacts is enough: version-suffixed sonames differ
+# between releases, so requiring a specific name would be brittle.
+if dep_guard "attr" "usr/lib/libattr.so.1" "usr/lib/libattr.so"; then
+  check "dependency guard accepts any one of the listed artifacts" 0
+else
+  fail "dependency guard rejects a sysroot matching only the fallback name"
+fi
+
+if dep_guard "attr" "usr/lib/libnowhere.so"; then
+  fail "dependency guard passed a sysroot missing every listed artifact"
+else
+  check "dependency guard rejects a sysroot missing every listed artifact" 0
+fi
+
+# Fail-closed: no paths at all must not report success.
+if dep_guard "attr"; then
+  fail "dependency guard reported a pass when given no paths"
+else
+  check "dependency guard refuses to pass vacuously with no paths" 0
+fi
+
+rm -rf "$dep_scratch"
+LUMEN_SYSROOT="$dep_saved_sysroot"
+
+# The acl recipe must assert on the artifacts acl actually consumes
+# (AC_CHECK_LIB/AC_CHECK_HEADERS), not on a host pkg-config lookup.
+acl_recipe="$REPO_ROOT/base-system/scripts/30-acl.sh"
+if grep -qE '^\s*(if\s+!|)\s*pkg-config --exists attr' "$acl_recipe"; then
+  fail "acl recipe gates on a bare 'pkg-config --exists attr' host lookup"
+else
+  check "acl recipe does not gate on a host pkg-config lookup" 0
+fi
+if grep -q 'base_require_sysroot_dependency' "$acl_recipe"; then
+  check "acl recipe asserts its libattr dependency in the sysroot" 0
+else
+  fail "acl recipe has no sysroot dependency assertion for libattr"
+fi
+
+# gettext is not in the Phase 2 package set. Both recipes must disable NLS
+# explicitly, otherwise they bind to whatever gettext the CI runner image
+# happens to ship and the build stops being reproducible.
+for recipe in 29-attr.sh 30-acl.sh; do
+  if grep -q -- '--disable-nls' "$REPO_ROOT/base-system/scripts/$recipe"; then
+    check "$recipe disables NLS explicitly" 0
+  else
+    fail "$recipe leaves AM_GNU_GETTEXT([external]) to pick up host gettext"
+  fi
+done
+
+# --------------------------------------------------------------------------
 section "Build-script hygiene"
 # Static analysis of the build scripts themselves. These checks need no
 # cross-compiled rootfs, so they catch a broken package recipe in seconds
