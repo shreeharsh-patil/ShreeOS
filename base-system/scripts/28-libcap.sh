@@ -20,9 +20,20 @@ rm -rf "$BUILDDIR"
 cp -a "$SRCDIR" "$BUILDDIR"
 cd "$BUILDDIR"
 
-# gperf is only needed to regenerate cap_names.h, and the shipped generated
-# header is current; forcing it off avoids a host-tool dependency that does
-# not affect the result.
+# libcap has no configure script: cross settings are injected through
+# Make.Rules overrides on the make command line.
+#
+# Two upstream details matter here:
+#   * The install target is plain "install" (it recurses into libcap/, progs/
+#     and doc/). There is no "install-lib" target.
+#   * Make.Rules defines FAKEROOT=$(DESTDIR) and installs everything relative
+#     to it, so DESTDIR is the correct staging variable.
+#
+# PAM_CAP and GOLANG default to "yes" whenever the *host* happens to have
+# pam_modules.h or a Go toolchain. Both are pinned off so a runner's own
+# packages cannot leak into the target. RAISE_SETFCAP is already "no" by
+# default, which matters: it would otherwise try to execute the freshly
+# cross-compiled setcap on the build host.
 make -j"${LUMEN_MAKE_JOBS}" \
   CC="${CC}" \
   BUILD_CC=gcc \
@@ -31,13 +42,27 @@ make -j"${LUMEN_MAKE_JOBS}" \
   COPTFLAGS="-O2" \
   GOLANG=no \
   PAM_CAP=no \
-  USE_GPG=no \
   prefix=/usr \
   lib=lib \
+  sbin=sbin \
   DESTDIR="${LUMEN_STAGE_ROOT}" \
-  install-lib
+  install
 
 base_sync_sysroot
+
+# setcap/getcap/capsh live in sbin; assert the tools as well as the library,
+# since a library-only build would satisfy the old check while shipping
+# nothing usable.
+for binary in setcap getcap capsh; do
+  [ -x "${LUMEN_STAGE_ROOT}/usr/sbin/${binary}" ] || \
+    lumen_die "Target ${binary} was not staged into /usr/sbin"
+  base_assert_no_host_binary "${LUMEN_STAGE_ROOT}/usr/sbin/${binary}"
+done
+
+[ -f "${LUMEN_STAGE_ROOT}/usr/include/sys/capability.h" ] || \
+  lumen_die "Target libcap headers were not staged"
+[ -f "${LUMEN_STAGE_ROOT}/usr/lib/pkgconfig/libcap.pc" ] || \
+  lumen_die "Target libcap pkg-config file was not staged"
 
 [ -f "${LUMEN_STAGE_ROOT}/usr/lib/libcap.so" ] || \
   [ -f "${LUMEN_STAGE_ROOT}/usr/lib/libcap.so.2" ] || \

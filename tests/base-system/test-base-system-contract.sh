@@ -423,6 +423,93 @@ fi
 rm -rf "$empty_path"
 
 # --------------------------------------------------------------------------
+section "Build-script hygiene"
+# Static analysis of the build scripts themselves. These checks need no
+# cross-compiled rootfs, so they catch a broken package recipe in seconds
+# instead of after a full 51-package build.
+#
+# The bug this exists for: a recipe invoking a make target that does not
+# exist in the upstream tarball ("install-lib" for libcap) fails only halfway
+# through CI, after every earlier package has been built.
+scripts_dir="$REPO_ROOT/base-system/scripts"
+
+# Every numbered recipe must be listed in the build order array, otherwise
+# the package is silently never built.
+declared="$(grep -oE '"[0-9]{2}-[a-z0-9-]+"' "$scripts_dir/build-all.sh" \
+           | tr -d '"' | sort -u)"
+# -printf is a GNU find extension; use -name/-exec so the check also runs on a
+# non-GNU host rather than silently producing an empty "present" list.
+present="$(find "$scripts_dir" -maxdepth 1 -name '[0-9][0-9]-*.sh' \
+           -exec basename {} .sh \; | sort -u)"
+# Fail closed: if either list came back empty the comparisons below would pass
+# vacuously and report a clean tree regardless of what is actually on disk.
+if [ -z "$present" ]; then
+  fail "found no numbered build recipes under ${scripts_dir}"
+  exit 1
+fi
+if [ -z "$declared" ]; then
+  fail "parsed no build order from ${scripts_dir}/build-all.sh"
+  exit 1
+fi
+
+missing_from_order="$(comm -13 <(printf '%s\n' "$declared") \
+                                <(printf '%s\n' "$present") | tr '\n' ' ')"
+check "every numbered recipe is in the build order" \
+  "$([ -z "$missing_from_order" ] && echo 0 || echo 1)"
+if [ -n "$missing_from_order" ]; then
+  fail "recipes never built (absent from build-all.sh): ${missing_from_order}"
+fi
+
+orphan="$(comm -23 <(printf '%s\n' "$declared") \
+                    <(printf '%s\n' "$present") | tr '\n' ' ')"
+check "build order references no missing recipe" \
+  "$([ -z "$orphan" ] && echo 0 || echo 1)"
+if [ -n "$orphan" ]; then
+  fail "build-all.sh lists recipes with no script: ${orphan}"
+fi
+
+# make targets referenced by recipes must be plain upstream targets. A
+# 'install-*' variant is a strong signal of a guessed target name.
+if grep -nE '^\s*install-[a-z]+\s*\\?$' "$scripts_dir"/[0-9][0-9]-*.sh \
+     >/dev/null 2>&1; then
+  fail "a recipe passes a guessed 'install-*' make target; use plain 'install'"
+else
+  check "no recipe uses a guessed install-<subdir> make target" 0
+fi
+
+# Host-dependent upstream defaults must be pinned, or a runner that happens
+# to have these tools changes what gets built into the target root.
+for var in PAM_CAP GOLANG RAISE_SETFCAP; do
+  if grep -lE "^\s*${var}=" "$scripts_dir"/[0-9][0-9]-*.sh >/dev/null 2>&1; then
+    check "recipe pins ${var} explicitly" 0
+  else
+    :
+  fi
+done
+unpinned=""
+for recipe in "$scripts_dir"/[0-9][0-9]-*.sh; do
+  # Only libcap honours these knobs; skip recipes that never mention libcap.
+  grep -q 'libcap' "$recipe" || continue
+  for var in PAM_CAP GOLANG; do
+    grep -qE "^\s*${var}=" "$recipe" || unpinned="${unpinned} $(basename "$recipe"):${var}"
+  done
+done
+check "libcap recipe pins host-dependent Make.Rules defaults" \
+  "$([ -z "$unpinned" ] && echo 0 || echo 1)"
+if [ -n "$unpinned" ]; then
+  fail "libcap recipe leaves host-dependent defaults unpinned:${unpinned}"
+fi
+
+# Recipes must not suppress failures. A swallowed error turns a real build
+# break into a mystery at ISO-validation time.
+if grep -nE '\|\|[[:space:]]*true' "$scripts_dir"/[0-9][0-9]-*.sh \
+     >/dev/null 2>&1; then
+  fail "a base-system recipe suppresses a failure with '|| true'"
+else
+  check "no base-system recipe uses '|| true'" 0
+fi
+
+# --------------------------------------------------------------------------
 printf '\n== Summary ==\n'
 printf 'checks run : %d\n' "$checks"
 printf 'failures   : %d\n' "$failures"
