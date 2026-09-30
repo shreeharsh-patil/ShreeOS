@@ -1,0 +1,10 @@
+/* ShreeOS GTK accents: focused states stay clear and restrained. */
+@define-color theme_selected_bg_color #2878ff;
+@define-color theme_selected_fg_color #ffffff;
+@define-color accent_color #2878ff;
+@define-color accent_bg_color #2878ff;
+@define-color accent_fg_color #ffffff;
+
+*:focus {
+  outline-color: alpha(#5e9bff, 0.72);
+}

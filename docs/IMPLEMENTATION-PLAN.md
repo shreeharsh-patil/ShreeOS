@@ -98,6 +98,23 @@ LightDM and an XFCE session. These profiles are implemented but their Linux
 build and QEMU checks have not yet run in this Windows workspace. The desktop
 is still not a release.
 
+The optional desktop now has a staged appearance layer: Arc-Dark GTK styling
+with ShreeOS blue focus accents, Papirus-Dark icons, Inter UI text, a ShreeOS
+top panel with app menu, task list, workspace pager, tray, audio, power, clock
+and session actions, four workspaces, left-side XFWM controls, and a centered
+Plank dock configured with ShreeOS surface colors, favorite launchers, and
+hover magnification. It uses XFCE's built-in app finder for `Super+Space`,
+LightDM's ShreeOS wallpaper and logo, and both original light and dark
+wallpapers. Static checks validate these configurations, and the QEMU marker
+now waits for panel and dock processes. The image and appearance are still
+unverified until Linux CI builds and graphically boots it. An initial GTK
+Control Center provides Wi-Fi and Bluetooth power, sound mute, dark/light
+theme switches, and links to XFCE's network, sound, display, appearance, power,
+and notification tools. It does not yet provide brightness, airplane mode,
+focus, battery, or power-profile controls, and has not been exercised in a
+running desktop. Workspace overview, notification center, lock screen, boot
+splash, and installer experiences remain future work.
+
 The prototype workflow also runs Bash syntax checks and ShellCheck at error
 severity before building either image. This Windows workspace cannot execute
 Debian Live, QEMU, or ShellCheck, so those gates have not run here. Do not wire

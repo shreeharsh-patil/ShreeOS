@@ -35,10 +35,12 @@ for package in apt live-boot live-config-systemd network-manager systemd-sysv; d
   }
 done
 if [ "$PROFILE" = desktop ]; then
-  for package in bluez blueman firefox-esr lightdm pipewire-audio \
-    lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
-    xfce4-pulseaudio-plugin mousepad synaptic parole libreoffice-writer \
-    atril ristretto galculator xarchiver; do
+  for package in arc-theme bluez blueman dconf-cli firefox-esr fonts-inter lightdm \
+    papirus-icon-theme pipewire-audio \
+    python3-gi lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
+    xfce4-appfinder xfce4-notifyd xfce4-power-manager \
+    xfce4-pulseaudio-plugin xfce4-screenshooter mousepad synaptic parole \
+    libreoffice-writer atril ristretto galculator xarchiver xdg-user-dirs; do
     grep -Eq "^${package}([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Desktop ISO package manifest is missing: $package" >&2
       exit 1

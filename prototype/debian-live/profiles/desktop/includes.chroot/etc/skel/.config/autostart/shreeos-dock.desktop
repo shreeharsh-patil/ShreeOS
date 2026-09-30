@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Dock
+Comment=Application dock and favorite apps
+Exec=/usr/local/bin/shreeos-dock-session
+OnlyShowIn=XFCE;
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

@@ -53,18 +53,41 @@ desktop_packages="$CONFIG_DIR/profiles/desktop/package-lists/shreeos-desktop.lis
 desktop_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$desktop_packages" | sort)"
 desktop_unique="$(printf '%s\n' "$desktop_actual" | uniq)"
 test "$desktop_actual" = "$desktop_unique"
-for required in bluez blueman firefox-esr firmware-linux-free pipewire-audio \
+for required in arc-theme bluez blueman dconf-cli firefox-esr fonts-inter \
+  firmware-linux-free papirus-icon-theme pipewire-audio \
+  python3-gi \
   lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
-  xfce4-pulseaudio-plugin; do
+  xfce4-pulseaudio-plugin xdg-user-dirs; do
   grep -Fxq "$required" "$desktop_packages" || {
     echo "Desktop profile is missing: $required" >&2
     exit 1
   }
 done
-grep -Fq 'shreeos-wallpaper.svg' \
+grep -Fq 'shreeos-calm-dark.svg' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'shreeos-logo.svg' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/lightdm/lightdm-gtk-greeter.conf.d/50-shreeos.conf"
 grep -Fxq desktop \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/shreeos/image-profile"
+desktop_includes="$CONFIG_DIR/profiles/desktop/includes.chroot"
+test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml"
+test -s "$desktop_includes/usr/share/plank/themes/ShreeOS/dock.theme"
+test -x "$desktop_includes/usr/local/bin/shreeos-dock-session"
+test -x "$desktop_includes/usr/local/bin/shreeos-control-center"
+test -s "$desktop_includes/usr/share/applications/shreeos-control-center.desktop"
+test -s "$desktop_includes/usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
+grep -Fq "theme='ShreeOS'" "$desktop_includes/usr/share/shreeos/defaults/plank.dconf"
+grep -Fq 'gtk-theme-name=Arc-Dark' \
+  "$desktop_includes/etc/skel/.config/gtk-3.0/settings.ini"
+grep -Fq 'button_layout' \
+  "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+test -f "$desktop_includes/etc/skel/.config/plank/launchers/thunar.dockitem"
+test -f "$desktop_includes/etc/skel/.config/plank/launchers/downloads.dockitem"
+test -f "$desktop_includes/etc/skel/.config/plank/launchers/trash.dockitem"
+test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-dock.desktop"
+test ! -e "$desktop_includes/etc/skel/.config/autostart/plank.desktop"
+grep -Fq 'shreeos-calm-dark.svg' \
+  "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 printf 'Debian prototype configuration contract passed.\n'

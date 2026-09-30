@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Control Center
+Comment=Network, Bluetooth, sound, and appearance controls
+Exec=/usr/local/bin/shreeos-control-center
+Icon=shreeos-control-center
+Terminal=false
+Categories=Settings;HardwareSettings;

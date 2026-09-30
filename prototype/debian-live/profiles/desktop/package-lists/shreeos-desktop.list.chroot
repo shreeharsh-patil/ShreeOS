@@ -3,15 +3,20 @@
 # The explicit packages below add the user-facing hardware/audio/branding layer.
 bluez
 blueman
+arc-theme
+dconf-cli
 firefox-esr
+fonts-inter
 firmware-linux-free
 fonts-noto-color-emoji
 fonts-noto-core
 galculator
 lightdm-gtk-greeter
 network-manager-applet
+papirus-icon-theme
 pavucontrol
 pipewire-audio
+python3-gi
 plank
 ristretto
 task-xfce-desktop
@@ -19,3 +24,4 @@ thunar-archive-plugin
 xfce4-pulseaudio-plugin
 wireplumber
 xarchiver
+xdg-user-dirs

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="active_opacity" type="int" value="100" />
+    <property name="inactive_opacity" type="int" value="100" />
+    <property name="button_layout" type="string" value="CMH|" />
+    <property name="click_to_focus" type="bool" value="true" />
+    <property name="cycle_minimum" type="bool" value="true" />
+    <property name="double_click_action" type="string" value="maximize" />
+    <property name="frame_opacity" type="int" value="100" />
+    <property name="shadow_opacity" type="double" value="0.28" />
+    <property name="show_dock_shadow" type="bool" value="true" />
+    <property name="show_frame_shadow" type="bool" value="true" />
+    <property name="show_popup_shadow" type="bool" value="true" />
+    <property name="theme" type="string" value="Arc-Dark" />
+    <property name="tile_on_move" type="bool" value="true" />
+    <property name="use_compositing" type="bool" value="true" />
+    <property name="workspace_count" type="int" value="4" />
+  </property>
+</channel>

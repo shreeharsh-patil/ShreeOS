@@ -48,11 +48,16 @@ if [ "$LIVE_PROFILE" = desktop ]; then
     "$BUILD_DIR/config/includes.chroot/"
   mkdir -p \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
-    "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps"
-  cp "$REPO_ROOT/branding/wallpapers/shreeos-wallpaper.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps"
+  cp "$REPO_ROOT"/branding/wallpapers/*.svg \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/"
+  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos.svg"
+  cp "$PROFILE_SOURCE/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/"
 fi
 
 if [ "$LIVE_PROFILE" = desktop ]; then

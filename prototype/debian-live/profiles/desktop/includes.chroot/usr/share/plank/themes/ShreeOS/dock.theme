@@ -1,0 +1,8 @@
+[PlankTheme]
+TopRoundness=14
+BottomRoundness=14
+LineWidth=1
+OuterStrokeColor=255;;255;;255;;34
+FillStartColor=31;;38;;51;;226
+FillEndColor=31;;38;;51;;226
+InnerStrokeColor=255;;255;;255;;16

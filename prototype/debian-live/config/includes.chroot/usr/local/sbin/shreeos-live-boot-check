@@ -38,11 +38,21 @@ fi
 
 if [ -f /etc/shreeos/image-profile ] &&
   [ "$(cat /etc/shreeos/image-profile)" = desktop ]; then
+  python3 -c 'import gi; gi.require_version("Gtk", "3.0")' || {
+    echo 'The ShreeOS Control Center GTK runtime is unavailable.' >&2
+    exit 1
+  }
+  [ -x /usr/local/bin/shreeos-control-center ] || {
+    echo 'The ShreeOS Control Center launcher is missing.' >&2
+    exit 1
+  }
   elapsed=0
   until systemctl is-active --quiet display-manager.service &&
-    pgrep -u shree -x xfce4-session >/dev/null; do
+    pgrep -u shree -x xfce4-session >/dev/null &&
+    pgrep -u shree -x xfce4-panel >/dev/null &&
+    pgrep -u shree -x plank >/dev/null; do
     if [ "$elapsed" -ge 120 ]; then
-      echo 'ShreeOS desktop session did not start within 120 seconds.' >&2
+      echo 'ShreeOS desktop session, panel, or dock did not start within 120 seconds.' >&2
       exit 1
     fi
     sleep 1

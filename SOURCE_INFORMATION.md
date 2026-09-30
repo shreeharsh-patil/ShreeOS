@@ -31,7 +31,10 @@ release, CI/release automation must archive a machine-readable source-package
 inventory and publish clear instructions and a durable location for obtaining
 any corresponding source required by the applicable licenses.
 
-The optional desktop profile adds only `firmware-linux-free` for firmware.
+The optional desktop profile adds `arc-theme`, `papirus-icon-theme`, and
+`fonts-inter` for its GTK theme, icons, and UI text, as well as
+`firmware-linux-free` for firmware. Their installed Debian copyright notices
+are retained in the image; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 Debian describes this package as DFSG-compliant firmware; it is from `main`.
 The profiles do not use the `non-free-firmware` archive. This choice is a
 redistribution policy baseline, not a claim that the included firmware covers

@@ -50,7 +50,7 @@ jobs:
             debootstrap xorriso squashfs-tools \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
             qemu-system-x86 qemu-utils ovmf rsync ca-certificates \
-            debian-archive-keyring shellcheck
+            debian-archive-keyring shellcheck python3
 
       - name: Check shell syntax and errors
         run: |
@@ -63,10 +63,16 @@ jobs:
             tests/prototype/test-config.sh \
             tests/prototype/test-iso.sh \
             prototype/debian-live/config/includes.chroot/lib/live/config/9999-lock-live-user \
-            prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check
+            prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-dock-session \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-control-center \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-downloads \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-trash
 
       - name: Validate prototype configuration
-        run: bash tests/prototype/test-config.sh
+        run: |
+          bash tests/prototype/test-config.sh
+          python3 tests/prototype/test-desktop-config.py
 
       - name: Build and boot-test the console base
         run: bash scripts/build-debian-prototype.sh

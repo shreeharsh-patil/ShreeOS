@@ -22,9 +22,15 @@ The repository contains two distinct build paths:
 
 There is no supported ShreeOS desktop release or public download at this time.
 The optional desktop profile has not yet been built, booted, or visually
-verified. A graphical installer, broad Wi-Fi firmware policy, complete
-ShreeOS desktop theme, and installed-system workflow are still missing. The
-project will not claim these features until they are implemented and tested.
+verified. It now includes a ShreeOS XFCE appearance configuration: original
+wallpapers and logo, a compact top panel, a centered Plank dock, four
+workspaces, a dark Arc GTK theme, Papirus icons, Inter UI text, and ShreeOS
+accent styling. This is an early desktop pass, not the complete shell described
+in the roadmap. An initial ShreeOS Control Center provides Wi-Fi, Bluetooth,
+audio, and appearance switches plus links to XFCE settings tools; it still
+needs a Linux GUI review and does not cover brightness, airplane mode, focus,
+or power profiles. A graphical installer, broader hardware support, advanced
+window overview, and installed-system workflow remain open.
 The target direction and exit criteria are in
 [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 
@@ -96,12 +102,12 @@ desktop distribution.
 ## Live media and installation
 
 The base profile is a Live ISO with a compressed SquashFS root that boots to a
-console. The optional desktop profile adds XFCE, LightDM and ShreeOS wallpaper
-and greeter branding, but it has not been validated yet. Neither profile has a
-graphical installer or supported disk installation procedure. Do not use it
-to install on a physical computer. A future installer phase will use
-disposable virtual disks and require explicit confirmation before destructive
-changes.
+console. The optional desktop profile adds XFCE, LightDM, ShreeOS wallpapers
+and greeter branding, a configured top panel and dock, and coordinated GTK,
+icon, and font defaults. Its QEMU gate checks that the desktop session, panel,
+and dock start, but the image and appearance have not yet been validated on
+Linux. Neither profile has a graphical installer or supported disk
+installation procedure. Do not use it to install on a physical computer.
 
 ## Downloads and checksums
 

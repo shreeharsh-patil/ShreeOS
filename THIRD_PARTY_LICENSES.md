@@ -37,6 +37,22 @@ limited set and does not imply broad device support. See the
 [Debian package record](https://packages.debian.org/trixie/firmware-linux-free)
 and preserve its installed copyright record with the image.
 
+The optional desktop appearance configuration also installs these Debian
+packages, retaining each package's complete copyright file in the image:
+
+- `arc-theme` (upstream theme: GPL-3-or-later; Debian packaging also includes
+  GPL-2-or-later notices).
+- `papirus-icon-theme` (GPL-3, including notices for the upstream icon sources
+  documented in Debian's copyright file).
+- `fonts-inter` (OFL-1.1 and Apache-2.0, by file).
+
+These remain upstream themes and icons, not ShreeOS-authored artwork. The
+ShreeOS wallpaper and logo stay under the repository's stated license.
+Review the exact installed `/usr/share/doc/<package>/copyright` files before
+redistribution. Debian package records: [Arc](https://packages.debian.org/trixie/arc-theme),
+[Papirus](https://packages.debian.org/trixie/papirus-icon-theme), and
+[Inter](https://packages.debian.org/trixie/fonts-inter).
+
 ## Redistribution checklist
 
 Before publishing an image:

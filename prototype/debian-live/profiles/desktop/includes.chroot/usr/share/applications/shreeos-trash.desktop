@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Trash
+Comment=Review and restore deleted files
+Exec=/usr/local/bin/shreeos-open-trash
+Icon=user-trash
+Terminal=false
+Categories=System;FileTools;

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+downloads_dir="$(xdg-user-dir DOWNLOAD)"
+exec thunar "$downloads_dir"

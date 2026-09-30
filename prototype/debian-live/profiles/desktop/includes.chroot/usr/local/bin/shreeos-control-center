@@ -1,0 +1,263 @@
+#!/usr/bin/python3
+"""ShreeOS quick controls for the XFCE desktop."""
+
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, Gtk
+
+
+CSS = """
+window.shreeos-control-center {
+  background-color: #202733;
+  color: #f5f7fb;
+}
+headerbar.shreeos-header {
+  background: #202733;
+  border: 0;
+  box-shadow: none;
+  min-height: 54px;
+}
+.cc-title { font-size: 16px; font-weight: 600; color: #f5f7fb; }
+.cc-caption { color: #aab4c3; font-size: 11px; }
+.cc-section { color: #aab4c3; font-size: 11px; font-weight: 600; }
+button.cc-tile {
+  background: #2a3442;
+  color: #f5f7fb;
+  border: 1px solid #394759;
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 76px;
+}
+button.cc-tile:hover { background: #344356; border-color: #5277a8; }
+button.cc-tile:focus { border-color: #5e9bff; }
+.cc-tile { background: #2a3442; border: 1px solid #394759; border-radius: 12px; padding: 12px; }
+.cc-tile-title { font-weight: 600; }
+button.cc-link {
+  background: #2a3442;
+  color: #f5f7fb;
+  border: 1px solid #394759;
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+button.cc-link:hover { background: #344356; }
+label.cc-status { color: #aab4c3; font-size: 11px; }
+"""
+
+
+def run_command(argv: list[str]) -> str:
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=4, check=False)
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip() or "The control is unavailable."
+        raise RuntimeError(detail)
+    return result.stdout.strip()
+
+
+def wifi_enabled() -> bool:
+    return run_command(["nmcli", "-t", "-f", "WIFI", "general"]).lower() == "enabled"
+
+
+def bluetooth_enabled() -> bool:
+    return "powered: yes" in run_command(["bluetoothctl", "show"]).lower()
+
+
+def audio_muted() -> bool:
+    output = run_command(["pactl", "get-sink-mute", "@DEFAULT_SINK@"])
+    return output.strip().lower().endswith("yes")
+
+
+def dark_theme_enabled() -> bool:
+    theme = run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName"])
+    return theme.lower().endswith("-dark")
+
+
+def state_or_default(probe, default: bool = False) -> bool:
+    try:
+        return probe()
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        return default
+
+
+def show_error(parent: Gtk.Window, title: str, error: Exception) -> None:
+    dialog = Gtk.MessageDialog(
+        transient_for=parent,
+        modal=True,
+        message_type=Gtk.MessageType.ERROR,
+        buttons=Gtk.ButtonsType.CLOSE,
+        text=title,
+    )
+    dialog.format_secondary_text(str(error))
+    dialog.run()
+    dialog.destroy()
+
+
+def control_tile(icon_name: str, title: str, subtitle: str,
+                 callback) -> Gtk.Button:
+    button = Gtk.Button()
+    button.set_relief(Gtk.ReliefStyle.NONE)
+    button.get_style_context().add_class("cc-tile")
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+    image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.DIALOG)
+    image.set_pixel_size(25)
+    labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+    name = Gtk.Label(label=title, xalign=0)
+    name.get_style_context().add_class("cc-tile-title")
+    detail = Gtk.Label(label=subtitle, xalign=0)
+    detail.get_style_context().add_class("cc-caption")
+    labels.pack_start(name, False, False, 0)
+    labels.pack_start(detail, False, False, 0)
+    row.pack_start(image, False, False, 0)
+    row.pack_start(labels, True, True, 0)
+    button.add(row)
+    button.connect("clicked", callback)
+    return button
+
+
+def main() -> int:
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS.encode("utf-8"))
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
+
+    window = Gtk.Window(title="ShreeOS Control Center")
+    window.set_default_size(430, 570)
+    window.set_resizable(False)
+    window.set_position(Gtk.WindowPosition.CENTER)
+    window.get_style_context().add_class("shreeos-control-center")
+
+    header = Gtk.HeaderBar()
+    header.set_show_close_button(True)
+    header.set_title("ShreeOS")
+    header.set_subtitle("Control Center")
+    header.get_style_context().add_class("shreeos-header")
+    logo = Gtk.Image.new_from_file("/usr/share/pixmaps/shreeos-logo.svg")
+    logo.set_pixel_size(28)
+    header.pack_start(logo)
+    window.set_titlebar(header)
+
+    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    content.set_border_width(18)
+    window.add(content)
+
+    greeting = Gtk.Label(label="Quick settings", xalign=0)
+    greeting.get_style_context().add_class("cc-title")
+    content.pack_start(greeting, False, False, 0)
+
+    network_status = "Wi-Fi is on" if wifi_enabled() else "Wi-Fi is off"
+    try:
+        bt_status = "Bluetooth is on" if bluetooth_enabled() else "Bluetooth is off"
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        bt_status = "No adapter available"
+    try:
+        audio_status = "Audio is muted" if audio_muted() else "Audio is on"
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        audio_status = "No audio output detected"
+    theme_status = "Dark appearance" if dark_theme_enabled() else "Light appearance"
+
+    grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+    content.pack_start(grid, False, False, 0)
+
+    def toggle_switch(title: str, subtitle: str, icon: str, initial: bool, command) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box.get_style_context().add_class("cc-tile")
+        image = Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.DIALOG)
+        image.set_pixel_size(22)
+        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        name = Gtk.Label(label=title, xalign=0)
+        name.get_style_context().add_class("cc-tile-title")
+        status = Gtk.Label(label=subtitle, xalign=0)
+        status.get_style_context().add_class("cc-status")
+        labels.pack_start(name, False, False, 0)
+        labels.pack_start(status, False, False, 0)
+        switch = Gtk.Switch()
+        switch.set_active(initial)
+        switch.set_valign(Gtk.Align.CENTER)
+
+        def on_toggle(widget, _param) -> None:
+            try:
+                command(widget.get_active())
+                status.set_text("On" if widget.get_active() else "Off")
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                widget.handler_block_by_func(on_toggle)
+                widget.set_active(not widget.get_active())
+                widget.handler_unblock_by_func(on_toggle)
+                show_error(window, f"Could not change {title.lower()}", error)
+
+        switch.connect("notify::active", on_toggle)
+        box.pack_start(image, False, False, 0)
+        box.pack_start(labels, True, True, 0)
+        box.pack_end(switch, False, False, 0)
+        return box
+
+    wifi = toggle_switch(
+        "Wi-Fi", network_status, "network-wireless-symbolic", state_or_default(wifi_enabled),
+        lambda enabled: run_command(["nmcli", "radio", "wifi", "on" if enabled else "off"]),
+    )
+    bluetooth = toggle_switch(
+        "Bluetooth", bt_status, "bluetooth-active-symbolic", state_or_default(bluetooth_enabled),
+        lambda enabled: run_command(["bluetoothctl", "power", "on" if enabled else "off"]),
+    )
+    muted = toggle_switch(
+        "Sound", audio_status, "audio-volume-high-symbolic", not state_or_default(audio_muted),
+        lambda enabled: run_command(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0" if enabled else "1"]),
+    )
+    dark = toggle_switch(
+        "Dark appearance", theme_status, "preferences-desktop-theme-symbolic", state_or_default(dark_theme_enabled),
+        lambda enabled: (
+            run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName", "-s", "Arc-Dark" if enabled else "Arc"]),
+            run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/IconThemeName", "-s", "Papirus-Dark" if enabled else "Papirus"]),
+        ),
+    )
+    grid.attach(wifi, 0, 0, 1, 1)
+    grid.attach(bluetooth, 1, 0, 1, 1)
+    grid.attach(muted, 0, 1, 1, 1)
+    grid.attach(dark, 1, 1, 1, 1)
+
+    section = Gtk.Label(label="More settings", xalign=0)
+    section.get_style_context().add_class("cc-section")
+    content.pack_start(section, False, False, 4)
+    links = Gtk.Grid(column_spacing=8, row_spacing=8)
+    content.pack_start(links, True, True, 0)
+    setting_apps = [
+        ("network-wireless-symbolic", "Network", "nm-connection-editor"),
+        ("bluetooth-active-symbolic", "Bluetooth", "blueman-manager"),
+        ("audio-card-symbolic", "Sound", "pavucontrol"),
+        ("preferences-desktop-theme-symbolic", "Appearance", "xfce4-appearance-settings"),
+        ("video-display-symbolic", "Displays", "xfce4-display-settings"),
+        ("preferences-system-power-symbolic", "Power", "xfce4-power-manager-settings"),
+        ("preferences-system-notifications-symbolic", "Notifications", "xfce4-notifyd-config"),
+    ]
+
+    def open_settings(_button, command: str) -> None:
+        try:
+            subprocess.Popen([command], close_fds=True)
+            window.destroy()
+        except OSError as error:
+            show_error(window, "Settings could not be opened", error)
+
+    for index, (icon, label, command) in enumerate(setting_apps):
+        button = Gtk.Button(label=label)
+        button.set_image(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.BUTTON))
+        button.set_always_show_image(True)
+        button.set_halign(Gtk.Align.FILL)
+        button.get_style_context().add_class("cc-link")
+        button.connect("clicked", open_settings, command)
+        links.attach(button, index % 2, index // 2, 1, 1)
+
+    window.connect("key-press-event", lambda _w, event: (Gtk.main_quit() if event.keyval == Gdk.KEY_Escape else False))
+    window.connect("destroy", lambda *_args: Gtk.main_quit())
+    window.show_all()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print(f"shreeos-control-center: {error}", file=sys.stderr)
+        sys.exit(1)

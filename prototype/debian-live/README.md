@@ -11,8 +11,16 @@ The default `base` profile is deliberately console-only. An optional
 `desktop` profile adds Debian's XFCE task, LightDM autologin, PipeWire,
 BlueZ/Blueman, common desktop applications, ShreeOS wallpaper and greeter
 branding, and the DFSG-compliant `firmware-linux-free` package from `main`.
-The desktop is experimental and has not yet been built, booted, or visually
-verified in this workspace. Neither profile is a supported desktop release.
+It also configures an XFCE top panel, four workspaces, left-aligned window
+controls, a centered translucent Plank dock with magnification, original dark
+and light wallpapers, and Arc/Papirus/Inter appearance defaults. The desktop
+is experimental and has not yet been built, booted, or visually verified in
+this workspace. Its XFCE session is a staged desktop composition, not yet a
+custom shell with a ShreeOS control center, overview, notification center, or
+installer. An initial GTK Control Center offers Wi-Fi, Bluetooth, audio and
+dark/light appearance switches with links to existing XFCE tools; its
+interactive behavior still needs Linux desktop validation. Neither profile is
+a supported desktop release.
 The image identifies itself as a Debian-derived ShreeOS prototype and uses
 Debian's signed repositories for installed-system updates.
 
@@ -46,4 +54,6 @@ and configure a target root filesystem. Use a disposable Linux VM or CI; native
 Windows and WSL without a working Linux distribution are not supported build
 hosts. Both profiles lock the live account's default password and withhold
 sudo access. The desktop QEMU test requires the XFCE session to start before
-it passes; visual appearance still requires manual review.
+it passes, and now also requires the panel and dock processes. Static CI checks
+validate the XML, menu, wallpaper, theme, and dock launcher contracts. The
+appearance and interactive behavior still require a graphical Linux review.
