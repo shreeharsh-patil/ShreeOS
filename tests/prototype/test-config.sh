@@ -28,12 +28,17 @@ grep -Fq -- '--apt-options "--yes -o Acquire::Retries=5 -o Acquire::Check-Valid-
   "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'shreeos-live-boot-check' \
   "$CONFIG_DIR/config/includes.chroot/etc/systemd/system/shreeos-boot-check.service"
-lock_hook="$CONFIG_DIR/config/includes.chroot/usr/lib/live/config-hooks/2000-lock-live-user"
+lock_hook="$CONFIG_DIR/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user"
 boot_check="$CONFIG_DIR/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check"
 test -f "$lock_hook"
+test -x "$lock_hook"
 test -f "$boot_check"
 grep -Fq 'passwd --lock shree' "$lock_hook"
 grep -Fq 'live-config.hooks=filesystem' \
+  "$REPO_ROOT/scripts/build-debian-prototype.sh"
+grep -Fq 'LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,hooks' \
+  "$REPO_ROOT/scripts/build-debian-prototype.sh"
+grep -Fq 'LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,lightdm,hooks' \
   "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'passwd --status shree' "$boot_check"
 grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$boot_check"

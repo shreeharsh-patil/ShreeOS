@@ -62,10 +62,10 @@ fi
 
 if [ "$LIVE_PROFILE" = desktop ]; then
   LIVE_TARGET=graphical
-  LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,lightdm
+  LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,lightdm,hooks
 else
   LIVE_TARGET=multi-user
-  LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration
+  LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,hooks
 fi
 
 mkdir -p "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants"
