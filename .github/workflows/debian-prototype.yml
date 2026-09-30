@@ -65,7 +65,7 @@ jobs:
             scripts/build-debian-prototype.sh \
             tests/prototype/test-config.sh \
             tests/prototype/test-iso.sh \
-            prototype/debian-live/config/includes.chroot/usr/lib/live/config-hooks/2000-lock-live-user \
+            prototype/debian-live/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user \
             prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-dock-session \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-downloads \
