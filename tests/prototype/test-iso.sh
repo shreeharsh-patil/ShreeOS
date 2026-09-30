@@ -50,12 +50,13 @@ fi
 
 run_boot_test() {
   local mode="$1"
-  local bios_arg=() log="$TEST_DIR/${mode}.log"
+  local firmware_args=() log="$TEST_DIR/${mode}.log"
   local emulator_log="$TEST_DIR/${mode}-qemu.log"
   local monitor_socket="$TEST_DIR/${mode}-monitor.sock"
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm" status=0
+  local deadline=$((SECONDS + 180))
   if [ "$mode" = uefi ]; then
-    local firmware="${OVMF_CODE:-}"
+    local firmware="${OVMF_CODE:-}" firmware_vars="${OVMF_VARS:-}"
     if [ -z "$firmware" ]; then
       for candidate in \
         /usr/share/OVMF/OVMF_CODE_4M.fd \
@@ -66,8 +67,24 @@ run_boot_test() {
         if [ -s "$candidate" ]; then firmware="$candidate"; break; fi
       done
     fi
+    if [ -z "$firmware_vars" ]; then
+      for candidate in \
+        /usr/share/OVMF/OVMF_VARS_4M.fd \
+        /usr/share/OVMF/OVMF_VARS.fd \
+        /usr/share/ovmf/OVMF_VARS.fd \
+        /usr/share/qemu/OVMF_VARS.fd
+      do
+        if [ -s "$candidate" ]; then firmware_vars="$candidate"; break; fi
+      done
+    fi
     [ -s "$firmware" ] || { echo "UEFI firmware not found: $firmware" >&2; return 1; }
-    bios_arg=(-bios "$firmware")
+    [ -s "$firmware_vars" ] || { echo "UEFI variable store not found: $firmware_vars" >&2; return 1; }
+    local vars_copy="$TEST_DIR/${mode}-OVMF_VARS.fd"
+    cp -- "$firmware_vars" "$vars_copy"
+    firmware_args=(
+      -drive "if=pflash,format=raw,readonly=on,file=$firmware"
+      -drive "if=pflash,format=raw,file=$vars_copy"
+    )
   fi
 
   timeout --signal=TERM 180s qemu-system-x86_64 \
@@ -75,7 +92,7 @@ run_boot_test() {
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
     -display none -monitor "unix:$monitor_socket,server,nowait" \
-    -serial "file:$log" -no-reboot "${bios_arg[@]}" >"$emulator_log" 2>&1 &
+    -serial "file:$log" -no-reboot "${firmware_args[@]}" >"$emulator_log" 2>&1 &
   local emulator_pid=$!
   sleep 20
   if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
@@ -109,6 +126,35 @@ PY
     else
       printf 'QEMU screen capture was unavailable.\n' >>"$emulator_log"
     fi
+  fi
+
+  while ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; do
+    if ! kill -0 "$emulator_pid" 2>/dev/null || (( SECONDS >= deadline )); then
+      break
+    fi
+    sleep 1
+  done
+  if grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
+    python3 - "$monitor_socket" <<'PY'
+import socket
+import sys
+import time
+
+monitor = sys.argv[1]
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.settimeout(3)
+for _ in range(10):
+    try:
+        client.connect(monitor)
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit("QEMU monitor socket did not become available to stop the guest")
+client.recv(4096)
+client.sendall(b"quit\n")
+client.close()
+PY
   fi
   wait "$emulator_pid" || status=$?
 

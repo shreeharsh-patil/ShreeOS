@@ -40,11 +40,10 @@ do
   fi
 done
 
-for required in usr/bin/bash; do
-  [ -e "$root/$required" ] || {
-    echo "Runtime content missing after development-file pruning: /$required" >&2
-    exit 1
-  }
-done
+required='usr/bin/bash'
+[ -e "$root/$required" ] || {
+  echo "Runtime content missing after development-file pruning: /$required" >&2
+  exit 1
+}
 
 echo "Removed build-only headers, archives and metadata from $root"
