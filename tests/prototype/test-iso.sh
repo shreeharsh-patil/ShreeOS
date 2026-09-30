@@ -51,7 +51,9 @@ fi
 run_boot_test() {
   local mode="$1"
   local bios_arg=() log="$TEST_DIR/${mode}.log"
-  local emulator_log="$TEST_DIR/${mode}-qemu.log" status=0
+  local emulator_log="$TEST_DIR/${mode}-qemu.log"
+  local monitor_socket="$TEST_DIR/${mode}-monitor.sock"
+  local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm" status=0
   if [ "$mode" = uefi ]; then
     local firmware="${OVMF_CODE:-}"
     if [ -z "$firmware" ]; then
@@ -72,8 +74,39 @@ run_boot_test() {
     -machine q35 -m 2048 -smp 2 -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
-    -display none -monitor none -serial "file:$log" -no-reboot \
-    "${bios_arg[@]}" >"$emulator_log" 2>&1 || status=$?
+    -display none -monitor "unix:$monitor_socket,server,nowait" \
+    -serial "file:$log" -no-reboot "${bios_arg[@]}" >"$emulator_log" 2>&1 &
+  local emulator_pid=$!
+  sleep 20
+  if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
+    if python3 - "$monitor_socket" "$screen_dump" <<'PY'
+import socket
+import sys
+import time
+
+monitor, output = sys.argv[1:]
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.settimeout(3)
+for _ in range(10):
+    try:
+        client.connect(monitor)
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit("QEMU monitor socket did not become available")
+client.recv(4096)
+client.sendall(f"screendump {output}\n".encode())
+client.recv(4096)
+client.close()
+PY
+    then
+      :
+    else
+      printf 'QEMU screen capture was unavailable.\n' >>"$emulator_log"
+    fi
+  fi
+  wait "$emulator_pid" || status=$?
 
   if [ -n "$QEMU_LOG_DIR" ]; then
     if [ -f "$log" ]; then
@@ -81,6 +114,9 @@ run_boot_test() {
     fi
     if [ -f "$emulator_log" ]; then
       cp -- "$emulator_log" "$QEMU_LOG_DIR/${PROFILE}-${mode}-qemu.log"
+    fi
+    if [ -s "$screen_dump" ]; then
+      cp -- "$screen_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-screen.ppm"
     fi
   fi
 
