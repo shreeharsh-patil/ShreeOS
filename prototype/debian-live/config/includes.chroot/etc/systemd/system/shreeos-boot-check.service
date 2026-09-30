@@ -5,6 +5,8 @@ After=multi-user.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/shreeos-live-boot-check
+StandardOutput=journal+console
+StandardError=journal+console
 RemainAfterExit=yes
 
 [Install]

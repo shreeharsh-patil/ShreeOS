@@ -1,58 +1,65 @@
 #!/bin/sh
 set -eu
 
+log() {
+  printf 'SHREEOS_BOOT_CHECK: %s\n' "$*" > /dev/console
+}
+
+fail() {
+  log "FAIL: $*"
+  exit 1
+}
+
 account_status="$(passwd --status shree)"
 case "$account_status" in
   'shree L '*) ;;
   *)
-  echo 'ShreeOS live account password is not locked.' >&2
-  exit 1
+  fail 'live account password is not locked'
     ;;
 esac
 
-apt-get check
+if ! apt-get check; then
+  fail 'apt/dpkg package database check failed'
+fi
+log 'apt/dpkg package database is healthy'
 if ! lsblk -ndo TYPE | grep -Fxq disk; then
-  echo 'The live kernel did not detect the QEMU storage device.' >&2
-  exit 1
+  fail 'the live kernel did not detect the QEMU storage device'
 fi
+log 'block device detected'
 if ! systemctl is-active --quiet NetworkManager.service; then
-  echo 'NetworkManager is not active in the live system.' >&2
-  exit 1
+  fail 'NetworkManager is not active'
 fi
+log 'NetworkManager is active'
 
 elapsed=0
 until nmcli -t -f TYPE,STATE device status | grep -Eq '^ethernet:connected' &&
   ip route show default | grep -q '^default '; do
   if [ "$elapsed" -ge 60 ]; then
-    echo 'The QEMU Ethernet interface did not receive a default route.' >&2
-    exit 1
+    fail 'the Ethernet interface did not receive a default route'
   fi
   sleep 1
   elapsed=$((elapsed + 1))
 done
+log 'Ethernet DHCP route is active'
 
 if id -nG shree | tr ' ' '\n' | grep -Fxq sudo; then
-  echo 'ShreeOS console live account unexpectedly has sudo access.' >&2
-  exit 1
+  fail 'live account unexpectedly has sudo access'
 fi
+log 'live account has no sudo access'
 
 if [ -f /etc/shreeos/image-profile ] &&
   [ "$(cat /etc/shreeos/image-profile)" = desktop ]; then
   python3 -c 'import gi; gi.require_version("Gtk", "3.0")' || {
-    echo 'The ShreeOS Control Center GTK runtime is unavailable.' >&2
-    exit 1
+    fail 'the ShreeOS Control Center GTK runtime is unavailable'
   }
   [ -x /usr/local/bin/shreeos-control-center ] || {
-    echo 'The ShreeOS Control Center launcher is missing.' >&2
-    exit 1
+    fail 'the ShreeOS Control Center launcher is missing'
   }
   [ -x /usr/local/bin/shreeos-search ] || {
-    echo 'The ShreeOS Search launcher is missing.' >&2
-    exit 1
+    fail 'the ShreeOS Search launcher is missing'
   }
   [ -x /usr/local/bin/shreeos-overview ] || {
-    echo 'The Workspace Overview launcher is missing.' >&2
-    exit 1
+    fail 'the Workspace Overview launcher is missing'
   }
   elapsed=0
   until systemctl is-active --quiet display-manager.service &&
@@ -60,12 +67,12 @@ if [ -f /etc/shreeos/image-profile ] &&
     pgrep -u shree -x xfce4-panel >/dev/null &&
     pgrep -u shree -x plank >/dev/null; do
     if [ "$elapsed" -ge 120 ]; then
-      echo 'ShreeOS desktop session, panel, or dock did not start within 120 seconds.' >&2
-      exit 1
+      fail 'desktop session, panel, or dock did not start within 120 seconds'
     fi
     sleep 1
     elapsed=$((elapsed + 1))
   done
 fi
 
+log 'all live boot checks passed'
 echo SHREEOS_LIVE_BOOT_OK > /dev/console
