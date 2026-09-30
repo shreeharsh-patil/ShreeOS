@@ -98,6 +98,10 @@ else:
 client.recv(4096)
 client.sendall(f"screendump {output}\n".encode())
 client.recv(4096)
+client.sendall(b"sendkey home\n")
+client.recv(4096)
+client.sendall(b"sendkey ret\n")
+client.recv(4096)
 client.close()
 PY
     then

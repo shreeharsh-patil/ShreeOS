@@ -16,10 +16,8 @@
   </defs>
   <rect width="800" height="600" fill="url(#background)" />
   <rect width="800" height="600" fill="url(#glow)" />
-  <circle cx="400" cy="224" r="96" fill="#111720" stroke="#ffffff" stroke-opacity="0.09" stroke-width="2" />
-  <path d="M 357 190 C 357 172 373 160 400 160 C 427 160 443 172 443 190 C 443 207 427 217 400 229 C 373 241 357 251 357 269 C 357 288 374 300 400 300 C 428 300 443 286 443 268"
+  <circle cx="400" cy="170" r="96" fill="#111720" stroke="#ffffff" stroke-opacity="0.09" stroke-width="2" />
+  <path d="M 357 136 C 357 118 373 106 400 106 C 427 106 443 118 443 136 C 443 153 427 163 400 175 C 373 187 357 197 357 215 C 357 234 374 246 400 246 C 428 246 443 232 443 214"
         fill="none" stroke="url(#accent)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="400" cy="230" r="6" fill="#f5f7fb" />
-  <path d="M 250 352 H 550" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1" />
-  <path d="M 362 374 H 438" stroke="#3a88ff" stroke-width="3" stroke-linecap="round" />
+  <circle cx="400" cy="176" r="6" fill="#f5f7fb" />
 </svg>

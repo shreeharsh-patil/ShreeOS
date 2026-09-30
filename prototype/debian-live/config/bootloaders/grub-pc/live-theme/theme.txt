@@ -14,7 +14,7 @@ terminal-font: "Unifont Regular 16"
   font = "Unifont Regular 16"
   align = "center"
   left = 0
-  top = 43%
+  top = 47%
   width = 100%
   height = 24
 }
@@ -22,7 +22,7 @@ terminal-font: "Unifont Regular 16"
 + boot_menu {
   left = 20%
   width = 60%
-  top = 53%
+  top = 55%
   height = 30%
   item_font = "Unifont Regular 16"
   item_color = "#c8d2e1"
