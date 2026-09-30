@@ -4,7 +4,7 @@ After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'echo SHREEOS_LIVE_BOOT_OK > /dev/console'
+ExecStart=/usr/local/sbin/shreeos-live-boot-check
 RemainAfterExit=yes
 
 [Install]

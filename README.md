@@ -152,8 +152,9 @@ does not request non-free firmware. Common devices that require redistributable
 firmware may not work until the firmware inventory and inclusion policy are
 reviewed. Do not assume that all Wi-Fi, Bluetooth, graphics, or laptop devices
 are supported. The prototype includes `openssh-client`, not an SSH server.
-There are no intentional default credentials; its temporary live account is
-created by Debian Live configuration and is not an installed user account.
+The temporary account's Debian Live default password is locked at boot and
+the console prototype does not grant it sudo access. It is not an installed
+user account. It currently does not provide an interactive live login.
 
 ## Branding
 

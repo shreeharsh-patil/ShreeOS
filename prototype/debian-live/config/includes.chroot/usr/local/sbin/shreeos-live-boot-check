@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+account_status="$(passwd --status shree)"
+set -- $account_status
+if [ "${2:-}" != L ]; then
+  echo 'ShreeOS live account password is not locked.' >&2
+  exit 1
+fi
+
+if id -nG shree | tr ' ' '\n' | grep -Fxq sudo; then
+  echo 'ShreeOS console live account unexpectedly has sudo access.' >&2
+  exit 1
+fi
+
+echo SHREEOS_LIVE_BOOT_OK > /dev/console

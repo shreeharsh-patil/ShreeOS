@@ -2,8 +2,10 @@
 
 This is an isolated Phase 2/3 build path. It uses Debian Live's maintained
 `live-build`, `live-boot` and `live-config` stack to create an amd64 hybrid ISO
-with a SquashFS root, systemd, apt/dpkg, a temporary ShreeOS live user, and a
-serial-visible boot marker. The existing source-built ISO target is unchanged.
+with a SquashFS root, systemd, apt/dpkg, a temporary ShreeOS account whose
+password is locked during boot, and a serial-visible boot marker. It has no
+default login password and does not grant the live account sudo access. The
+existing source-built ISO target is unchanged.
 
 The base is deliberately console-only at this milestone. It does not claim to
 be the requested desktop distribution. Desktop packages, redistributable

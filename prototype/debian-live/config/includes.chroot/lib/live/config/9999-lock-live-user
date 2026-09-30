@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+if ! getent passwd shree >/dev/null 2>&1; then
+  echo 'ShreeOS live account was not created; refusing to continue.' >&2
+  exit 1
+fi
+
+# live-config's default user-setup password is public. Disable password
+# authentication immediately after it creates the temporary live account.
+passwd --lock shree
+passwd --status shree | awk '$2 == "L" { locked = 1 } END { exit !locked }'

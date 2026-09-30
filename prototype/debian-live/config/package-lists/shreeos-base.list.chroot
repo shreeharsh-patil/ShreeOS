@@ -27,8 +27,8 @@ ntfs-3g
 openssh-client
 pciutils
 procps
+passwd
 rsync
-sudo
 systemd-sysv
 tzdata
 usbutils
