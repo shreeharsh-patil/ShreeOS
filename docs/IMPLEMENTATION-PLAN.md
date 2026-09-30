@@ -129,6 +129,13 @@ window activation, moving a window, and closing it. Parser tests cover the
 and touchpad gestures remain open, and the GUI action flow still needs VM
 validation.
 
+The dock now includes ShreeOS Search, Workspace Overview, and Control Center
+alongside the browser, terminal, file manager, image viewer, editor, settings,
+Downloads, and Trash. Thunar's GTK bookmarks provide Desktop, Documents,
+Downloads, Pictures, Music, Videos, Computer, Network, and Trash. These are
+starter favorites; dock separators and drag/reorder behavior still depend on
+interactive review of the packaged Plank build.
+
 The prototype workflow also runs Bash syntax checks and ShellCheck at error
 severity before building either image. This Windows workspace cannot execute
 Debian Live, QEMU, or ShellCheck, so those gates have not run here. Do not wire

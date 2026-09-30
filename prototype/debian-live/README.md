@@ -25,7 +25,8 @@ a supported desktop release.
 folders, and bounded calculator expressions; the GUI still needs Linux review.
 `Super+Up` opens a text-based Workspace Overview for switching desktops and
 activating, moving, or closing windows. It has no window thumbnails or gesture
-support yet.
+support yet. Thunar's sidebar includes common personal folders, Computer,
+Network, and Trash; the dock includes ShreeOS search and quick controls.
 The image identifies itself as a Debian-derived ShreeOS prototype and uses
 Debian's signed repositories for installed-system updates.
 

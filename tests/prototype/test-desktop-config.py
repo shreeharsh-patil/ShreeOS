@@ -91,6 +91,9 @@ def main() -> int:
     launcher_dir = SKEL / ".config/plank/launchers"
     require(set(dock_items) == {path.name for path in launcher_dir.glob("*.dockitem")},
             "Plank launchers do not match the configured dock items")
+    require({"shreeos-search.dockitem", "shreeos-overview.dockitem",
+             "shreeos-control-center.dockitem"} <= set(dock_items),
+            "the dock is missing ShreeOS search, overview, or quick controls")
     known_debian_desktops = {
         "thunar.desktop", "firefox-esr.desktop", "xfce4-terminal.desktop",
         "org.xfce.ristretto.desktop", "org.xfce.mousepad.desktop",
@@ -140,6 +143,13 @@ def main() -> int:
             "Workspace Overview executable is missing")
     require((INCLUDES / "usr/share/applications/shreeos-overview.desktop").is_file(),
             "Workspace Overview application entry is missing")
+    bookmarks = (SKEL / ".config/gtk-3.0/bookmarks").read_text(encoding="utf-8").splitlines()
+    for favorite in ("Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos"):
+        require(any(line.endswith(f" {favorite}") for line in bookmarks),
+                f"Thunar Places sidebar is missing {favorite}")
+    for location in ("computer:///", "network:///", "trash:///"):
+        require(any(line.startswith(location) for line in bookmarks),
+                f"Thunar Places sidebar is missing {location}")
 
     for wallpaper in (ROOT / "branding/wallpapers").glob("*.svg"):
         parse_xml(wallpaper)

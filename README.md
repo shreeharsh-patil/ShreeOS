@@ -35,6 +35,8 @@ window overview, and installed-system workflow remain open.
 folders, and safe calculator expressions; `Super+Up` opens Workspace Overview
 to switch workspaces, activate, move, or close listed windows. Animated window
 thumbnails, workspace creation, and touchpad gestures are not implemented yet.
+The dock includes ShreeOS search, overview, and quick controls, while Thunar's
+sidebar starts with standard personal folders and system locations.
 The target direction and exit criteria are in
 [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 
