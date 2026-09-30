@@ -132,6 +132,14 @@ def main() -> int:
     search_shortcut = shortcuts.find("./property/property/property[@name='<Super>space']")
     require(search_shortcut is not None and search_shortcut.get("value") == "/usr/local/bin/shreeos-search",
             "Super+Space is not bound to Shree Search")
+    overview_shortcut = shortcuts.find("./property/property/property[@name='<Super>Up']")
+    require(overview_shortcut is not None and overview_shortcut.get("value") == "/usr/local/bin/shreeos-overview",
+            "Super+Up is not bound to Workspace Overview")
+    overview_script = INCLUDES / "usr/local/bin/shreeos-overview"
+    require(overview_script.is_file() and overview_script.read_text().startswith("#!/usr/bin/python3"),
+            "Workspace Overview executable is missing")
+    require((INCLUDES / "usr/share/applications/shreeos-overview.desktop").is_file(),
+            "Workspace Overview application entry is missing")
 
     for wallpaper in (ROOT / "branding/wallpapers").glob("*.svg"):
         parse_xml(wallpaper)

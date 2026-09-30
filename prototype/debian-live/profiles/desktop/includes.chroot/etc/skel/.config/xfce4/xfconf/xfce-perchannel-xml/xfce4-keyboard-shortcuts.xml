@@ -3,6 +3,7 @@
   <property name="commands" type="empty">
     <property name="custom" type="empty">
       <property name="&lt;Super&gt;space" type="string" value="/usr/local/bin/shreeos-search" />
+      <property name="&lt;Super&gt;Up" type="string" value="/usr/local/bin/shreeos-overview" />
       <property name="&lt;Super&gt;e" type="string" value="thunar" />
       <property name="&lt;Super&gt;l" type="string" value="xflock4" />
     </property>

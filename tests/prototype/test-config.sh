@@ -57,7 +57,7 @@ for required in arc-theme bluez blueman dconf-cli firefox-esr fonts-inter \
   firmware-linux-free papirus-icon-theme pipewire-audio \
   python3-gi \
   lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
-  xfce4-pulseaudio-plugin xdg-user-dirs; do
+  wmctrl xfce4-pulseaudio-plugin xdg-user-dirs; do
   grep -Fxq "$required" "$desktop_packages" || {
     echo "Desktop profile is missing: $required" >&2
     exit 1
@@ -77,6 +77,7 @@ test -s "$desktop_includes/usr/share/plank/themes/ShreeOS/dock.theme"
 test -x "$desktop_includes/usr/local/bin/shreeos-dock-session"
 test -x "$desktop_includes/usr/local/bin/shreeos-control-center"
 test -x "$desktop_includes/usr/local/bin/shreeos-search"
+test -x "$desktop_includes/usr/local/bin/shreeos-overview"
 test -s "$desktop_includes/usr/share/applications/shreeos-control-center.desktop"
 test -s "$desktop_includes/usr/share/applications/shreeos-search.desktop"
 test -s "$desktop_includes/usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"

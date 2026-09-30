@@ -23,5 +23,6 @@ task-xfce-desktop
 thunar-archive-plugin
 xfce4-pulseaudio-plugin
 wireplumber
+wmctrl
 xarchiver
 xdg-user-dirs

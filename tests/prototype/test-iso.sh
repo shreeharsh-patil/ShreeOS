@@ -37,7 +37,7 @@ done
 if [ "$PROFILE" = desktop ]; then
   for package in arc-theme bluez blueman dconf-cli firefox-esr fonts-inter lightdm \
     papirus-icon-theme pipewire-audio \
-    python3-gi lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
+    python3-gi wmctrl lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
     xfce4-appfinder xfce4-notifyd xfce4-power-manager \
     xfce4-pulseaudio-plugin xfce4-screenshooter mousepad synaptic parole \
     libreoffice-writer atril ristretto galculator xarchiver xdg-user-dirs; do

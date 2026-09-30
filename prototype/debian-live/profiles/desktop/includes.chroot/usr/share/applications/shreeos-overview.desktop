@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Workspace Overview
+Comment=View and organize open windows across workspaces
+Exec=/usr/local/bin/shreeos-overview
+Icon=view-grid
+Terminal=false
+Categories=Utility;
+Keywords=workspace;window;overview;

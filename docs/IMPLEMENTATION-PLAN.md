@@ -122,6 +122,13 @@ without executing user-provided code. The calculation parser has an isolated
 contract test; the interactive GTK window still needs review in a Linux
 session.
 
+`Super+Up` opens a ShreeOS Workspace Overview backed by XFCE's four X11
+workspaces. It groups open windows by desktop and supports desktop switching,
+window activation, moving a window, and closing it. Parser tests cover the
+`wmctrl` inventory format; thumbnail cards, workspace creation, animations,
+and touchpad gestures remain open, and the GUI action flow still needs VM
+validation.
+
 The prototype workflow also runs Bash syntax checks and ShellCheck at error
 severity before building either image. This Windows workspace cannot execute
 Debian Live, QEMU, or ShellCheck, so those gates have not run here. Do not wire

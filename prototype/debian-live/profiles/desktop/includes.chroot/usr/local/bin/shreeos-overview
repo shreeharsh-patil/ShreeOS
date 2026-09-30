@@ -1,0 +1,218 @@
+#!/usr/bin/python3
+"""A compact ShreeOS overview for XFCE's X11 workspaces."""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, GLib, Gtk
+
+
+CSS = """
+window.shreeos-overview { background: #202733; color: #f5f7fb; }
+headerbar.overview-header { background: #202733; border: 0; box-shadow: none; }
+label.overview-title { font-size: 18px; font-weight: 600; color: #f5f7fb; }
+label.overview-caption { color: #aab4c3; font-size: 11px; }
+frame.workspace-card { background: #283342; border: 1px solid #394759; border-radius: 14px; }
+frame.workspace-current { border-color: #5e9bff; }
+button.workspace-switch, button.window-card { background: #303b4b; color: #f5f7fb;
+  border: 1px solid #46566c; border-radius: 9px; padding: 8px; }
+button.workspace-switch:hover, button.window-card:hover { background: #3b4b60; }
+"""
+
+
+def read_workspaces(output: str) -> list[tuple[int, str, bool]]:
+    workspaces = []
+    for line in output.splitlines():
+        fields = line.split(None, 2)
+        if len(fields) < 2 or not fields[0].isdigit():
+            continue
+        name = line.split(" N=", 1)[1] if " N=" in line else f"Workspace {int(fields[0]) + 1}"
+        workspaces.append((int(fields[0]), name.strip(), fields[1] == "*"))
+    return workspaces
+
+
+def read_windows(output: str) -> list[tuple[str, int, str, str]]:
+    windows = []
+    for line in output.splitlines():
+        fields = line.split(None, 9)
+        if len(fields) < 10:
+            continue
+        window_id, desktop = fields[0], fields[1]
+        if not window_id.startswith("0x") or not desktop.lstrip("-").isdigit():
+            continue
+        windows.append((window_id, int(desktop), fields[7], fields[9]))
+    return windows
+
+
+def wmctrl(*arguments: str) -> str:
+    result = subprocess.run(["wmctrl", *arguments], capture_output=True, text=True,
+                            timeout=3, check=False)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or "The window manager command failed.")
+    return result.stdout
+
+
+class Overview:
+    def __init__(self):
+        self.window = Gtk.Window(title="Workspace Overview")
+        self.window.set_default_size(760, 600)
+        self.window.set_position(Gtk.WindowPosition.CENTER)
+        self.window.set_keep_above(True)
+        self.window.set_skip_taskbar_hint(True)
+        self.window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        self.window.get_style_context().add_class("shreeos-overview")
+
+        header = Gtk.HeaderBar(title="Workspace Overview")
+        header.set_show_close_button(True)
+        header.get_style_context().add_class("overview-header")
+        self.window.set_titlebar(header)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        outer.set_border_width(18)
+        self.window.add(outer)
+        title = Gtk.Label(label="Your workspaces", xalign=0)
+        title.get_style_context().add_class("overview-title")
+        outer.pack_start(title, False, False, 0)
+        caption = Gtk.Label(label="Choose a desktop or move an open window.", xalign=0)
+        caption.get_style_context().add_class("overview-caption")
+        outer.pack_start(caption, False, False, 0)
+
+        self.scroll = Gtk.ScrolledWindow()
+        self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        outer.pack_start(self.scroll, True, True, 0)
+        self.columns = Gtk.Grid(column_spacing=12, row_spacing=12)
+        self.columns.set_column_homogeneous(True)
+        self.scroll.add(self.columns)
+        self.window.connect("key-press-event", self.on_key_press)
+        self.window.connect("destroy", lambda *_args: Gtk.main_quit())
+        self.refresh()
+        self.window.show_all()
+
+    def refresh(self):
+        try:
+            workspaces = read_workspaces(wmctrl("-d"))
+            windows = read_windows(wmctrl("-l", "-p", "-G", "-x"))
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            dialog = Gtk.MessageDialog(transient_for=self.window, modal=True,
+                                       message_type=Gtk.MessageType.ERROR,
+                                       buttons=Gtk.ButtonsType.CLOSE,
+                                       text="Workspace Overview is unavailable")
+            dialog.format_secondary_text(str(error))
+            dialog.run()
+            dialog.destroy()
+            self.window.destroy()
+            return
+
+        for child in self.columns.get_children():
+            self.columns.remove(child)
+        if not workspaces:
+            self.columns.attach(Gtk.Label(label="No workspaces were found."), 0, 0, 1, 1)
+            self.columns.show_all()
+            return
+
+        for index, (desktop_id, name, current) in enumerate(workspaces):
+            frame = Gtk.Frame()
+            frame.set_shadow_type(Gtk.ShadowType.NONE)
+            frame.get_style_context().add_class("workspace-card")
+            if current:
+                frame.get_style_context().add_class("workspace-current")
+            body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            body.set_border_width(10)
+            frame.add(body)
+
+            heading = Gtk.Button(label=f"{name}{'  ·  Current' if current else ''}")
+            heading.set_halign(Gtk.Align.FILL)
+            heading.get_style_context().add_class("workspace-switch")
+            heading.connect("clicked", self.switch_workspace, desktop_id)
+            body.pack_start(heading, False, False, 0)
+
+            members = [entry for entry in windows if entry[1] == desktop_id]
+            if not members:
+                empty = Gtk.Label(label="No open windows", xalign=0)
+                empty.get_style_context().add_class("overview-caption")
+                body.pack_start(empty, False, False, 2)
+            for window_id, _desktop, wm_class, title in members:
+                body.pack_start(self.window_row(window_id, title, wm_class, workspaces,
+                                                desktop_id), False, False, 0)
+            self.columns.attach(frame, index % 2, index // 2, 1, 1)
+        self.columns.show_all()
+
+    def window_row(self, window_id, title, wm_class, workspaces, desktop_id):
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        icon = Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.BUTTON)
+        label = Gtk.Button(label=title or wm_class or "Open window")
+        label.set_tooltip_text(wm_class)
+        label.set_hexpand(True)
+        label.set_halign(Gtk.Align.FILL)
+        label.get_style_context().add_class("window-card")
+        label.connect("clicked", self.activate_window, window_id, desktop_id)
+        row.pack_start(icon, False, False, 0)
+        row.pack_start(label, True, True, 0)
+
+        move = Gtk.ComboBoxText()
+        move.append_text("Move")
+        for target_id, target_name, _current in workspaces:
+            move.append(str(target_id), target_name)
+        move.set_active(0)
+        move.connect("changed", self.move_window, window_id, desktop_id)
+        move.set_tooltip_text("Move this window to another workspace")
+        row.pack_start(move, False, False, 0)
+
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.BUTTON)
+        close.set_relief(Gtk.ReliefStyle.NONE)
+        close.set_tooltip_text("Close window")
+        close.connect("clicked", self.close_window, window_id)
+        row.pack_start(close, False, False, 0)
+        return row
+
+    def switch_workspace(self, _button, desktop_id):
+        wmctrl("-s", str(desktop_id))
+        self.window.destroy()
+
+    def activate_window(self, _button, window_id, desktop_id):
+        wmctrl("-s", str(desktop_id))
+        wmctrl("-i", "-a", window_id)
+        self.window.destroy()
+
+    def move_window(self, combo, window_id, source_id):
+        target = combo.get_active_id()
+        if target is not None and int(target) != source_id:
+            try:
+                wmctrl("-i", "-r", window_id, "-t", target)
+                self.refresh()
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                print(f"Workspace Overview: {error}", file=sys.stderr)
+        combo.set_active(0)
+
+    def close_window(self, _button, window_id):
+        try:
+            wmctrl("-i", "-c", window_id)
+            GLib.timeout_add(150, self.refresh)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            print(f"Workspace Overview: {error}", file=sys.stderr)
+
+    def on_key_press(self, _window, event):
+        if event.keyval == Gdk.KEY_Escape:
+            self.window.destroy()
+            return True
+        return False
+
+
+def main() -> int:
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS.encode("utf-8"))
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
+    Overview()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

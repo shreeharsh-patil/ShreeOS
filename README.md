@@ -32,7 +32,9 @@ needs a Linux GUI review and does not cover brightness, airplane mode, focus,
 or power profiles. A graphical installer, broader hardware support, advanced
 window overview, and installed-system workflow remain open.
 `Super+Space` opens Shree Search for applications, files in common user
-folders, and safe calculator expressions.
+folders, and safe calculator expressions; `Super+Up` opens Workspace Overview
+to switch workspaces, activate, move, or close listed windows. Animated window
+thumbnails, workspace creation, and touchpad gestures are not implemented yet.
 The target direction and exit criteria are in
 [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 
