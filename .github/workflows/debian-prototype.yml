@@ -49,7 +49,21 @@ jobs:
             live-build=1:20250505+deb13u1 \
             debootstrap xorriso squashfs-tools \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
-            qemu-system-x86 qemu-utils ovmf rsync ca-certificates debian-archive-keyring
+            qemu-system-x86 qemu-utils ovmf rsync ca-certificates \
+            debian-archive-keyring shellcheck
+
+      - name: Check shell syntax and errors
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/build-debian-prototype.sh
+          bash -n tests/prototype/test-config.sh
+          bash -n tests/prototype/test-iso.sh
+          shellcheck --severity=error \
+            scripts/build-debian-prototype.sh \
+            tests/prototype/test-config.sh \
+            tests/prototype/test-iso.sh \
+            prototype/debian-live/config/includes.chroot/lib/live/config/9999-lock-live-user \
+            prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check
 
       - name: Validate prototype configuration
         run: bash tests/prototype/test-config.sh

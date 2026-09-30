@@ -1,6 +1,6 @@
 # ShreeOS Desktop Distribution Implementation Plan
 
-**Status:** Phase 1 reviewed; isolated Debian Live base prototype is under way.
+**Status:** Phases 1–5 have implementation scaffolding in an isolated Debian Live prototype; Linux build and boot gates are pending. Installer, installed-system update/recovery, and production release phases remain open.
 **Audit baseline:** repository commit `44677fdeb4e1` (2026-09-30).
 
 This plan turns the desktop-distribution request into reviewable milestones. It
@@ -98,15 +98,29 @@ LightDM and an XFCE session. These profiles are implemented but their Linux
 build and QEMU checks have not yet run in this Windows workspace. The desktop
 is still not a release.
 
+The prototype workflow also runs Bash syntax checks and ShellCheck at error
+severity before building either image. This Windows workspace cannot execute
+Debian Live, QEMU, or ShellCheck, so those gates have not run here. Do not wire
+an installer to the prototype until CI proves the desktop ISO boots: the
+existing `installer/` targets the legacy source-built rootfs and is not
+compatible with the Debian Live filesystem. The installer phase needs a
+Debian-compatible design, an exact target-disk and partition-plan review, and
+explicit destructive confirmation. The prototype boot menu also still lacks
+the requested ShreeOS “Try / Safe Graphics / Install” choices.
+
 ## Near-term work
 
-1. Refresh the audit against the current checkout and, where a build artifact
+1. Run Linux CI build and boot gates for both profiles; fix base failures
+   before using the desktop output to judge the architecture.
+2. Refresh the audit against the current checkout and, where a build artifact
    is available, the actual ISO. Mark older measurements with their source
    commit and release rather than presenting them as current.
-2. Build and boot-test both prototype profiles in Linux CI; fix base failures
-   before using the desktop output to judge the architecture.
 3. Keep source downloads checksum-verified, pin the base-image repository
    snapshot/release inputs, and record package manifests and licenses in the
    output.
-4. Add boot and installed-system acceptance tests around the new output. CI
-   must test the same artifact that release jobs publish.
+4. Implement the Debian-compatible installer after desktop boot passes; test
+   installation, reboot, account login, package operations and shutdown on a
+   disposable virtual disk.
+5. Define and test signed repository/update policy and recovery behavior.
+6. Extend CI to validate the installed system and publish only the same ISO
+   artifact after every acceptance gate passes.
