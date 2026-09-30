@@ -49,11 +49,15 @@ base_sync_sysroot
 mode="$(stat -c '%a' "${LUMEN_STAGE_ROOT}/usr/bin/sudo")"
 [ "$mode" = "4755" ] || \
   lumen_die "sudo was installed without mode 4755 (got $mode); privilege escalation would be broken"
-# Without an executable helper sudo cannot validate a password against the
-# target's PAM stack, so a build that silently dropped it would still pass the
-# setuid check above while being unusable.
-[ -x "${LUMEN_STAGE_ROOT}/usr/libexec/sudo/sudoers.so" ] || \
-  [ -x "${LUMEN_STAGE_ROOT}/usr/lib/sudo/sudoers.so" ] || \
+# The sudoers policy plugin is dlopen(3)ed by sudo, not executed, so it only
+# has to exist: libtool installs it with mode 0644 and no exec bit, and the
+# kernel maps it PROT_EXEC on read permission alone. Gating this check on -x
+# aborted an otherwise healthy install (the 2026-09-29 CI failure at 39/51:
+# "sudoers policy plugin was not staged") even though the plugin was staged
+# correctly; the setuid check above cannot catch a missing or unreadable
+# plugin, so the existence gate stays as the fail-closed signal.
+[ -e "${LUMEN_STAGE_ROOT}/usr/libexec/sudo/sudoers.so" ] || \
+  [ -e "${LUMEN_STAGE_ROOT}/usr/lib/sudo/sudoers.so" ] || \
   lumen_die "sudoers policy plugin was not staged; sudo could not evaluate policy"
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
