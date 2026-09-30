@@ -1,4 +1,10 @@
-# ShreeOS Phase 1 Audit
+# Historical ShreeOS Phase 1 Audit
+
+> **Historical baseline, not a current inventory.** This report describes
+> commit `53e9371`. The repository and build manifests have changed since then.
+> See [the implementation plan](../IMPLEMENTATION-PLAN.md) for current
+> observations and regenerate an audit from the current ISO before relying on
+> package counts, sizes or runtime capabilities.
 
 Verified against commit `53e9371` on `master`. Every claim below was read out of
 the source, not out of the README. The machine-readable form of this audit is

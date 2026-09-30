@@ -306,6 +306,10 @@ if ! compgen -G "${LUMEN_STAGE_ROOT}/lib64/ld-linux*.so*" >/dev/null && \
   lumen_die "Target dynamic loader is missing from the assembled rootfs (/lib64 and /lib are the interpreter paths target binaries use)"
 fi
 
+# The cross sysroot is a build input. Remove its development-only content from
+# the final runtime tree after every package has been installed.
+bash "${SCRIPT_DIR}/prune-development-files.sh" "${LUMEN_STAGE_ROOT}"
+
 # 5. Verify base system essentials
 lumen_step "Verifying base system"
 for bin in bash ls mount false; do

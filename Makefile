@@ -56,7 +56,7 @@ help:
 	@echo "  make rootfs               Phase 6: Init & rootfs assembly"
 	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
 	@echo "  make all                  Build everything end-to-end"
-	@echo "  make distro               Build and certify the primary desktop distribution"
+	@echo "  make distro               Run the legacy source-build desktop certification target"
 	@echo "  make security-distro      Build and certify the security workstation ISO"
 	@echo ""
 	@echo "Diagnostic & Verification Targets:"
@@ -65,7 +65,7 @@ help:
 	@echo "  make verify-sources       Verify upstream URLs, checksum format, and downloaded tarballs"
 	@echo "  make graphics             Strictly validate target desktop graphics readiness"
 	@echo "  make verify-iso           Validate ISO structure and BIOS/UEFI boot"
-	@echo "  make release-check        Run strict desktop release-readiness certification"
+	@echo "  make release-check        Run legacy source-build desktop readiness checks"
 	@echo "  make security-release-check  Run strict security edition certification"
 	@echo ""
 	@echo "Testing & Execution Targets:"
@@ -125,6 +125,19 @@ audit-iso:
 
 audit-test:
 	python3 tests/audit/test-shreeos-audit.py
+
+# Separate Debian Live desktop-base prototype. It never replaces the existing
+# source-built ISO target; build it explicitly on a Debian Linux host as root.
+.PHONY: prototype-debian test-prototype test-prototype-config
+prototype-debian:
+	bash scripts/build-debian-prototype.sh
+
+test-prototype-config:
+	bash tests/prototype/test-config.sh
+
+test-prototype: test-prototype-config
+	@test -n "$(ISO)" || { echo "Usage: make test-prototype ISO=path/to/prototype.iso" >&2; exit 2; }
+	bash tests/prototype/test-iso.sh "$(ISO)"
 
 .PHONY: graphics
 graphics: toolchain base-system
@@ -353,8 +366,11 @@ test-desktop:
 test-hardware:
 	$(MAKE) -C hardware test
 
-.PHONY: test-base-system
-test-base-system:
+.PHONY: test-base-system test-rootfs-prune
+test-rootfs-prune:
+	bash tests/base-system/test-rootfs-pruning.sh
+
+test-base-system: test-rootfs-prune
 	bash tests/smoke/test-base-system.sh
 
 .PHONY: test-smoke

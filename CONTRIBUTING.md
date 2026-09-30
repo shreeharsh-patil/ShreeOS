@@ -19,9 +19,14 @@ follow the same discipline in any contribution:
 
 ## Development environment
 
-- Ubuntu 22.04/24.04 host (or the CI containers under `.github/workflows/`)
-- `shellcheck`, `make`, `git`, standard build-essential toolchain for the
-  *host* (used to bootstrap the cross-compiler)
+- For the Debian Live prototype: Debian 13 (Trixie) Linux host or VM, root
+  access for `live-build`, and the packages listed in
+  `.github/workflows/debian-prototype.yml`. See `docs/BUILD_GUIDE.md`.
+- For focused shell, Python, and documentation checks: `bash`, `python3`, and
+  `git` as required by the specific test.
+- The earlier source-built pipeline has separate host dependencies and is
+  retained as an experimental path; its outputs are not the current desktop
+  release.
 
 ## Running tests locally
 

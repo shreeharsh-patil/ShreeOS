@@ -1,0 +1,36 @@
+# ShreeOS Phase 2/3 prototype: full GNU userspace, systemd, live boot, and
+# common VM/PC diagnostics. Desktop packages and non-free firmware are added
+# only after this base boots and licensing policy is reviewed.
+apt
+bash-completion
+ca-certificates
+console-setup
+curl
+dbus
+debian-archive-keyring
+dmidecode
+dosfstools
+e2fsprogs
+exfatprogs
+file
+iproute2
+iputils-ping
+less
+live-boot
+live-config
+live-config-systemd
+locales
+linux-image-amd64
+nano
+network-manager
+ntfs-3g
+openssh-client
+pciutils
+procps
+rsync
+sudo
+systemd-sysv
+tzdata
+usbutils
+util-linux
+wget

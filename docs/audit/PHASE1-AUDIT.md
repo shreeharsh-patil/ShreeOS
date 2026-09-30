@@ -1,10 +1,16 @@
-# Phase 1 Audit — ShreeOS 0.2.2-dev
+# Historical Phase 1 Audit — ShreeOS 0.2.2-dev
+
+> **Historical baseline, not a current inventory.** This report records the
+> source tree and released ISO measured at commit `d2726fbd64df`. The repository
+> has changed since then. Use [the implementation plan](../IMPLEMENTATION-PLAN.md)
+> for current verified source-tree observations, and regenerate an ISO audit
+> before relying on any image contents, size or package counts below.
 
 Status: **complete**. Commit under audit: `d2726fbd64df` (`master`).
 Everything below was read out of the implementation, not out of the README.
 
-Canonical document. Supersedes the earlier `PHASE-1-AUDIT.md`, which has been
-removed to avoid two competing audits of the same commit drifting apart.
+The earlier `PHASE-1-AUDIT.md` is also a historical report from a different
+commit. Neither document is a live report; retain them only as dated context.
 
 ## Headline findings
 
@@ -213,9 +219,12 @@ a target to hit by itself.
 | Tests | lint, toolchain, kernel, ISO, QEMU BIOS+UEFI, security | ✅ | ⚠️ | no rootfs/systemd/installer/net/package-lifecycle tests | P17 |
 
 ### Licence hygiene
-Clean. All 77 third-party sources are checksum-pinned with real SHA-256
-values, URLs are HTTPS, `LICENSE` and `THIRD_PARTY_NOTICES.md` are present, and
-no Ubuntu/Canonical assets, trademarks or artwork appear anywhere in the tree.
+The source tree at this historical commit had checksum-pinned source inputs,
+but this report did not perform a package-by-package redistribution review.
+Its `THIRD_PARTY_NOTICES.md` summary was not a complete license inventory.
+Use [`THIRD_PARTY_LICENSES.md`](../../THIRD_PARTY_LICENSES.md) and
+[`SOURCE_INFORMATION.md`](../../SOURCE_INFORMATION.md) for the current policy;
+the exact built-image inventory and source obligations still require review.
 
 ### CI integrity
 Clean. Across all 7 workflows there are **no `continue-on-error:` flags and no

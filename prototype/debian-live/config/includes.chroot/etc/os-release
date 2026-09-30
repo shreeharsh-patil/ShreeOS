@@ -1,0 +1,10 @@
+NAME="ShreeOS"
+PRETTY_NAME="ShreeOS Base Prototype (Debian 13)"
+ID=shreeos
+ID_LIKE=debian
+VERSION="0.3.0-prototype"
+VERSION_ID="0.3.0"
+VERSION_CODENAME=trixie
+HOME_URL="https://github.com/shreeharsh-patil/ShreeOS"
+SUPPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues"
+BUG_REPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues/new"

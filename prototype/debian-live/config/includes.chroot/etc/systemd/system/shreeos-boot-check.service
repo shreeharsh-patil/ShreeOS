@@ -1,0 +1,11 @@
+[Unit]
+Description=ShreeOS live boot validation marker
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo SHREEOS_LIVE_BOOT_OK > /dev/console'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

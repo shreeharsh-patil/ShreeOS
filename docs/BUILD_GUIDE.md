@@ -1,130 +1,56 @@
-# Building ShreeOS from Source
+# Build guide
 
-## Prerequisites
+## Experimental Debian Live prototype
 
-- **OS:** Ubuntu 22.04+ (or Debian-based)
-- **Packages:**
-  ```bash
-  sudo apt update
-  sudo apt install -y build-essential bison flex gawk texinfo \
-    curl wget patch bzip2 xz-utils bc rsync cpio \
-    qemu-system-x86 xorriso grub-pc grub-efi ovmf \
-    python3 libssl-dev
-  ```
-- **Disk:** ~20 GB free for the build
+The current recommended path for evaluating the proposed package-managed
+base is the console-only Debian Live prototype. It targets Debian 13 (Trixie)
+on amd64 and must be built as root on a Debian 13 Linux host or disposable VM.
+Native Windows is not supported. WSL may work only with a functioning Linux
+distribution and root filesystem support.
 
-## Quick Start
+The exact Debian snapshot and `live-build` version are recorded in
+[`../prototype/debian-live/versions.conf`](../prototype/debian-live/versions.conf).
+CI installs the supporting tools listed in
+[`../.github/workflows/debian-prototype.yml`](../.github/workflows/debian-prototype.yml).
 
-```bash
-# Clone and build the currently complete minimal profile:
+```sh
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
-make PROFILE=minimal all
+git switch master
+make test-prototype-config
+make prototype-debian
+make test-prototype ISO=out/shreeos-0.3.0-prototype-amd64.iso
 ```
 
-This runs the source-built toolchain, base system, kernel, target utilities, rootfs and ISO pipeline end-to-end. The native desktop profile is not yet certifiable because its target graphics dependency stack is incomplete; do not treat a deferred desktop build as a finished GUI image.
+Build output is written to ignored `build/` and `out/` directories. The build
+script deletes only its dedicated `build/debian-live-prototype` scratch
+directory. The ISO validation extracts the SquashFS and checks the package
+manifest, then boots the image in BIOS and UEFI QEMU configurations. It does
+not yet test desktop login, physical hardware, graphical installation or an
+installed system.
 
-## Build Stages
+The matching GitHub Actions workflow runs the build and boot checks in a
+Debian Trixie container for pushes to `master`, pull requests targeting
+`master`, or manual dispatch. It uploads a temporary CI artifact with the ISO,
+checksum, package manifest and build metadata. This is not a release pipeline
+and the artifact is not a supported distribution download.
 
-### Phase 1: Cross-Compilation Toolchain
-```bash
-make toolchain
-```
-Builds `x86_64-shreeos-linux-gnu-` cross-compiler (binutils, GCC, glibc). Output: `build/tools/`.
+## Existing source-built path
 
-### Phase 2: Base System
-```bash
-make base-system
-```
-Builds ncurses, bash, coreutils, util-linux. Output: `build/rootfs/`.
+The repository also contains the earlier cross-build pipeline. Its published
+documentation and product claims are being audited and should not be used as
+evidence that the complete desktop, installer or installed-system experience
+is functional. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md) for the
+current audit findings and migration gates. Avoid running its broad cleanup or
+release targets without first inspecting their effects and the generated
+artifacts.
 
-### Phase 3: Linux Kernel
-```bash
-make kernel
-```
-Cross-compiles the kernel with embedded initramfs. Output: `build/build-kernel/arch/x86/boot/bzImage`.
+## Reproducibility and licensing
 
-### Phase 4: Target Utilities
-```bash
-make packages
-```
-Cross-compiles the custom init, `lpm` package manager and hardware daemon with the ShreeOS target toolchain.
-
-### Phase 5: Desktop Layer
-```bash
-make desktop
-```
-Requires the ShreeOS-target X11/Xft/Xinerama, Fontconfig, FreeType, Xorg, xinit and fonts stack. Until that dependency chain is source-built, the strict desktop target correctly refuses certification.
-
-For explicit headless/integration testing only:
-```bash
-ALLOW_DEFERRED_GRAPHICS=1 make PROFILE=desktop desktop
-```
-
-### Phase 6: Init + Root Filesystem
-```bash
-make rootfs
-```
-Assembles the target init, runtime libraries, skeleton configs and kernel modules into `build/rootfs/`.
-
-### Phase 7: Bootable ISO
-```bash
-make iso
-```
-Creates a hybrid BIOS/UEFI ISO. Output: `out/shreeos-<version>.iso`.
-
-## Testing
-
-```bash
-make tests           # run all smoke tests
-make toolchain-test  # verify the cross-compiler
-```
-
-QEMU boot tests (require built artifacts):
-```bash
-bash tests/qemu/boot-kernel-only.sh       # kernel + initramfs
-bash tests/qemu/boot-full-rootfs.sh       # full rootfs
-bash tests/qemu/boot-iso-bios.sh          # ISO (BIOS)
-bash tests/qemu/boot-iso-uefi.sh          # ISO (UEFI)
-```
-
-## Installing to Disk
-
-```bash
-# Guided installation after building the system:
-sudo bash installer/scripts/installer-tui.sh
-```
-
-For automation, use `install-to-disk.sh` with a mode-0600
-`--credentials-file`; see `installer/README.md`. The installer intentionally
-does not accept passwords on the command line.
-
-## Rebuilding
-
-```bash
-make clean           # remove build artifacts, keep sources
-make distclean       # full reset (removes build/ and out/)
-make all FORCE=1     # force rebuild all phases
-```
-
-## Directory Layout
-
-```
-ShreeOS/
-├── Makefile              # Top-level orchestration
-├── build.conf            # Single source of truth for versions
-├── toolchain/            # Phase 1: cross-compiler
-├── base-system/          # Phase 2: base packages
-├── kernel/               # Phase 3: Linux kernel
-├── init/                 # Phase 4: target PID 1 init
-├── rootfs/               # Phase 6: root filesystem assembly
-├── bootloader/           # Phase 7: GRUB config
-├── iso-builder/          # Phase 7: ISO creation
-├── pkgmanager/           # Phase 4: lpm package manager
-├── desktop/              # Phase 5: window manager
-├── installer/            # Phase 7: disk installer
-├── branding/             # Phase 7: distro assets
-├── tests/                # Smoke tests
-├── build/                # Build artifacts (gitignored)
-└── out/                  # Final ISOs (gitignored)
-```
+The prototype pins the package-install snapshot, but the complete build has
+not yet been executed in this Windows workspace. CI is the first Linux
+end-to-end validation. Preserve the emitted package manifest, build metadata,
+checksums and package copyright records for any future redistribution. Source
+and license handling is described in
+[`../SOURCE_INFORMATION.md`](../SOURCE_INFORMATION.md) and
+[`../THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).

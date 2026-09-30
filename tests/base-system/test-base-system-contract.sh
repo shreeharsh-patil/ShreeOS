@@ -222,6 +222,8 @@ section "Home ownership mechanism"
 # home directory and the failure would otherwise only appear at first login.
 check "archive builder pins ownership (make-rootfs.sh uses cpio --owner)" \
   "$(grep -Eq 'cpio .*--owner' "$REPO_ROOT/rootfs/scripts/make-rootfs.sh" && echo 0 || echo 1)"
+check "rootfs build prunes development-only files after assembly" \
+  "$(grep -Fq 'prune-development-files.sh' "$REPO_ROOT/rootfs/scripts/make-rootfs.sh" && echo 0 || echo 1)"
 check "installer applies home ownership (configure-user.sh chowns /home)" \
   "$(grep -Eq 'chown .*\$\{?TARGET\}?/home/' "$REPO_ROOT/installer/scripts/configure-user.sh" \
     && echo 0 || echo 1)"

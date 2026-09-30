@@ -1,0 +1,74 @@
+name: Debian Live Prototype
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'prototype/debian-live/**'
+      - 'scripts/build-debian-prototype.sh'
+      - 'tests/prototype/**'
+      - 'Makefile'
+      - '.github/workflows/debian-prototype.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'prototype/debian-live/**'
+      - 'scripts/build-debian-prototype.sh'
+      - 'tests/prototype/**'
+      - 'Makefile'
+      - '.github/workflows/debian-prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-boot:
+    name: Build and boot the isolated Debian Live prototype
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 180
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned live-build and image test tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            live-build=1:20250505+deb13u1 \
+            debootstrap xorriso squashfs-tools \
+            grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
+            qemu-system-x86 ovmf rsync ca-certificates debian-archive-keyring
+
+      - name: Validate prototype configuration
+        run: bash tests/prototype/test-config.sh
+
+      - name: Build ISO from the pinned Debian snapshot
+        run: bash scripts/build-debian-prototype.sh
+
+      - name: Validate SquashFS and boot in BIOS and UEFI QEMU
+        run: |
+          set -Eeuo pipefail
+          bash tests/prototype/test-iso.sh \
+            out/shreeos-0.3.0-prototype-amd64.iso
+
+      - name: Upload prototype ISO, package manifest, and checksum
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-debian-live-prototype-${{ github.sha }}
+          path: |
+            out/shreeos-0.3.0-prototype-amd64.iso
+            out/shreeos-0.3.0-prototype-amd64.iso.sha256
+            out/shreeos-0.3.0-prototype-packages.txt
+            out/shreeos-0.3.0-prototype-build-info.txt
+          if-no-files-found: error
+          retention-days: 7
