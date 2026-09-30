@@ -141,6 +141,16 @@ def main() -> int:
     overview_shortcut = shortcuts.find("./property/property/property[@name='<Super>Up']")
     require(overview_shortcut is not None and overview_shortcut.get("value") == "/usr/local/bin/shreeos-overview",
             "Super+Up is not bound to Workspace Overview")
+    workspace_shortcuts = shortcuts.find("./property[@name='xfwm4']/property[@name='custom']")
+    require(workspace_shortcuts is not None, "XFWM workspace keyboard controls are missing")
+    shortcut_map = {item.get("name"): item.get("value")
+                    for item in workspace_shortcuts.findall("property")}
+    require(shortcut_map.get("<Primary><Alt>Left") == "left_workspace_key"
+            and shortcut_map.get("<Primary><Alt>Right") == "right_workspace_key",
+            "keyboard workspace switching is not configured")
+    require(all(shortcut_map.get(f"<Super>{number}") == f"workspace_{number}_key"
+                for number in range(1, 5)),
+            "direct shortcuts for all four workspaces are missing")
     overview_script = INCLUDES / "usr/local/bin/shreeos-overview"
     require(overview_script.is_file() and overview_script.read_text().startswith("#!/usr/bin/python3"),
             "Workspace Overview executable is missing")

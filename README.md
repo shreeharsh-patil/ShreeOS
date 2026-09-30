@@ -39,6 +39,8 @@ thumbnails, workspace creation, and touchpad gestures are not implemented yet.
 The dock includes ShreeOS search, overview, and quick controls, while Thunar's
 sidebar starts with standard personal folders and system locations.
 The top panel also includes XFCE's notification history dropdown.
+Keyboard navigation supports Ctrl+Alt+Left/Right to switch workspaces,
+Ctrl+Alt+Shift+Left/Right to move windows, and Super+1–4 to select a workspace.
 The target direction and exit criteria are in
 [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 

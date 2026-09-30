@@ -141,6 +141,11 @@ the clock. It is a history menu, not yet the requested calendar, widgets, and
 notification-center surface; visual behavior and notification actions require
 desktop review.
 
+Keyboard controls now switch workspaces with Ctrl+Alt+Left/Right, move the
+focused window with Ctrl+Alt+Shift+Left/Right, and select desktops 1–4 with
+Super+1–4. XFWM/XFCE keybinding configuration is checked statically; input
+behavior still needs QEMU and hardware validation.
+
 The prototype workflow also runs Bash syntax checks and ShellCheck at error
 severity before building either image. This Windows workspace cannot execute
 Debian Live, QEMU, or ShellCheck, so those gates have not run here. Do not wire
