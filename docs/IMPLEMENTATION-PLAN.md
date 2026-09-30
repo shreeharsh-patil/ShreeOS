@@ -156,6 +156,8 @@ Keyboard controls now switch workspaces with Ctrl+Alt+Left/Right, move the
 focused window with Ctrl+Alt+Shift+Left/Right, and select desktops 1–4 with
 Super+1–4. XFWM/XFCE keybinding configuration is checked statically; input
 behavior still needs QEMU and hardware validation.
+`Super+Shift+S` now opens Debian's XFCE screenshot tool in region-selection
+mode; its package and key binding are covered by the prototype checks.
 
 The prototype workflow also runs Bash syntax checks and ShellCheck at error
 severity before building either image. This Windows workspace cannot execute

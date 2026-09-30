@@ -162,6 +162,10 @@ def main() -> int:
     search_shortcut = shortcuts.find("./property/property/property[@name='<Super>space']")
     require(search_shortcut is not None and search_shortcut.get("value") == "/usr/local/bin/shreeos-search",
             "Super+Space is not bound to Shree Search")
+    screenshot_shortcut = shortcuts.find("./property/property/property[@name='<Super><Shift>s']")
+    require(screenshot_shortcut is not None
+            and screenshot_shortcut.get("value") == "xfce4-screenshooter -r",
+            "Super+Shift+S is not bound to the screenshot region tool")
     overview_shortcut = shortcuts.find("./property/property/property[@name='<Super>Up']")
     require(overview_shortcut is not None and overview_shortcut.get("value") == "/usr/local/bin/shreeos-overview",
             "Super+Up is not bound to Workspace Overview")

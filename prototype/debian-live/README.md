@@ -31,6 +31,7 @@ Network, and Trash; the dock includes ShreeOS search and quick controls, and
 the top panel has a recent-notifications dropdown.
 Ctrl+Alt+Left/Right switches workspaces; Ctrl+Alt+Shift+Left/Right moves the
 focused window, and Super+1–4 selects a workspace directly.
+Super+Shift+S opens XFCE Screenshooter in region-selection mode.
 The image identifies itself as a Debian-derived ShreeOS prototype and uses
 Debian's signed repositories for installed-system updates.
 

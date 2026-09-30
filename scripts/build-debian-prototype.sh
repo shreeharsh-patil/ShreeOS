@@ -89,7 +89,7 @@ LIVE_APPEND="boot=live components live-config.components=${LIVE_APPEND_COMPONENT
     --debian-installer none \
     --apt-recommends true \
     --apt-secure true \
-    --apt-options "-o Acquire::Check-Valid-Until=false" \
+    --apt-options "--yes -o Acquire::Retries=5 -o Acquire::Check-Valid-Until=false" \
     --security true \
     --firmware-binary false \
     --firmware-chroot false \

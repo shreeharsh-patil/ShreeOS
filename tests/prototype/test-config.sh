@@ -24,6 +24,8 @@ done
 
 grep -Fq 'ID=shreeos' "$CONFIG_DIR/config/includes.chroot/etc/os-release"
 grep -Fq 'ID_LIKE=debian' "$CONFIG_DIR/config/includes.chroot/etc/os-release"
+grep -Fq -- '--apt-options "--yes -o Acquire::Retries=5 -o Acquire::Check-Valid-Until=false"' \
+  "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'shreeos-live-boot-check' \
   "$CONFIG_DIR/config/includes.chroot/etc/systemd/system/shreeos-boot-check.service"
 lock_hook="$CONFIG_DIR/config/includes.chroot/lib/live/config/9999-lock-live-user"
@@ -61,7 +63,7 @@ test "$desktop_actual" = "$desktop_unique"
 for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli firefox-esr fonts-inter \
   firmware-linux-free papirus-icon-theme pipewire-audio \
   python3-gi \
-  lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
+  lightdm-gtk-greeter network-manager-applet task-xfce-desktop xfce4-screenshooter \
   wmctrl xfce4-notifyd xfce4-pulseaudio-plugin xdg-user-dirs; do
   grep -Fxq "$required" "$desktop_packages" || {
     echo "Desktop profile is missing: $required" >&2
