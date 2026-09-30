@@ -2,15 +2,52 @@
 set -eu
 
 account_status="$(passwd --status shree)"
-set -- $account_status
-if [ "${2:-}" != L ]; then
+case "$account_status" in
+  'shree L '*) ;;
+  *)
   echo 'ShreeOS live account password is not locked.' >&2
   exit 1
+    ;;
+esac
+
+apt-get check
+if ! lsblk -ndo TYPE | grep -Fxq disk; then
+  echo 'The live kernel did not detect the QEMU storage device.' >&2
+  exit 1
 fi
+if ! systemctl is-active --quiet NetworkManager.service; then
+  echo 'NetworkManager is not active in the live system.' >&2
+  exit 1
+fi
+
+elapsed=0
+until nmcli -t -f TYPE,STATE device status | grep -Eq '^ethernet:connected' &&
+  ip route show default | grep -q '^default '; do
+  if [ "$elapsed" -ge 60 ]; then
+    echo 'The QEMU Ethernet interface did not receive a default route.' >&2
+    exit 1
+  fi
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
 
 if id -nG shree | tr ' ' '\n' | grep -Fxq sudo; then
   echo 'ShreeOS console live account unexpectedly has sudo access.' >&2
   exit 1
+fi
+
+if [ -f /etc/shreeos/image-profile ] &&
+  [ "$(cat /etc/shreeos/image-profile)" = desktop ]; then
+  elapsed=0
+  until systemctl is-active --quiet display-manager.service &&
+    pgrep -u shree -x xfce4-session >/dev/null; do
+    if [ "$elapsed" -ge 120 ]; then
+      echo 'ShreeOS desktop session did not start within 120 seconds.' >&2
+      exit 1
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
 fi
 
 echo SHREEOS_LIVE_BOOT_OK > /dev/console

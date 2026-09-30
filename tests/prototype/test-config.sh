@@ -33,6 +33,10 @@ test -f "$boot_check"
 grep -Fq 'passwd --lock shree' "$lock_hook"
 grep -Fq 'passwd --status shree' "$boot_check"
 grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$boot_check"
+grep -Fq 'apt-get check' "$boot_check"
+grep -Fq 'lsblk -ndo TYPE' "$boot_check"
+grep -Fq 'NetworkManager.service' "$boot_check"
+grep -Fq 'nmcli -t -f TYPE,STATE device status' "$boot_check"
 grep -Fq 'unexpectedly has sudo access' "$boot_check"
 if grep -Eq 'live-config\.components=[^ ]*sudo' \
   "$REPO_ROOT/scripts/build-debian-prototype.sh"; then
@@ -44,4 +48,23 @@ if grep -Fxq 'sudo' "$packages"; then
   echo 'The console prototype does not need the sudo package.' >&2
   exit 1
 fi
+
+desktop_packages="$CONFIG_DIR/profiles/desktop/package-lists/shreeos-desktop.list.chroot"
+desktop_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$desktop_packages" | sort)"
+desktop_unique="$(printf '%s\n' "$desktop_actual" | uniq)"
+test "$desktop_actual" = "$desktop_unique"
+for required in bluez blueman firefox-esr firmware-linux-free pipewire-audio \
+  lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
+  xfce4-pulseaudio-plugin; do
+  grep -Fxq "$required" "$desktop_packages" || {
+    echo "Desktop profile is missing: $required" >&2
+    exit 1
+  }
+done
+grep -Fq 'shreeos-wallpaper.svg' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+grep -Fq 'shreeos-logo.svg' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/lightdm/lightdm-gtk-greeter.conf.d/50-shreeos.conf"
+grep -Fxq desktop \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/shreeos/image-profile"
 printf 'Debian prototype configuration contract passed.\n'

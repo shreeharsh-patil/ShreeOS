@@ -3,8 +3,8 @@
 ShreeOS is an independent Linux distribution project. Its current product path
 is a small x86-64 image assembled from pinned upstream source packages. A
 separate Debian 13 (Trixie) Live prototype is being evaluated as the future
-desktop base. That prototype currently reaches a text console; it is not yet a
-daily-use desktop release.
+desktop base. Its default profile targets a text console; an optional XFCE
+profile is early integration work, not a daily-use desktop release.
 
 ShreeOS has its own name and artwork. It is not an Ubuntu image, and it does
 not include Ubuntu or Canonical branding. The prototype uses Debian's signed
@@ -18,13 +18,14 @@ The repository contains two distinct build paths:
 | Path | What it currently provides | Status |
 |---|---|---|
 | Existing source-built image | Custom cross-build pipeline, Linux kernel, BusyBox-oriented early userspace, custom ShreeOS init and package tooling, and a small X11/dwm graphical stack | Existing experimental path; its README-era claims are not a substitute for testing the generated image |
-| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console-only prototype; full ISO build and QEMU boot are pending Linux CI validation |
+| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console base plus optional XFCE desktop profile; full ISO builds and QEMU boots are pending Linux CI validation |
 
 There is no supported ShreeOS desktop release or public download at this time.
-The prototype does not yet provide a graphical desktop, graphical installer,
-Wi-Fi firmware policy, polished ShreeOS desktop theme, or installed-system
-workflow. The project will not claim these features until they are implemented
-and tested. The target direction and exit criteria are in
+The optional desktop profile has not yet been built, booted, or visually
+verified. A graphical installer, broad Wi-Fi firmware policy, complete
+ShreeOS desktop theme, and installed-system workflow are still missing. The
+project will not claim these features until they are implemented and tested.
+The target direction and exit criteria are in
 [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 
 ## Architecture direction
@@ -72,6 +73,11 @@ git switch master
 make test-prototype-config
 make prototype-debian
 make test-prototype ISO=out/shreeos-0.3.0-prototype-amd64.iso
+
+# Optional desktop build and its stronger QEMU login check.
+make prototype-debian SHREEOS_LIVE_PROFILE=desktop
+make test-prototype SHREEOS_LIVE_PROFILE=desktop \
+  ISO=out/shreeos-0.3.0-prototype-desktop-amd64.iso
 ```
 
 The build target refuses to run without root and removes only its dedicated
@@ -89,11 +95,13 @@ desktop distribution.
 
 ## Live media and installation
 
-The prototype is a Live ISO with a compressed SquashFS root. It currently
-boots to a console and has no graphical installer or supported disk
-installation procedure. Do not use it to install on a physical computer. A
-future installer phase will use disposable virtual disks and require explicit
-confirmation before destructive changes.
+The base profile is a Live ISO with a compressed SquashFS root that boots to a
+console. The optional desktop profile adds XFCE, LightDM and ShreeOS wallpaper
+and greeter branding, but it has not been validated yet. Neither profile has a
+graphical installer or supported disk installation procedure. Do not use it
+to install on a physical computer. A future installer phase will use
+disposable virtual disks and require explicit confirmation before destructive
+changes.
 
 ## Downloads and checksums
 
@@ -128,9 +136,12 @@ GitHub Actions currently has focused workflows for the existing source-built
 base-system checks and the experimental Debian Live prototype. The prototype
 workflow is restricted to `master` pushes, pull requests targeting `master`,
 and manual dispatch. It builds in Debian Trixie, checks the SquashFS and
-manifest, then runs BIOS and UEFI QEMU boot checks with timeouts. A green
-prototype workflow would validate only those checks; it would not certify a
-desktop, installer, physical hardware, or release.
+manifest, then runs BIOS and UEFI QEMU boot checks with virtual block storage
+and Ethernet devices and timeouts. The boot marker checks the package database,
+storage detection, and NetworkManager DHCP route; the desktop profile also
+requires LightDM and an XFCE session for the live user. A green prototype
+workflow would validate only those checks; it would not certify physical
+hardware, an installer, or a release.
 
 Useful local checks include:
 
@@ -147,14 +158,15 @@ publishing remains gated on those phases being implemented and validated.
 
 ## Security and firmware
 
-The initial prototype package list is limited to Debian's `main` component and
-does not request non-free firmware. Common devices that require redistributable
-firmware may not work until the firmware inventory and inclusion policy are
-reviewed. Do not assume that all Wi-Fi, Bluetooth, graphics, or laptop devices
-are supported. The prototype includes `openssh-client`, not an SSH server.
+Both profiles use Debian's `main` component only. The desktop profile includes
+`firmware-linux-free`, whose firmware is DFSG-compliant; it does not enable
+Debian's `non-free-firmware` archive. That limited firmware set does not cover
+many common Wi-Fi devices. Do not assume all Wi-Fi, Bluetooth, graphics, or
+laptop devices are supported. The prototype includes `openssh-client`, not an SSH server.
 The temporary account's Debian Live default password is locked at boot and
-the console prototype does not grant it sudo access. It is not an installed
-user account. It currently does not provide an interactive live login.
+neither prototype profile grants it sudo access. It is not an installed user
+account. The base profile has no interactive login; the desktop profile
+attempts local display-manager autologin but remains unverified.
 
 ## Branding
 

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Dock
+Comment=ShreeOS application dock
+Exec=plank
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true

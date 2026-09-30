@@ -1,0 +1,21 @@
+# Debian's maintained desktop task provides XFCE, LightDM, Xorg, an app menu,
+# file manager, settings, NetworkManager applet, and recommended desktop apps.
+# The explicit packages below add the user-facing hardware/audio/branding layer.
+bluez
+blueman
+firefox-esr
+firmware-linux-free
+fonts-noto-color-emoji
+fonts-noto-core
+galculator
+lightdm-gtk-greeter
+network-manager-applet
+pavucontrol
+pipewire-audio
+plank
+ristretto
+task-xfce-desktop
+thunar-archive-plugin
+xfce4-pulseaudio-plugin
+wireplumber
+xarchiver

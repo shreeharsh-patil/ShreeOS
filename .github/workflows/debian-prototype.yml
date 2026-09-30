@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'prototype/debian-live/**'
+      - 'branding/**'
       - 'scripts/build-debian-prototype.sh'
       - 'tests/prototype/**'
       - 'Makefile'
@@ -13,6 +14,7 @@ on:
     branches: [master]
     paths:
       - 'prototype/debian-live/**'
+      - 'branding/**'
       - 'scripts/build-debian-prototype.sh'
       - 'tests/prototype/**'
       - 'Makefile'
@@ -47,28 +49,47 @@ jobs:
             live-build=1:20250505+deb13u1 \
             debootstrap xorriso squashfs-tools \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
-            qemu-system-x86 ovmf rsync ca-certificates debian-archive-keyring
+            qemu-system-x86 qemu-utils ovmf rsync ca-certificates debian-archive-keyring
 
       - name: Validate prototype configuration
         run: bash tests/prototype/test-config.sh
 
-      - name: Build ISO from the pinned Debian snapshot
+      - name: Build and boot-test the console base
         run: bash scripts/build-debian-prototype.sh
-
-      - name: Validate SquashFS and boot in BIOS and UEFI QEMU
+      - name: Validate base SquashFS and boot in BIOS and UEFI QEMU
         run: |
           set -Eeuo pipefail
-          bash tests/prototype/test-iso.sh \
+          mkdir -p build-logs/prototype-qemu
+          QEMU_LOG_DIR=build-logs/prototype-qemu bash tests/prototype/test-iso.sh \
             out/shreeos-0.3.0-prototype-amd64.iso
 
-      - name: Upload prototype ISO, package manifest, and checksum
+      - name: Build the optional ShreeOS desktop profile
+        run: SHREEOS_LIVE_PROFILE=desktop bash scripts/build-debian-prototype.sh
+
+      - name: Validate desktop package set and boot the XFCE session in BIOS and UEFI QEMU
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build-logs/prototype-qemu
+          QEMU_LOG_DIR=build-logs/prototype-qemu bash tests/prototype/test-iso.sh \
+            out/shreeos-0.3.0-prototype-desktop-amd64.iso desktop
+
+      - name: Upload base and desktop prototype ISOs, manifests, checksums, and build metadata
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: shreeos-debian-live-prototype-${{ github.sha }}
           path: |
-            out/shreeos-0.3.0-prototype-amd64.iso
-            out/shreeos-0.3.0-prototype-amd64.iso.sha256
-            out/shreeos-0.3.0-prototype-packages.txt
-            out/shreeos-0.3.0-prototype-build-info.txt
+            out/shreeos-0.3.0-prototype*.iso
+            out/shreeos-0.3.0-prototype*.iso.sha256
+            out/shreeos-0.3.0-prototype*-packages.txt
+            out/shreeos-0.3.0-prototype*-build-info.txt
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload QEMU boot logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-prototype-qemu-logs-${{ github.sha }}
+          path: build-logs/prototype-qemu/
+          if-no-files-found: warn
+          retention-days: 30

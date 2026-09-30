@@ -1,7 +1,7 @@
 # ShreeOS top-level build orchestration
 #
 # Profiles:
-#   PROFILE=desktop  (default: complete graphical desktop distribution)
+#   PROFILE=desktop  (default: legacy experimental source-build desktop path)
 #   PROFILE=security (desktop workstation plus defensive/security diagnostics)
 #   PROFILE=minimal  (small headless rescue/validation environment)
 #   PROFILE=server   (headless networking/server environment)
@@ -15,9 +15,9 @@
 #   rootfs          — Phase 6: init & rootfs assembly
 #   iso             — Phase 7: bootable hybrid ISO
 #   all             — Full end-to-end pipeline
-#   distro          — Build and certify the primary desktop distribution
+#   distro          — Run the legacy source-build desktop certification checks
 #   security-distro — Build and certify the security workstation distribution
-#   release-check   — Strict desktop release-readiness certification
+#   release-check   — Legacy source-build desktop readiness checks
 #   test-unit       — LPM package manager unit tests
 #   test-security   — System security audit tests
 #   test-auth       — Authentication & credential tests
@@ -54,10 +54,12 @@ help:
 	@echo "  make packages             Phase 4: lpm package manager & init tools"
 	@echo "  make desktop              Phase 5: Window manager & desktop suite"
 	@echo "  make rootfs               Phase 6: Init & rootfs assembly"
-	@echo "  make iso                  Phase 7: Bootable hybrid ISO"
+	@echo "  make iso                  Legacy source-built hybrid ISO target"
 	@echo "  make all                  Build everything end-to-end"
 	@echo "  make distro               Run the legacy source-build desktop certification target"
 	@echo "  make security-distro      Build and certify the security workstation ISO"
+	@echo "  make prototype-debian     Build Debian Live base/desktop prototype"
+	@echo "  make test-prototype       Check profile ISO and BIOS/UEFI QEMU boot"
 	@echo ""
 	@echo "Diagnostic & Verification Targets:"
 	@echo "  make bootstrap-wsl        Install/check supported WSL2 build dependencies"
@@ -94,6 +96,7 @@ help:
 	@echo "Options:"
 	@echo "  PROFILE=desktop|security|minimal|server  (default: desktop)"
 	@echo "  FORCE=1                                  (rebuild all stages)"
+	@echo "  SHREEOS_LIVE_PROFILE=base|desktop        (Debian Live prototype profile)"
 
 # Diagnostic & source verification
 .PHONY: bootstrap-wsl
@@ -126,18 +129,20 @@ audit-iso:
 audit-test:
 	python3 tests/audit/test-shreeos-audit.py
 
-# Separate Debian Live desktop-base prototype. It never replaces the existing
-# source-built ISO target; build it explicitly on a Debian Linux host as root.
+# Separate Debian Live base/desktop prototypes. They do not replace the
+# existing source-built ISO target; build explicitly on Debian Linux as root.
 .PHONY: prototype-debian test-prototype test-prototype-config
 prototype-debian:
-	bash scripts/build-debian-prototype.sh
+	SHREEOS_LIVE_PROFILE="$(SHREEOS_LIVE_PROFILE)" bash scripts/build-debian-prototype.sh
 
 test-prototype-config:
 	bash tests/prototype/test-config.sh
 
 test-prototype: test-prototype-config
 	@test -n "$(ISO)" || { echo "Usage: make test-prototype ISO=path/to/prototype.iso" >&2; exit 2; }
-	bash tests/prototype/test-iso.sh "$(ISO)"
+	bash tests/prototype/test-iso.sh "$(ISO)" "$(SHREEOS_LIVE_PROFILE)"
+
+SHREEOS_LIVE_PROFILE ?= base
 
 .PHONY: graphics
 graphics: toolchain base-system

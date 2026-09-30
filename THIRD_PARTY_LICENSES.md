@@ -29,6 +29,14 @@ APT/dpkg, GRUB, NetworkManager and GNU utilities. Their exact versions and
 applicable license texts must be read from the corresponding package and
 upstream source; a short project-level list cannot replace those notices.
 
+The optional desktop profile adds the Debian `firmware-linux-free` package,
+which Debian describes as firmware compliant with the Debian Free Software
+Guidelines. It deliberately does not enable `non-free-firmware` or bundle
+device blobs whose redistribution terms have not been reviewed. This is a
+limited set and does not imply broad device support. See the
+[Debian package record](https://packages.debian.org/trixie/firmware-linux-free)
+and preserve its installed copyright record with the image.
+
 ## Redistribution checklist
 
 Before publishing an image:

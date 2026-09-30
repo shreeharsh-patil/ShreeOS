@@ -86,21 +86,25 @@ install, reboot and update gates.
 
 ### Current checkpoint
 
-The first prototype lives under `prototype/debian-live/`. It pins Debian 13
-Trixie package inputs to snapshot `20260929T000000Z`, pins live-build in CI,
-creates a systemd/live-boot SquashFS ISO, and checks the boot in BIOS and UEFI
-QEMU. The initial package set intentionally stays in Debian's `main` area and
-does not include third-party firmware. The build and QEMU checks have not yet
-run in this Windows workspace; the new Debian Linux CI workflow is the first
-full build environment. This checkpoint is not a desktop release.
+The prototype lives under `prototype/debian-live/`. It pins Debian 13 Trixie
+package inputs to snapshot `20260929T000000Z`, pins live-build in CI, and has
+separate `base` and optional `desktop` profiles. The desktop profile selects
+Debian's XFCE task and ShreeOS artwork, while excluding Debian's
+`non-free-firmware` archive. A boot-time hook locks the temporary live user's
+default password; the QEMU marker checks that the account has no password
+login or sudo access, an intact apt/dpkg package database, QEMU block-device
+detection, and an Ethernet DHCP route. In desktop mode it also waits for
+LightDM and an XFCE session. These profiles are implemented but their Linux
+build and QEMU checks have not yet run in this Windows workspace. The desktop
+is still not a release.
 
 ## Near-term work
 
 1. Refresh the audit against the current checkout and, where a build artifact
    is available, the actual ISO. Mark older measurements with their source
    commit and release rather than presenting them as current.
-2. Prototype the proposed base in a separate build target; do not modify the
-   existing `make all` path until the prototype can boot from QEMU.
+2. Build and boot-test both prototype profiles in Linux CI; fix base failures
+   before using the desktop output to judge the architecture.
 3. Keep source downloads checksum-verified, pin the base-image repository
    snapshot/release inputs, and record package manifests and licenses in the
    output.

@@ -5,6 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 CONFIG_SOURCE="$REPO_ROOT/prototype/debian-live"
 source "$CONFIG_SOURCE/versions.conf"
+LIVE_PROFILE="${SHREEOS_LIVE_PROFILE:-base}"
+
+case "$LIVE_PROFILE" in
+  base|desktop) ;;
+  *) echo "Unsupported live profile '$LIVE_PROFILE' (expected base or desktop)." >&2; exit 2 ;;
+esac
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "The Debian Live prototype must be built as root; use Debian 13 or CI." >&2
@@ -34,13 +40,36 @@ rm -rf -- "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$OUT_DIR"
 cp -a "$CONFIG_SOURCE/config" "$BUILD_DIR/config"
 
-mkdir -p "$BUILD_DIR/config/includes.chroot/etc/systemd/system/multi-user.target.wants"
+if [ "$LIVE_PROFILE" = desktop ]; then
+  PROFILE_SOURCE="$CONFIG_SOURCE/profiles/desktop"
+  cp "$PROFILE_SOURCE/package-lists/shreeos-desktop.list.chroot" \
+    "$BUILD_DIR/config/package-lists/"
+  cp -a "$PROFILE_SOURCE/includes.chroot/." \
+    "$BUILD_DIR/config/includes.chroot/"
+  mkdir -p \
+    "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps"
+  cp "$REPO_ROOT/branding/wallpapers/shreeos-wallpaper.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"
+  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/"
+fi
+
+if [ "$LIVE_PROFILE" = desktop ]; then
+  LIVE_TARGET=graphical
+  LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,lightdm
+else
+  LIVE_TARGET=multi-user
+  LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration
+fi
+
+mkdir -p "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants"
 ln -sfn ../shreeos-boot-check.service \
-  "$BUILD_DIR/config/includes.chroot/etc/systemd/system/multi-user.target.wants/shreeos-boot-check.service"
+  "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-boot-check.service"
 
 SNAPSHOT="https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/"
 SECURITY_SNAPSHOT="https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/"
-LIVE_APPEND="boot=live components live-config.components=hostname,user-setup,locales,tzdata,keyboard-configuration live-config.hostname=shreeos live-config.username=shree live-config.user-fullname=ShreeOS-Live-User live-config.locales=en_US.UTF-8 console=tty0 console=ttyS0,115200n8"
+LIVE_APPEND="boot=live components live-config.components=${LIVE_APPEND_COMPONENTS} live-config.hostname=shreeos live-config.username=shree live-config.user-fullname=ShreeOS-Live-User live-config.locales=en_US.UTF-8 console=tty0 console=ttyS0,115200n8"
 
 (
   cd "$BUILD_DIR"
@@ -87,16 +116,19 @@ for package in apt live-boot live-config-systemd network-manager systemd-sysv; d
   }
 done
 
-ISO_OUT="$OUT_DIR/shreeos-${PROTOTYPE_VERSION}-amd64.iso"
+OUTPUT_SUFFIX=""
+if [ "$LIVE_PROFILE" = desktop ]; then OUTPUT_SUFFIX="-desktop"; fi
+OUTPUT_PREFIX="$OUT_DIR/shreeos-${PROTOTYPE_VERSION}${OUTPUT_SUFFIX}"
+ISO_OUT="${OUTPUT_PREFIX}-amd64.iso"
 cp -- "$ISO_SOURCE" "$ISO_OUT"
-cp -- "$PACKAGES_SOURCE" "$OUT_DIR/shreeos-${PROTOTYPE_VERSION}-packages.txt"
+cp -- "$PACKAGES_SOURCE" "${OUTPUT_PREFIX}-packages.txt"
 (cd "$OUT_DIR" && sha256sum "$(basename "$ISO_OUT")" > "$(basename "$ISO_OUT").sha256")
-printf 'suite=%s\nsnapshot=%s\nlive_build=%s\n' \
-  "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" \
-  > "$OUT_DIR/shreeos-${PROTOTYPE_VERSION}-build-info.txt"
+printf 'suite=%s\nsnapshot=%s\nlive_build=%s\nprofile=%s\n' \
+  "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" "$LIVE_PROFILE" \
+  > "${OUTPUT_PREFIX}-build-info.txt"
 for package in live-build debootstrap xorriso squashfs-tools \
   grub-pc-bin grub-efi-amd64-bin; do
   dpkg-query -W -f='${Package}=${Version}\n' "$package" \
-    >> "$OUT_DIR/shreeos-${PROTOTYPE_VERSION}-build-info.txt"
+    >> "${OUTPUT_PREFIX}-build-info.txt"
 done
-printf 'Built prototype ISO: %s\n' "$ISO_OUT"
+printf 'Built %s prototype ISO: %s\n' "$LIVE_PROFILE" "$ISO_OUT"

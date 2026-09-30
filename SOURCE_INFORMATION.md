@@ -31,6 +31,12 @@ release, CI/release automation must archive a machine-readable source-package
 inventory and publish clear instructions and a durable location for obtaining
 any corresponding source required by the applicable licenses.
 
+The optional desktop profile adds only `firmware-linux-free` for firmware.
+Debian describes this package as DFSG-compliant firmware; it is from `main`.
+The profiles do not use the `non-free-firmware` archive. This choice is a
+redistribution policy baseline, not a claim that the included firmware covers
+common Wi-Fi or other PC hardware.
+
 To inspect and obtain Debian source packages from the configured archive,
 enable a matching `deb-src` entry for the same suite/component and snapshot,
 then use `apt-get source <source-package>` with the appropriate Debian
