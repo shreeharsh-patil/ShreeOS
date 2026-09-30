@@ -33,6 +33,8 @@ jobs:
     name: Build and boot the isolated Debian Live prototype
     runs-on: ubuntu-24.04
     container: debian:trixie-slim
+    # live-build must mount proc, sysfs, and devpts inside its chroot.
+    options: --privileged
     timeout-minutes: 180
     steps:
       - name: Check out source
