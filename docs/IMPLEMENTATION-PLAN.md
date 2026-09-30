@@ -109,10 +109,10 @@ wallpapers. Static checks validate these configurations, and the QEMU marker
 now waits for panel and dock processes. The image and appearance are still
 unverified until Linux CI builds and graphically boots it. An initial GTK
 Control Center provides Wi-Fi and Bluetooth power, sound mute, dark/light
-theme switches, and links to XFCE's network, sound, display, appearance, power,
-and notification tools. It does not yet provide brightness, airplane mode,
-focus, battery, or power-profile controls, and has not been exercised in a
-running desktop. Workspace overview, notification center, lock screen, boot
+theme switches, a backlight slider when supported, notification focus mode,
+and links to XFCE's network, sound, display, appearance, power, and notification
+tools. It does not yet provide airplane mode, battery, or power-profile
+controls, and has not been exercised in a running desktop. Workspace overview, notification center, lock screen, boot
 splash, and installer experiences remain future work.
 
 `Super+Space` now opens Shree Search, a GTK app finder that matches installed

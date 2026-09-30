@@ -45,6 +45,8 @@ packages, retaining each package's complete copyright file in the image:
 - `papirus-icon-theme` (GPL-3, including notices for the upstream icon sources
   documented in Debian's copyright file).
 - `fonts-inter` (OFL-1.1 and Apache-2.0, by file).
+- `brightnessctl` and its `brightness-udev` rules package for hardware
+  backlight control (retain the complete Debian copyright files).
 
 These remain upstream themes and icons, not ShreeOS-authored artwork. The
 ShreeOS wallpaper and logo stay under the repository's stated license.

@@ -18,9 +18,10 @@ is experimental and has not yet been built, booted, or visually verified in
 this workspace. Its XFCE session is a staged desktop composition, not yet a
 custom shell with a ShreeOS control center, overview, notification center, or
 installer. An initial GTK Control Center offers Wi-Fi, Bluetooth, audio and
-dark/light appearance switches with links to existing XFCE tools; its
-interactive behavior still needs Linux desktop validation. Neither profile is
-a supported desktop release.
+dark/light appearance switches, a hardware backlight slider when available,
+and notification focus mode with links to existing XFCE tools; its interactive
+behavior still needs Linux desktop validation. Airplane mode and power-profile
+controls are still missing. Neither profile is a supported desktop release.
 `Super+Space` opens Shree Search for applications, files in common user
 folders, and bounded calculator expressions; the GUI still needs Linux review.
 `Super+Up` opens a text-based Workspace Overview for switching desktops and

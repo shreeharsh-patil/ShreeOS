@@ -4,6 +4,8 @@
 bluez
 blueman
 arc-theme
+brightness-udev
+brightnessctl
 dconf-cli
 firefox-esr
 fonts-inter

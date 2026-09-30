@@ -126,6 +126,9 @@ def main() -> int:
     control_center = INCLUDES / "usr/local/bin/shreeos-control-center"
     require(control_center.is_file() and control_center.read_text().startswith("#!/usr/bin/python3"),
             "ShreeOS Control Center executable is missing")
+    controls_source = control_center.read_text(encoding="utf-8")
+    require('"brightnessctl", "set"' in controls_source and '"Focus mode"' in controls_source,
+            "Control Center is missing hardware brightness or notification focus controls")
     search_script = INCLUDES / "usr/local/bin/shreeos-search"
     require(search_script.is_file() and search_script.read_text().startswith("#!/usr/bin/python3"),
             "Shree Search executable is missing")

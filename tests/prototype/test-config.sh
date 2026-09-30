@@ -53,7 +53,7 @@ desktop_packages="$CONFIG_DIR/profiles/desktop/package-lists/shreeos-desktop.lis
 desktop_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$desktop_packages" | sort)"
 desktop_unique="$(printf '%s\n' "$desktop_actual" | uniq)"
 test "$desktop_actual" = "$desktop_unique"
-for required in arc-theme bluez blueman dconf-cli firefox-esr fonts-inter \
+for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli firefox-esr fonts-inter \
   firmware-linux-free papirus-icon-theme pipewire-audio \
   python3-gi \
   lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
