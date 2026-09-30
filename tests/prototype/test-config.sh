@@ -57,7 +57,7 @@ for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli 
   firmware-linux-free papirus-icon-theme pipewire-audio \
   python3-gi \
   lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
-  wmctrl xfce4-pulseaudio-plugin xdg-user-dirs; do
+  wmctrl xfce4-notifyd xfce4-pulseaudio-plugin xdg-user-dirs; do
   grep -Fxq "$required" "$desktop_packages" || {
     echo "Desktop profile is missing: $required" >&2
     exit 1

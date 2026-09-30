@@ -136,6 +136,11 @@ Downloads, Pictures, Music, Videos, Computer, Network, and Trash. These are
 starter favorites; dock separators and drag/reorder behavior still depend on
 interactive review of the packaged Plank build.
 
+The panel also enables XFCE Notifyd's recent-notification dropdown next to
+the clock. It is a history menu, not yet the requested calendar, widgets, and
+notification-center surface; visual behavior and notification actions require
+desktop review.
+
 The prototype workflow also runs Bash syntax checks and ShellCheck at error
 severity before building either image. This Windows workspace cannot execute
 Debian Live, QEMU, or ShellCheck, so those gates have not run here. Do not wire

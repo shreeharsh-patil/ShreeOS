@@ -48,14 +48,14 @@ def main() -> int:
     require(plugin_ids == set(plugins), "panel plugin IDs do not match configured plugins")
     expected_plugins = {
         "applicationsmenu", "tasklist", "pager", "systray", "pulseaudio",
-        "power-manager-plugin", "clock", "actions", "launcher",
+        "power-manager-plugin", "clock", "actions", "launcher", "notification-plugin",
     }
     configured_plugins = {prop.get("value") for prop in plugins.values()}
     require(expected_plugins <= configured_plugins,
             "top panel is missing an app menu, workspace, status, or power control")
     require(plugins[1].find("property[@name='button-title']").get("value") == "ShreeOS",
             "top panel menu is not branded ShreeOS")
-    panel_items = plugins[11].find("property[@name='items']")
+    panel_items = plugins[12].find("property[@name='items']")
     require(panel_items is not None and panel_items.find("value").get("value") == "shreeos-control-center.desktop",
             "top panel is missing the ShreeOS Control Center launcher")
 
