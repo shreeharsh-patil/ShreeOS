@@ -118,7 +118,9 @@ controls, and has not been exercised in a running desktop. The dock's own
 preferences are linked for size, position, and hide behavior. The GRUB splash
 and menu theme are now branded and statically checked; their appearance still
 needs boot testing. Workspace overview, full notification center, lock screen,
-and installer experiences remain future work.
+and installer experiences remain future work. The live account has a locked
+password by design, so it does not expose a lock shortcut that would leave a
+session impossible to unlock.
 
 `Super+Space` now opens Shree Search, a GTK app finder that matches installed
 applications (including settings), indexes up to 5,000 files from common user

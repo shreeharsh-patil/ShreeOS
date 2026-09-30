@@ -49,7 +49,8 @@ if [ "$PROFILE" = desktop ]; then
 fi
 
 run_boot_test() {
-  local mode="$1" bios_arg=() log="$TEST_DIR/${mode}.log"
+  local mode="$1"
+  local bios_arg=() log="$TEST_DIR/${mode}.log"
   local emulator_log="$TEST_DIR/${mode}-qemu.log" status=0
   if [ "$mode" = uefi ]; then
     local firmware="${OVMF_CODE:-}"

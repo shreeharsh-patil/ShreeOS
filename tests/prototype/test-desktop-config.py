@@ -149,7 +149,8 @@ def main() -> int:
     for appearance_contract in (
             '"/general/theme", "-s", theme',
             '"/Gtk/PreferDarkTheme"',
-            '"/backdrop/screen0/{monitor}/workspace0/last-image"',
+            '"-l"]).splitlines()',
+            'item.startswith("/backdrop/") and item.endswith("/last-image")',
             '"ShreeOS-Light"'):
         require(appearance_contract in controls_source,
                 f"appearance toggle does not update {appearance_contract}")
@@ -166,6 +167,8 @@ def main() -> int:
     require(screenshot_shortcut is not None
             and screenshot_shortcut.get("value") == "xfce4-screenshooter -r",
             "Super+Shift+S is not bound to the screenshot region tool")
+    require(shortcuts.find("./property/property/property[@name='<Super>l']") is None,
+            "a password-locked live account must not expose an unusable lock shortcut")
     overview_shortcut = shortcuts.find("./property/property/property[@name='<Super>Up']")
     require(overview_shortcut is not None and overview_shortcut.get("value") == "/usr/local/bin/shreeos-overview",
             "Super+Up is not bound to Workspace Overview")

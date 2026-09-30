@@ -102,10 +102,11 @@ def apply_appearance(dark: bool) -> None:
     run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/IconThemeName", "-s", icons])
     run_command(["xfconf-query", "-c", "xsettings", "-p", "/Gtk/PreferDarkTheme", "-s", str(dark).lower()])
     run_command(["xfconf-query", "-c", "xfwm4", "-p", "/general/theme", "-s", theme])
-    for monitor in ("monitor0", "monitorVirtual-1"):
+    backdrops = run_command(["xfconf-query", "-c", "xfce4-desktop", "-l"]).splitlines()
+    for path in (item for item in backdrops
+                 if item.startswith("/backdrop/") and item.endswith("/last-image")):
         run_command([
-            "xfconf-query", "-c", "xfce4-desktop", "-p",
-            f"/backdrop/screen0/{monitor}/workspace0/last-image", "-s",
+            "xfconf-query", "-c", "xfce4-desktop", "-p", path, "-s",
             f"/usr/share/backgrounds/shreeos/{wallpaper}",
         ])
     run_command([
