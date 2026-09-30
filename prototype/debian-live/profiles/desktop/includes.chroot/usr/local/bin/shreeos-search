@@ -1,0 +1,310 @@
+#!/usr/bin/python3
+"""Shree Search: keyboard-first application, file, and calculator search."""
+
+from __future__ import annotations
+
+import ast
+import math
+import operator
+import os
+import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Pango", "1.0")
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango
+
+
+CSS = """
+window.shree-search { background: rgba(25, 32, 43, 0.97); color: #f5f7fb; }
+entry.search-entry { background: #303b4b; color: #fff; border: 1px solid #4a5c73;
+  border-radius: 14px; padding: 14px 16px; font-size: 18px; }
+entry.search-entry:focus { border-color: #5e9bff; }
+label.search-caption { color: #aab4c3; font-size: 11px; }
+list { background: transparent; }
+list row { color: #f5f7fb; border-radius: 10px; padding: 7px; }
+list row:selected, list row:hover { background: #35465c; }
+label.result-title { color: #f5f7fb; font-weight: 600; }
+label.result-detail { color: #aab4c3; font-size: 11px; }
+"""
+
+
+@dataclass
+class Result:
+    title: str
+    detail: str
+    icon: Gio.Icon | None
+    launch: object
+    score: int
+
+
+def calculator_value(expression: str) -> float | int | None:
+    """Evaluate only bounded arithmetic ASTs; never evaluate Python code."""
+    if len(expression) > 80:
+        return None
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except (SyntaxError, ValueError):
+        return None
+
+    binary = {
+        ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+        ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+    }
+    unary = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+
+    def visit(node):
+        if isinstance(node, ast.Expression):
+            return visit(node.body)
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            if abs(node.value) <= 10**12:
+                return node.value
+            raise ValueError("number out of range")
+        if isinstance(node, ast.BinOp) and type(node.op) in binary:
+            left, right = visit(node.left), visit(node.right)
+            if isinstance(node.op, ast.Mult) and abs(left) * abs(right) > 10**15:
+                raise ValueError("result out of range")
+            value = binary[type(node.op)](left, right)
+            if type(value) not in (int, float) or not math.isfinite(value) or abs(value) > 10**15:
+                raise ValueError("result out of range")
+            return value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            left, right = visit(node.left), visit(node.right)
+            if abs(right) > 8 or abs(left) > 10**6:
+                raise ValueError("power out of range")
+            value = left ** right
+            if type(value) not in (int, float) or not math.isfinite(value) or abs(value) > 10**15:
+                raise ValueError("result out of range")
+            return value
+        if isinstance(node, ast.UnaryOp) and type(node.op) in unary:
+            return unary[type(node.op)](visit(node.operand))
+        raise ValueError("unsupported expression")
+
+    try:
+        return visit(tree)
+    except (ArithmeticError, OverflowError, ValueError):
+        return None
+
+
+class SearchWindow:
+    def __init__(self):
+        self.window = Gtk.Window(title="Shree Search")
+        self.window.set_default_size(720, 540)
+        self.window.set_position(Gtk.WindowPosition.CENTER)
+        self.window.set_keep_above(True)
+        self.window.set_skip_taskbar_hint(True)
+        self.window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        self.window.get_style_context().add_class("shree-search")
+        self.apps = [app for app in Gio.AppInfo.get_all() if app.should_show()]
+        self.file_index: list[Path] = []
+        self.file_index_ready = False
+        self.file_index_busy = False
+        self.query_id = 0
+        self.rows: list[Result] = []
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        outer.set_border_width(20)
+        self.window.add(outer)
+
+        heading = Gtk.Label(label="Shree Search", xalign=0)
+        heading.get_style_context().add_class("search-caption")
+        outer.pack_start(heading, False, False, 0)
+        self.entry = Gtk.SearchEntry()
+        self.entry.set_placeholder_text("Search apps, settings, files, or calculate")
+        self.entry.get_style_context().add_class("search-entry")
+        self.entry.connect("search-changed", self.on_search_changed)
+        self.entry.connect("activate", self.launch_selected)
+        self.entry.connect("key-press-event", self.on_entry_key_press)
+        outer.pack_start(self.entry, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        outer.pack_start(scroll, True, True, 0)
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.listbox.connect("row-activated", self.on_row_activated)
+        scroll.add(self.listbox)
+
+        footer = Gtk.Label(label="↑ ↓ to move   ·   Enter to open   ·   Esc to close", xalign=0)
+        footer.get_style_context().add_class("search-caption")
+        outer.pack_start(footer, False, False, 0)
+        self.window.connect("key-press-event", self.on_key_press)
+        self.window.connect("destroy", lambda *_args: Gtk.main_quit())
+        self.window.show_all()
+        self.entry.grab_focus()
+        self.start_file_index()
+        GLib.idle_add(self.update_results, "")
+
+    def start_file_index(self):
+        if self.file_index_busy or self.file_index_ready:
+            return
+        self.file_index_busy = True
+
+        def scan():
+            roots = [Path.home() / name for name in
+                     ("Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos")]
+            roots = [path for path in roots if path.is_dir()]
+            found: list[Path] = []
+            deadline = time.monotonic() + 5
+            for root in roots:
+                for current, dirs, files in os.walk(root, followlinks=False):
+                    dirs[:] = [name for name in dirs if not name.startswith(".")]
+                    found.extend(Path(current) / name for name in files if not name.startswith("."))
+                    if len(found) >= 5000 or time.monotonic() >= deadline:
+                        break
+                if len(found) >= 5000 or time.monotonic() >= deadline:
+                    break
+            GLib.idle_add(self.finish_file_index, found)
+
+        threading.Thread(target=scan, name="shree-search-file-index", daemon=True).start()
+
+    def finish_file_index(self, found: list[Path]):
+        self.file_index = found
+        self.file_index_ready = True
+        self.file_index_busy = False
+        self.update_results(self.entry.get_text())
+        return GLib.SOURCE_REMOVE
+
+    def on_search_changed(self, entry):
+        self.query_id += 1
+        current = self.query_id
+        GLib.timeout_add(100, self.delayed_results, current, entry.get_text())
+
+    def delayed_results(self, query_id: int, query: str):
+        if query_id == self.query_id:
+            self.update_results(query)
+        return GLib.SOURCE_REMOVE
+
+    @staticmethod
+    def relevance(query: str, name: str, detail: str = "") -> int:
+        q = query.casefold()
+        n, d = name.casefold(), detail.casefold()
+        if n == q:
+            return 0
+        if n.startswith(q):
+            return 1
+        if q in n:
+            return 2
+        if q in d:
+            return 3
+        return 99
+
+    def update_results(self, query: str):
+        for child in self.listbox.get_children():
+            self.listbox.remove(child)
+        self.rows = []
+        query = query.strip()
+
+        if query:
+            value = calculator_value(query)
+            if value is not None:
+                display = f"{value:g}" if isinstance(value, float) else str(value)
+                self.rows.append(Result(display, "Calculator · press Enter to copy result",
+                                        Gio.ThemedIcon.new("accessories-calculator"),
+                                        lambda result=display: self.copy_result(result), -1))
+
+            for app in self.apps:
+                name = app.get_display_name() or app.get_name() or "Application"
+                detail = app.get_description() or app.get_executable() or "Application"
+                score = self.relevance(query, name, detail)
+                if score < 99:
+                    self.rows.append(Result(name, detail, app.get_icon(),
+                                            lambda app=app: app.launch([], None), score))
+
+            if self.file_index_ready:
+                for path in self.file_index:
+                    score = self.relevance(query, path.name, str(path.parent))
+                    if score < 3:
+                        self.rows.append(Result(path.name, str(path.parent),
+                                                Gio.ThemedIcon.new("text-x-generic"),
+                                                lambda path=path: Gio.AppInfo.launch_default_for_uri(
+                                                    path.as_uri(), None), score + 1))
+        elif not self.file_index_ready:
+            self.rows.append(Result("Preparing file search", "Checking common folders",
+                                    Gio.ThemedIcon.new("system-search"), lambda: None, 99))
+
+        self.rows.sort(key=lambda result: (result.score, result.title.casefold()))
+        for result in self.rows[:12]:
+            row = Gtk.ListBoxRow()
+            layout = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            icon = Gtk.Image.new_from_gicon(result.icon or Gio.ThemedIcon.new("application-x-executable"),
+                                            Gtk.IconSize.DIALOG)
+            icon.set_pixel_size(28)
+            labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            title = Gtk.Label(label=result.title, xalign=0)
+            title.get_style_context().add_class("result-title")
+            detail = Gtk.Label(label=result.detail, xalign=0)
+            detail.set_ellipsize(Pango.EllipsizeMode.END)
+            detail.get_style_context().add_class("result-detail")
+            labels.pack_start(title, False, False, 0)
+            labels.pack_start(detail, False, False, 0)
+            layout.pack_start(icon, False, False, 0)
+            layout.pack_start(labels, True, True, 0)
+            row.add(layout)
+            self.listbox.add(row)
+        self.listbox.show_all()
+        first = self.listbox.get_row_at_index(0)
+        if first:
+            self.listbox.select_row(first)
+        return GLib.SOURCE_REMOVE
+
+    @staticmethod
+    def copy_result(value: str):
+        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        clipboard.set_text(value, -1)
+        clipboard.store()
+
+    def launch_selected(self, *_args):
+        row = self.listbox.get_selected_row()
+        if row:
+            index = row.get_index()
+            if index < min(len(self.rows), 12):
+                try:
+                    self.rows[index].launch()
+                    self.window.destroy()
+                except (GLib.Error, OSError, RuntimeError) as error:
+                    print(f"Shree Search: {error}", file=os.sys.stderr)
+        return True
+
+    def on_entry_key_press(self, _entry, event):
+        if event.keyval not in (Gdk.KEY_Down, Gdk.KEY_Up):
+            return False
+        count = min(len(self.rows), 12)
+        if count == 0:
+            return True
+        selected = self.listbox.get_selected_row()
+        index = selected.get_index() if selected else -1
+        index = (index + (1 if event.keyval == Gdk.KEY_Down else -1)) % count
+        row = self.listbox.get_row_at_index(index)
+        if row:
+            self.listbox.select_row(row)
+        return True
+
+    def on_row_activated(self, _listbox, _row):
+        self.launch_selected()
+
+    def on_key_press(self, _window, event):
+        if event.keyval == Gdk.KEY_Escape:
+            self.window.destroy()
+            return True
+        return False
+
+
+def main() -> int:
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS.encode("utf-8"))
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
+    SearchWindow()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

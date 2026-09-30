@@ -76,7 +76,9 @@ test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xse
 test -s "$desktop_includes/usr/share/plank/themes/ShreeOS/dock.theme"
 test -x "$desktop_includes/usr/local/bin/shreeos-dock-session"
 test -x "$desktop_includes/usr/local/bin/shreeos-control-center"
+test -x "$desktop_includes/usr/local/bin/shreeos-search"
 test -s "$desktop_includes/usr/share/applications/shreeos-control-center.desktop"
+test -s "$desktop_includes/usr/share/applications/shreeos-search.desktop"
 test -s "$desktop_includes/usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
 grep -Fq "theme='ShreeOS'" "$desktop_includes/usr/share/shreeos/defaults/plank.dconf"
 grep -Fq 'gtk-theme-name=Arc-Dark' \

@@ -65,7 +65,6 @@ jobs:
             prototype/debian-live/config/includes.chroot/lib/live/config/9999-lock-live-user \
             prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-dock-session \
-            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-control-center \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-downloads \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-trash
 
@@ -73,6 +72,11 @@ jobs:
         run: |
           bash tests/prototype/test-config.sh
           python3 tests/prototype/test-desktop-config.py
+          python3 tests/prototype/test-search-calculator.py
+          python3 -m py_compile \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-control-center \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-search \
+            tests/prototype/test-search-calculator.py
 
       - name: Build and boot-test the console base
         run: bash scripts/build-debian-prototype.sh

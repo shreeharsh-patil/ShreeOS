@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Shree Search
+Comment=Search applications and files or calculate
+Exec=/usr/local/bin/shreeos-search
+Icon=system-search
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=search;find;calculator;

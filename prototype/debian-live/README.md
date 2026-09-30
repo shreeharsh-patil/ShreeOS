@@ -21,6 +21,8 @@ installer. An initial GTK Control Center offers Wi-Fi, Bluetooth, audio and
 dark/light appearance switches with links to existing XFCE tools; its
 interactive behavior still needs Linux desktop validation. Neither profile is
 a supported desktop release.
+`Super+Space` opens Shree Search for applications, files in common user
+folders, and bounded calculator expressions; the GUI still needs Linux review.
 The image identifies itself as a Debian-derived ShreeOS prototype and uses
 Debian's signed repositories for installed-system updates.
 

@@ -46,6 +46,10 @@ if [ -f /etc/shreeos/image-profile ] &&
     echo 'The ShreeOS Control Center launcher is missing.' >&2
     exit 1
   }
+  [ -x /usr/local/bin/shreeos-search ] || {
+    echo 'The ShreeOS Search launcher is missing.' >&2
+    exit 1
+  }
   elapsed=0
   until systemctl is-active --quiet display-manager.service &&
     pgrep -u shree -x xfce4-session >/dev/null &&

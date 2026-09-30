@@ -103,7 +103,7 @@ with ShreeOS blue focus accents, Papirus-Dark icons, Inter UI text, a ShreeOS
 top panel with app menu, task list, workspace pager, tray, audio, power, clock
 and session actions, four workspaces, left-side XFWM controls, and a centered
 Plank dock configured with ShreeOS surface colors, favorite launchers, and
-hover magnification. It uses XFCE's built-in app finder for `Super+Space`,
+hover magnification. It uses Shree Search for `Super+Space`,
 LightDM's ShreeOS wallpaper and logo, and both original light and dark
 wallpapers. Static checks validate these configurations, and the QEMU marker
 now waits for panel and dock processes. The image and appearance are still
@@ -114,6 +114,13 @@ and notification tools. It does not yet provide brightness, airplane mode,
 focus, battery, or power-profile controls, and has not been exercised in a
 running desktop. Workspace overview, notification center, lock screen, boot
 splash, and installer experiences remain future work.
+
+`Super+Space` now opens Shree Search, a GTK app finder that matches installed
+applications (including settings), indexes up to 5,000 files from common user
+folders in the background, and evaluates bounded arithmetic expressions
+without executing user-provided code. The calculation parser has an isolated
+contract test; the interactive GTK window still needs review in a Linux
+session.
 
 The prototype workflow also runs Bash syntax checks and ShellCheck at error
 severity before building either image. This Windows workspace cannot execute

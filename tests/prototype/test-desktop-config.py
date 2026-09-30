@@ -123,6 +123,15 @@ def main() -> int:
     control_center = INCLUDES / "usr/local/bin/shreeos-control-center"
     require(control_center.is_file() and control_center.read_text().startswith("#!/usr/bin/python3"),
             "ShreeOS Control Center executable is missing")
+    search_script = INCLUDES / "usr/local/bin/shreeos-search"
+    require(search_script.is_file() and search_script.read_text().startswith("#!/usr/bin/python3"),
+            "Shree Search executable is missing")
+    require((INCLUDES / "usr/share/applications/shreeos-search.desktop").is_file(),
+            "Shree Search application entry is missing")
+    shortcuts = parse_xml(SKEL / ".config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml")
+    search_shortcut = shortcuts.find("./property/property/property[@name='<Super>space']")
+    require(search_shortcut is not None and search_shortcut.get("value") == "/usr/local/bin/shreeos-search",
+            "Super+Space is not bound to Shree Search")
 
     for wallpaper in (ROOT / "branding/wallpapers").glob("*.svg"):
         parse_xml(wallpaper)
