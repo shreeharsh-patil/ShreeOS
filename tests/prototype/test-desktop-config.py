@@ -29,6 +29,19 @@ def parse_xml(path: Path) -> ET.Element:
 
 
 def main() -> int:
+    grub_dir = ROOT / "prototype/debian-live/config/bootloaders/grub-pc"
+    grub_splash = parse_xml(grub_dir / "splash.svg")
+    require(grub_splash.tag == "{http://www.w3.org/2000/svg}svg"
+            and grub_splash.get("viewBox") == "0 0 800 600",
+            "ShreeOS GRUB splash artwork is missing or has an unexpected canvas")
+    grub_theme_path = grub_dir / "live-theme/theme.txt"
+    grub_theme = grub_theme_path.read_text(encoding="utf-8")
+    for contract in ('desktop-image: "../splash.png"', 'title-text: "ShreeOS"',
+                     'text = "A calmer way to compute"', '+ boot_menu {',
+                     'selected_item_color = "#ffffff"'):
+        require(contract in grub_theme,
+                f"ShreeOS GRUB menu theme is missing {contract}")
+
     panel_path = SKEL / ".config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
     panel = parse_xml(panel_path)
     require(panel.tag == "channel" and panel.get("name") == "xfce4-panel",

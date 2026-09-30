@@ -143,6 +143,12 @@ the clock. It is a history menu, not yet the requested calendar, widgets, and
 notification-center surface; visual behavior and notification actions require
 desktop review.
 
+The Debian Live prototype now supplies original ShreeOS GRUB splash artwork
+and a matching boot-menu theme for BIOS and UEFI. live-build continues to
+generate the boot and recovery entries from its normal configuration; static
+checks cover the theme assets, but their appearance and boot behavior still
+need a Linux image build and BIOS/UEFI QEMU run.
+
 Keyboard controls now switch workspaces with Ctrl+Alt+Left/Right, move the
 focused window with Ctrl+Alt+Shift+Left/Right, and select desktops 1–4 with
 Super+1–4. XFWM/XFCE keybinding configuration is checked statically; input
@@ -155,8 +161,9 @@ an installer to the prototype until CI proves the desktop ISO boots: the
 existing `installer/` targets the legacy source-built rootfs and is not
 compatible with the Debian Live filesystem. The installer phase needs a
 Debian-compatible design, an exact target-disk and partition-plan review, and
-explicit destructive confirmation. The prototype boot menu also still lacks
-the requested ShreeOS “Try / Safe Graphics / Install” choices.
+explicit destructive confirmation. The prototype boot menu still does not
+provide a true safe-graphics mode or installer entry; those require supported
+boot parameters and an installer compatible with the Debian Live filesystem.
 
 ## Near-term work
 
