@@ -108,14 +108,17 @@ LightDM's ShreeOS wallpaper and logo, and both original light and dark
 wallpapers. Static checks validate these configurations, and the QEMU marker
 now waits for panel and dock processes. The image and appearance are still
 unverified until Linux CI builds and graphically boots it. An initial GTK
-Control Center provides Wi-Fi and Bluetooth power, sound mute, dark/light
-theme switches, a backlight slider when supported, notification focus mode,
+Control Center provides Wi-Fi and Bluetooth power, sound mute, a dark/light
+appearance switch that also updates window borders, GTK preference, wallpaper,
+dock palette, and its own styling, a backlight slider when supported,
+notification focus mode,
 and links to XFCE's network, sound, display, appearance, power, and notification
 tools. It does not yet provide airplane mode, battery, or power-profile
 controls, and has not been exercised in a running desktop. The dock's own
-preferences are linked for size, position, and hide behavior. Workspace
-overview, notification center, lock screen, boot
-splash, and installer experiences remain future work.
+preferences are linked for size, position, and hide behavior. The GRUB splash
+and menu theme are now branded and statically checked; their appearance still
+needs boot testing. Workspace overview, full notification center, lock screen,
+and installer experiences remain future work.
 
 `Super+Space` now opens Shree Search, a GTK app finder that matches installed
 applications (including settings), indexes up to 5,000 files from common user

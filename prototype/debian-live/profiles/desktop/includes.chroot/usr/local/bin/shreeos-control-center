@@ -74,6 +74,45 @@ def dark_theme_enabled() -> bool:
     return theme.lower().endswith("-dark")
 
 
+def appearance_css(dark: bool) -> str:
+    if dark:
+        return CSS
+    replacements = {
+        "#202733": "#f2f5f9",
+        "#f5f7fb": "#18202c",
+        "#aab4c3": "#627187",
+        "#2a3442": "#ffffff",
+        "#394759": "#d8e0ea",
+        "#344356": "#edf3fa",
+        "#5277a8": "#88aee4",
+        "#5e9bff": "#2878ff",
+    }
+    css = CSS
+    for source, target in replacements.items():
+        css = css.replace(source, target)
+    return css
+
+
+def apply_appearance(dark: bool) -> None:
+    theme = "Arc-Dark" if dark else "Arc"
+    icons = "Papirus-Dark" if dark else "Papirus"
+    wallpaper = "shreeos-calm-dark.svg" if dark else "shreeos-calm-light.svg"
+    dock = "ShreeOS" if dark else "ShreeOS-Light"
+    run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName", "-s", theme])
+    run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/IconThemeName", "-s", icons])
+    run_command(["xfconf-query", "-c", "xsettings", "-p", "/Gtk/PreferDarkTheme", "-s", str(dark).lower()])
+    run_command(["xfconf-query", "-c", "xfwm4", "-p", "/general/theme", "-s", theme])
+    for monitor in ("monitor0", "monitorVirtual-1"):
+        run_command([
+            "xfconf-query", "-c", "xfce4-desktop", "-p",
+            f"/backdrop/screen0/{monitor}/workspace0/last-image", "-s",
+            f"/usr/share/backgrounds/shreeos/{wallpaper}",
+        ])
+    run_command([
+        "dconf", "write", "/net/launchpad/plank/docks/dock1/theme", f"'{dock}'",
+    ])
+
+
 def focus_enabled() -> bool:
     result = run_command(["xfconf-query", "-c", "xfce4-notifyd", "-p", "/do-not-disturb"])
     return result.strip().lower() == "true"
@@ -131,7 +170,7 @@ def control_tile(icon_name: str, title: str, subtitle: str,
 
 def main() -> int:
     provider = Gtk.CssProvider()
-    provider.load_from_data(CSS.encode("utf-8"))
+    provider.load_from_data(appearance_css(state_or_default(dark_theme_enabled, True)).encode("utf-8"))
     Gtk.StyleContext.add_provider_for_screen(
         Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
     )
@@ -170,6 +209,10 @@ def main() -> int:
     except (OSError, RuntimeError, subprocess.TimeoutExpired):
         audio_status = "No audio output detected"
     theme_status = "Dark appearance" if dark_theme_enabled() else "Light appearance"
+
+    def change_appearance(enabled: bool) -> None:
+        apply_appearance(enabled)
+        provider.load_from_data(appearance_css(enabled).encode("utf-8"))
 
     grid = Gtk.Grid(column_spacing=10, row_spacing=10)
     content.pack_start(grid, False, False, 0)
@@ -220,10 +263,7 @@ def main() -> int:
     )
     dark = toggle_switch(
         "Dark appearance", theme_status, "preferences-desktop-theme-symbolic", state_or_default(dark_theme_enabled),
-        lambda enabled: (
-            run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName", "-s", "Arc-Dark" if enabled else "Arc"]),
-            run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/IconThemeName", "-s", "Papirus-Dark" if enabled else "Papirus"]),
-        ),
+        change_appearance,
     )
     focus = toggle_switch(
         "Focus mode", "Do not disturb notifications", "notifications-disabled-symbolic",

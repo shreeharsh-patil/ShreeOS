@@ -97,6 +97,8 @@ def main() -> int:
     dconf.read(INCLUDES / "usr/share/shreeos/defaults/plank.dconf", encoding="utf-8")
     dock = dconf["net/launchpad/plank/docks/dock1"]
     require(dock.get("theme") == "'ShreeOS'", "ShreeOS dock theme is not selected")
+    require((INCLUDES / "usr/share/plank/themes/ShreeOS-Light/dock.theme").is_file(),
+            "light appearance does not have a matching ShreeOS dock palette")
     require(dock.getboolean("zoom-enabled"), "dock hover magnification is not enabled")
     require(dock.get("position") == "'bottom'" and dock.get("alignment") == "'center'",
             "dock is not centered at the bottom")
@@ -144,6 +146,13 @@ def main() -> int:
             "Control Center is missing hardware brightness or notification focus controls")
     require('["plank", "--preferences"]' in controls_source,
             "Control Center is missing the dock preferences entry")
+    for appearance_contract in (
+            '"/general/theme", "-s", theme',
+            '"/Gtk/PreferDarkTheme"',
+            '"/backdrop/screen0/{monitor}/workspace0/last-image"',
+            '"ShreeOS-Light"'):
+        require(appearance_contract in controls_source,
+                f"appearance toggle does not update {appearance_contract}")
     search_script = INCLUDES / "usr/local/bin/shreeos-search"
     require(search_script.is_file() and search_script.read_text().startswith("#!/usr/bin/python3"),
             "Shree Search executable is missing")

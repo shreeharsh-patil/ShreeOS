@@ -79,6 +79,7 @@ test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfc
 test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
 test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml"
 test -s "$desktop_includes/usr/share/plank/themes/ShreeOS/dock.theme"
+test -s "$desktop_includes/usr/share/plank/themes/ShreeOS-Light/dock.theme"
 test -x "$desktop_includes/usr/local/bin/shreeos-dock-session"
 test -x "$desktop_includes/usr/local/bin/shreeos-control-center"
 test -x "$desktop_includes/usr/local/bin/shreeos-search"
