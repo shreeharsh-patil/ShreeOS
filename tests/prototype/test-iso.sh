@@ -29,7 +29,7 @@ xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.squashfs "$SQUASHFS"
 unsquashfs -s "$SQUASHFS" >/dev/null
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.packages "$TEST_DIR/packages.txt" >/dev/null
 for package in apt live-boot live-config-systemd network-manager systemd-sysv; do
-  grep -Eq "^${package}([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
+  grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
     echo "ISO package manifest is missing required package: $package" >&2
     exit 1
   }
@@ -41,7 +41,7 @@ if [ "$PROFILE" = desktop ]; then
     xfce4-appfinder xfce4-notifyd xfce4-power-manager \
     xfce4-pulseaudio-plugin xfce4-screenshooter mousepad synaptic parole \
     libreoffice-writer atril ristretto galculator xarchiver xdg-user-dirs; do
-    grep -Eq "^${package}([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
+    grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Desktop ISO package manifest is missing: $package" >&2
       exit 1
     }

@@ -115,7 +115,7 @@ PACKAGES_SOURCE="$BUILD_DIR/binary/live/filesystem.packages"
 [ -s "$ISO_SOURCE" ] || { echo "live-build did not produce $ISO_SOURCE" >&2; exit 1; }
 [ -s "$PACKAGES_SOURCE" ] || { echo "live-build did not produce its package manifest" >&2; exit 1; }
 for package in apt live-boot live-config-systemd network-manager systemd-sysv; do
-  grep -Eq "^${package}([[:space:]]|$)" "$PACKAGES_SOURCE" || {
+  grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$PACKAGES_SOURCE" || {
     echo "Built image package manifest is missing required package: $package" >&2
     exit 1
   }
