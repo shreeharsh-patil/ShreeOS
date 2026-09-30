@@ -66,4 +66,21 @@ for lib in ncurses panel menu form; do
   fi
 done
 
+# This build installs the wide-character headers flat into /usr/include (no
+# --with-includesubdir), but widec consumers such as procps-ng's watch
+# (required by --enable-watch8bit) include <ncursesw/ncurses.h> literally, and
+# pkg-config only supplies -I/usr/include. Provide the subdirectory as
+# forwarder symlinks to the same headers so the wide ABI is reachable under
+# both spellings without rebuilding ncurses with a split layout.
+incdir="${LUMEN_STAGE_ROOT}/usr/include"
+mkdir -p "$incdir/ncursesw"
+for header in curses.h ncurses.h term.h termcap.h unctrl.h ncurses_dll.h \
+              panel.h menu.h form.h eti.h; do
+  if [ -e "$incdir/$header" ]; then
+    ln -sfn "../$header" "$incdir/ncursesw/$header"
+  fi
+done
+[ -e "$incdir/ncursesw/ncurses.h" ] || \
+  lumen_die "ncursesw/ncurses.h forwarder was not created; widec consumers cannot compile"
+
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"
