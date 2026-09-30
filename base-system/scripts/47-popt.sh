@@ -28,7 +28,8 @@ mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
   --prefix=/usr \
   --build="$(gcc -dumpmachine)" \
   --host="${LUMEN_TARGET_TRIPLET}" \
-  --target="${LUMEN_TARGET_TRIPLET}"
+  --target="${LUMEN_TARGET_TRIPLET}" \
+  --disable-nls
 
 make -j"${LUMEN_MAKE_JOBS}"
 make DESTDIR="${LUMEN_STAGE_ROOT}" install

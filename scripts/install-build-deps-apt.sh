@@ -25,7 +25,7 @@ export DEBIAN_FRONTEND=noninteractive
   meson ninja-build bison flex gawk texinfo gperf \
   curl wget patch file rsync xsltproc libxml2-utils \
   bzip2 gzip xz-utils tar cpio bc fakeroot \
-  pkg-config gettext gettext-base x11-xkb-utils xutils-dev \
+  pkg-config gettext gettext-base autopoint x11-xkb-utils xutils-dev \
   libgmp-dev libmpfr-dev libmpc-dev \
   libssl-dev libelf-dev libcrypt-dev \
   xorriso mtools dosfstools fdisk util-linux e2fsprogs kmod \
