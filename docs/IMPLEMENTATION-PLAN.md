@@ -112,7 +112,9 @@ Control Center provides Wi-Fi and Bluetooth power, sound mute, dark/light
 theme switches, a backlight slider when supported, notification focus mode,
 and links to XFCE's network, sound, display, appearance, power, and notification
 tools. It does not yet provide airplane mode, battery, or power-profile
-controls, and has not been exercised in a running desktop. Workspace overview, notification center, lock screen, boot
+controls, and has not been exercised in a running desktop. The dock's own
+preferences are linked for size, position, and hide behavior. Workspace
+overview, notification center, lock screen, boot
 splash, and installer experiences remain future work.
 
 `Super+Space` now opens Shree Search, a GTK app finder that matches installed

@@ -129,6 +129,8 @@ def main() -> int:
     controls_source = control_center.read_text(encoding="utf-8")
     require('"brightnessctl", "set"' in controls_source and '"Focus mode"' in controls_source,
             "Control Center is missing hardware brightness or notification focus controls")
+    require('["plank", "--preferences"]' in controls_source,
+            "Control Center is missing the dock preferences entry")
     search_script = INCLUDES / "usr/local/bin/shreeos-search"
     require(search_script.is_file() and search_script.read_text().startswith("#!/usr/bin/python3"),
             "Shree Search executable is missing")

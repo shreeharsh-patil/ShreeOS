@@ -30,7 +30,8 @@ in the roadmap. An initial ShreeOS Control Center provides Wi-Fi, Bluetooth,
 audio, and appearance switches plus links to XFCE settings tools; it still
 offers a backlight slider when supported and a notification focus toggle; it
 needs a Linux GUI review and does not yet cover airplane mode or power
-profiles. A graphical installer, broader hardware support, advanced
+profiles. Dock preferences open Plank's configuration for size, position, and
+hide behavior. A graphical installer, broader hardware support, advanced
 window overview, and installed-system workflow remain open.
 `Super+Space` opens Shree Search for applications, files in common user
 folders, and safe calculator expressions; `Super+Up` opens Workspace Overview

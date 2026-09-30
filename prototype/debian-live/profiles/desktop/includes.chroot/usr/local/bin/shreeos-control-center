@@ -282,18 +282,19 @@ def main() -> int:
     links = Gtk.Grid(column_spacing=8, row_spacing=8)
     content.pack_start(links, True, True, 0)
     setting_apps = [
-        ("network-wireless-symbolic", "Network", "nm-connection-editor"),
-        ("bluetooth-active-symbolic", "Bluetooth", "blueman-manager"),
-        ("audio-card-symbolic", "Sound", "pavucontrol"),
-        ("preferences-desktop-theme-symbolic", "Appearance", "xfce4-appearance-settings"),
-        ("video-display-symbolic", "Displays", "xfce4-display-settings"),
-        ("preferences-system-power-symbolic", "Power", "xfce4-power-manager-settings"),
-        ("preferences-system-notifications-symbolic", "Notifications", "xfce4-notifyd-config"),
+        ("network-wireless-symbolic", "Network", ["nm-connection-editor"]),
+        ("bluetooth-active-symbolic", "Bluetooth", ["blueman-manager"]),
+        ("audio-card-symbolic", "Sound", ["pavucontrol"]),
+        ("preferences-desktop-theme-symbolic", "Appearance", ["xfce4-appearance-settings"]),
+        ("video-display-symbolic", "Displays", ["xfce4-display-settings"]),
+        ("preferences-system-power-symbolic", "Power", ["xfce4-power-manager-settings"]),
+        ("preferences-system-notifications-symbolic", "Notifications", ["xfce4-notifyd-config"]),
+        ("preferences-desktop-dock-symbolic", "Dock", ["plank", "--preferences"]),
     ]
 
-    def open_settings(_button, command: str) -> None:
+    def open_settings(_button, command: list[str]) -> None:
         try:
-            subprocess.Popen([command], close_fds=True)
+            subprocess.Popen(command, close_fds=True)
             window.destroy()
         except OSError as error:
             show_error(window, "Settings could not be opened", error)
