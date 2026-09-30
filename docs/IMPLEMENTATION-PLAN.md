@@ -1,6 +1,6 @@
 # ShreeOS Desktop Distribution Implementation Plan
 
-**Status:** Phases 1–5 have implementation scaffolding in an isolated Debian Live prototype; Linux build and boot gates are pending. Installer, installed-system update/recovery, and production release phases remain open.
+**Status:** The isolated Debian Live base and XFCE desktop prototypes build and pass BIOS/UEFI QEMU boot checks in GitHub Actions. Installation, installed-system updates/recovery, production release, and interactive visual acceptance remain open.
 **Audit baseline:** repository commit `44677fdeb4e1` (2026-09-30).
 
 This plan turns the desktop-distribution request into reviewable milestones. It
@@ -88,15 +88,20 @@ install, reboot and update gates.
 
 The prototype lives under `prototype/debian-live/`. It pins Debian 13 Trixie
 package inputs to snapshot `20260929T000000Z`, pins live-build in CI, and has
-separate `base` and optional `desktop` profiles. The desktop profile selects
+separate `base` and optional `desktop` profiles. On commit `cd9eda4`, GitHub
+Actions built both profiles and passed BIOS and UEFI QEMU checks. Those checks
+verified the locked temporary account, package database, storage, NetworkManager
+and DHCP; the desktop image also reached LightDM, an XFCE session, the panel and
+Plank dock. This confirms prototype boot and service gates, not interactive
+visual acceptance or physical-hardware coverage. The desktop profile selects
 Debian's XFCE task and ShreeOS artwork, while excluding Debian's
 `non-free-firmware` archive. A boot-time hook locks the temporary live user's
 default password; the QEMU marker checks that the account has no password
 login or sudo access, an intact apt/dpkg package database, QEMU block-device
 detection, and an Ethernet DHCP route. In desktop mode it also waits for
-LightDM and an XFCE session. These profiles are implemented but their Linux
-build and QEMU checks have not yet run in this Windows workspace. The desktop
-is still not a release.
+LightDM, an XFCE session, the panel, and Plank. GitHub Actions run `36755735115`
+on commit `cd9eda4` passed those checks in BIOS and UEFI QEMU. The desktop is
+still not a release.
 
 The optional desktop now has a staged appearance layer: Arc-Dark GTK styling
 with ShreeOS blue focus accents, Papirus-Dark icons, Inter UI text, a ShreeOS
@@ -106,18 +111,18 @@ Plank dock configured with ShreeOS surface colors, favorite launchers, and
 hover magnification. It uses Shree Search for `Super+Space`,
 LightDM's ShreeOS wallpaper and logo, and both original light and dark
 wallpapers. Static checks validate these configurations, and the QEMU marker
-now waits for panel and dock processes. The image and appearance are still
-unverified until Linux CI builds and graphically boots it. An initial GTK
+waits for panel and dock processes. CI has confirmed the image boots to the
+desktop; application visuals and interactions still need review from the saved
+screenshots and an interactive session. An initial GTK
 Control Center provides Wi-Fi and Bluetooth power, sound mute, a dark/light
 appearance switch that also updates window borders, GTK preference, wallpaper,
 dock palette, and its own styling, a backlight slider when supported,
-notification focus mode,
-and links to XFCE's network, sound, display, appearance, power, and notification
-tools. It does not yet provide airplane mode, battery, or power-profile
-controls, and has not been exercised in a running desktop. The dock's own
+notification focus mode, and links to XFCE's network, sound, display,
+appearance, power, and notification tools. It does not yet provide airplane
+mode, battery, or power-profile controls. The dock's own
 preferences are linked for size, position, and hide behavior. The GRUB splash
-and menu theme are now branded and statically checked; their appearance still
-needs boot testing. Workspace overview, full notification center, lock screen,
+and menu theme are now branded and confirmed in the CI boot image at 800×600.
+Workspace overview, full notification center, lock screen,
 and installer experiences remain future work. The live account has a locked
 password by design, so it does not expose a lock shortcut that would leave a
 session impossible to unlock.
@@ -126,15 +131,15 @@ session impossible to unlock.
 applications (including settings), indexes up to 5,000 files from common user
 folders in the background, and evaluates bounded arithmetic expressions
 without executing user-provided code. The calculation parser has an isolated
-contract test; the interactive GTK window still needs review in a Linux
-session.
+contract test; the interactive GTK window and its keyboard flow still need
+review in a Linux session.
 
 `Super+Up` opens a ShreeOS Workspace Overview backed by XFCE's four X11
 workspaces. It groups open windows by desktop and supports desktop switching,
 window activation, moving a window, and closing it. Parser tests cover the
 `wmctrl` inventory format; thumbnail cards, workspace creation, animations,
-and touchpad gestures remain open, and the GUI action flow still needs VM
-validation.
+and touchpad gestures remain open. CI confirms the XFCE session can launch the
+overview process, but its interactive action flow still needs VM review.
 
 The dock now includes ShreeOS Search, Workspace Overview, and Control Center
 alongside the browser, terminal, file manager, image viewer, editor, settings,
@@ -148,25 +153,24 @@ the clock. It is a history menu, not yet the requested calendar, widgets, and
 notification-center surface; visual behavior and notification actions require
 desktop review.
 
-The Debian Live prototype now supplies original ShreeOS GRUB splash artwork
-and a matching boot-menu theme for BIOS and UEFI. live-build continues to
-generate the boot and recovery entries from its normal configuration; static
-checks cover the theme assets, but their appearance and boot behavior still
-need a Linux image build and BIOS/UEFI QEMU run.
+The Debian Live prototype supplies original ShreeOS GRUB splash artwork and a
+matching boot-menu theme for BIOS and UEFI. live-build continues to generate
+the boot and recovery entries from its normal configuration. CI has booted
+both firmware paths, and the QEMU job retains a boot-menu image for review.
 
 Keyboard controls now switch workspaces with Ctrl+Alt+Left/Right, move the
 focused window with Ctrl+Alt+Shift+Left/Right, and select desktops 1–4 with
 Super+1–4. XFWM/XFCE keybinding configuration is checked statically; input
-behavior still needs QEMU and hardware validation.
+behavior still needs interactive VM and hardware validation.
 `Super+Shift+S` now opens Debian's XFCE screenshot tool in region-selection
 mode; its package and key binding are covered by the prototype checks.
 
-The prototype workflow also runs Bash syntax checks and ShellCheck at error
-severity before building either image. This Windows workspace cannot execute
-Debian Live, QEMU, or ShellCheck, so those gates have not run here. Do not wire
-an installer to the prototype until CI proves the desktop ISO boots: the
-existing `installer/` targets the legacy source-built rootfs and is not
-compatible with the Debian Live filesystem. The installer phase needs a
+The prototype workflow also runs Bash syntax checks and ShellCheck before
+building either image, then validates SquashFS and BIOS/UEFI QEMU boot paths.
+The boot test saves both menu and post-boot screen captures for visual review.
+This Windows workspace cannot execute Debian Live or QEMU locally. The existing
+`installer/` targets the legacy source-built rootfs and is not compatible with
+the Debian Live filesystem. The installer phase needs a
 Debian-compatible design, an exact target-disk and partition-plan review, and
 explicit destructive confirmation. The prototype boot menu still does not
 provide a true safe-graphics mode or installer entry; those require supported
@@ -174,15 +178,15 @@ boot parameters and an installer compatible with the Debian Live filesystem.
 
 ## Near-term work
 
-1. Run Linux CI build and boot gates for both profiles; fix base failures
-   before using the desktop output to judge the architecture.
-2. Refresh the audit against the current checkout and, where a build artifact
-   is available, the actual ISO. Mark older measurements with their source
-   commit and release rather than presenting them as current.
+1. Review the post-boot desktop screenshots and launch key UI actions in the
+   QEMU session before describing the prototype as visually accepted.
+2. Refresh the audit against the current checkout and built ISO artifacts.
+   Mark older measurements with their source commit and release rather than
+   presenting them as current.
 3. Keep source downloads checksum-verified, pin the base-image repository
    snapshot/release inputs, and record package manifests and licenses in the
    output.
-4. Implement the Debian-compatible installer after desktop boot passes; test
+4. Implement the Debian-compatible installer now that desktop boot passes; test
    installation, reboot, account login, package operations and shutdown on a
    disposable virtual disk.
 5. Define and test signed repository/update policy and recovery behavior.

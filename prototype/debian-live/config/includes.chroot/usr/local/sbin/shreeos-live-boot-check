@@ -17,6 +17,7 @@ case "$account_status" in
   fail 'live account password is not locked'
     ;;
 esac
+log 'live account password is locked'
 
 if ! apt-get check; then
   fail 'apt/dpkg package database check failed'

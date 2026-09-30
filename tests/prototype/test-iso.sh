@@ -53,7 +53,8 @@ run_boot_test() {
   local firmware_args=() log="$TEST_DIR/${mode}.log"
   local emulator_log="$TEST_DIR/${mode}-qemu.log"
   local monitor_socket="$TEST_DIR/${mode}-monitor.sock"
-  local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm" status=0
+  local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
+  local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local deadline=$((SECONDS + 180))
   if [ "$mode" = uefi ]; then
     local firmware="${OVMF_CODE:-}" firmware_vars="${OVMF_VARS:-}"
@@ -96,7 +97,7 @@ run_boot_test() {
   local emulator_pid=$!
   sleep 20
   if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-    if python3 - "$monitor_socket" "$screen_dump" <<'PY'
+    if python3 - "$monitor_socket" "$menu_dump" <<'PY'
 import socket
 import sys
 import time
@@ -135,12 +136,12 @@ PY
     sleep 1
   done
   if grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-    python3 - "$monitor_socket" <<'PY'
+    python3 - "$monitor_socket" "$screen_dump" <<'PY'
 import socket
 import sys
 import time
 
-monitor = sys.argv[1]
+monitor, output = sys.argv[1:]
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(3)
 for _ in range(10):
@@ -151,6 +152,8 @@ for _ in range(10):
         time.sleep(1)
 else:
     raise SystemExit("QEMU monitor socket did not become available to stop the guest")
+client.recv(4096)
+client.sendall(f"screendump {output}\n".encode())
 client.recv(4096)
 client.sendall(b"quit\n")
 client.close()
@@ -167,6 +170,9 @@ PY
     fi
     if [ -s "$screen_dump" ]; then
       cp -- "$screen_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-screen.ppm"
+    fi
+    if [ -s "$menu_dump" ]; then
+      cp -- "$menu_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-menu.ppm"
     fi
   fi
 
