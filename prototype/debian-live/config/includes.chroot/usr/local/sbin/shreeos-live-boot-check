@@ -68,8 +68,24 @@ if [ -f /etc/shreeos/image-profile ] &&
     pgrep -u shree -x xfce4-panel >/dev/null &&
     pgrep -u shree -x plank >/dev/null &&
     [ -f /home/shree/.config/shreeos/xfce-session-ready ]; do
-    if [ "$elapsed" -ge 120 ]; then
-      fail 'desktop session, panel, dock, or ShreeOS first-login setup did not finish within 120 seconds'
+    if [ "$elapsed" -ge 60 ]; then
+      log 'desktop session startup timed out; live-user process inventory:'
+      ps -u shree -o pid,args | tail -n 32 \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+      log 'live-user session journal:'
+      journalctl -b _UID=1000 --no-pager -n 40 2>/dev/null \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+      if [ -r /home/shree/.xsession-errors ]; then
+        log 'X session error log:'
+        tail -n 40 /home/shree/.xsession-errors \
+          | while IFS= read -r diagnostic; do log "$diagnostic"; done
+      fi
+      if [ -e /home/shree/.config/shreeos/xfce-session-ready ]; then
+        log 'ShreeOS first-login setup marker exists'
+      else
+        log 'ShreeOS first-login setup marker is missing'
+      fi
+      fail 'desktop session, panel, dock, or ShreeOS first-login setup did not finish within 60 seconds'
     fi
     sleep 1
     elapsed=$((elapsed + 1))

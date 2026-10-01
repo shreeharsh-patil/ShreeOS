@@ -3,6 +3,8 @@ set -eu
 
 marker="$HOME/.config/shreeos/xfce-session-ready"
 [ -e "$marker" ] && exit 0
+trap 'setup_status=$?; logger -t shreeos-session-setup "exited with status ${setup_status}"' EXIT
+logger -t shreeos-session-setup 'Applying ShreeOS XFCE panel and wallpaper defaults'
 
 xfconf-query -c xfce4-panel -p /panels/panel-1/length -s 100
 xfconf-query -c xfce4-panel -p /panels/panel-1/length-adjust -s false
@@ -23,3 +25,4 @@ done
 xfce4-panel --restart
 mkdir -p "${marker%/*}"
 touch "$marker"
+logger -t shreeos-session-setup 'ShreeOS first-login desktop setup completed'
