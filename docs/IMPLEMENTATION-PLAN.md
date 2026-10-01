@@ -135,7 +135,9 @@ Debian APT catalog, reads dpkg installed state, and uses administrator-gated
 `apt-get` actions outside the nonpersistent live session; the installed-system
 authorization flow is still unreviewed. The live account has a locked
 password by design, so it does not expose a lock shortcut that would leave a
-session impossible to unlock.
+session impossible to unlock. The Control Center also opens an original
+About ShreeOS dialog backed by `/etc/os-release`, which identifies ShreeOS and
+discloses Debian as its upstream.
 
 `Super+Space` now opens Shree Search, a GTK app finder that matches installed
 applications (including settings), indexes up to 5,000 files from common user

@@ -1,5 +1,5 @@
 NAME="ShreeOS"
-PRETTY_NAME="ShreeOS Base Prototype (Debian 13)"
+PRETTY_NAME="ShreeOS 0.3.0 Prototype (Debian 13 Trixie)"
 ID=shreeos
 ID_LIKE=debian
 VERSION="0.3.0-prototype"

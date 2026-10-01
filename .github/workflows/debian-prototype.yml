@@ -82,6 +82,7 @@ jobs:
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-search \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-overview \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-store \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-about \
             tests/prototype/test-search-calculator.py \
             tests/prototype/test-workspace-overview.py
 

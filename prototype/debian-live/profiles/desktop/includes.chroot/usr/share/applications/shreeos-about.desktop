@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=About ShreeOS
+Comment=ShreeOS release and upstream information
+Exec=/usr/local/bin/shreeos-about
+Icon=shreeos
+Terminal=false
+Categories=System;
+Keywords=about;version;release;debian;

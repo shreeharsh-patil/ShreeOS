@@ -159,6 +159,17 @@ def main() -> int:
     controls_source = control_center.read_text(encoding="utf-8")
     require('"brightnessctl", "set"' in controls_source and '"Focus mode"' in controls_source,
             "Control Center is missing hardware brightness or notification focus controls")
+    require('"About ShreeOS"' in controls_source
+            and (INCLUDES / "usr/local/bin/shreeos-about").is_file(),
+            "Control Center is missing the ShreeOS release information page")
+    release_info = configparser.ConfigParser(interpolation=None)
+    release_path = ROOT / "prototype/debian-live/config/includes.chroot/etc/os-release"
+    release_info.read_string("[os]\n" + release_path.read_text(encoding="utf-8"))
+    require(release_info["os"].get("ID") == "shreeos"
+            and release_info["os"].get("ID_LIKE") == "debian"
+            and "ShreeOS" in release_info["os"].get("PRETTY_NAME", "")
+            and "Debian" in release_info["os"].get("PRETTY_NAME", ""),
+            "prototype OS release metadata does not identify ShreeOS and its Debian base")
     require("def battery_status()" in controls_source
             and 'Path("/sys/class/power_supply")' in controls_source,
             "Control Center does not display battery state on supported laptops")

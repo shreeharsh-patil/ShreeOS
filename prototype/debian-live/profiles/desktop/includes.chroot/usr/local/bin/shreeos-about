@@ -1,0 +1,44 @@
+#!/usr/bin/python3
+"""Show the ShreeOS identity and upstream information."""
+
+import configparser
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk
+
+
+def os_metadata():
+    metadata = configparser.ConfigParser(interpolation=None)
+    with open("/etc/os-release", encoding="utf-8") as release:
+        metadata.read_string("[os]\n" + release.read())
+    return metadata["os"]
+
+
+def main():
+    metadata = os_metadata()
+    dialog = Gtk.AboutDialog()
+    dialog.set_program_name("ShreeOS")
+    dialog.set_version(metadata.get("VERSION", "Prototype"))
+    dialog.set_comments(
+        "An independent ShreeOS desktop distribution built on Debian GNU/Linux.\n\n"
+        "This prototype uses Debian's signed Trixie package repositories and "
+        "retains upstream software and licensing notices."
+    )
+    dialog.set_logo_icon_name("shreeos")
+    dialog.set_website(metadata.get("HOME_URL", "https://github.com/shreeharsh-patil/ShreeOS"))
+    dialog.set_website_label("ShreeOS project")
+    dialog.set_copyright("Copyright © 2026 ShreeOS contributors")
+    dialog.set_license_type(Gtk.License.MIT_X11)
+    dialog.set_wrap_license(True)
+    dialog.set_authors(["ShreeOS contributors"])
+    dialog.set_documenters(["ShreeOS contributors"])
+    dialog.connect("response", lambda window, _response: window.destroy())
+    dialog.show_all()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -392,6 +392,7 @@ def main() -> int:
         ("preferences-system-power-symbolic", "Power", ["xfce4-power-manager-settings"]),
         ("preferences-system-notifications-symbolic", "Notifications", ["xfce4-notifyd-config"]),
         ("preferences-desktop-dock-symbolic", "Dock", ["plank", "--preferences"]),
+        ("help-about-symbolic", "About ShreeOS", ["/usr/local/bin/shreeos-about"]),
     ]
 
     def open_settings(_button, command: list[str]) -> None:
