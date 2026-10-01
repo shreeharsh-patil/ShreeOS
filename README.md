@@ -120,9 +120,9 @@ desktop distribution.
 The base profile is a Live ISO with a compressed SquashFS root that boots to a
 console. The optional desktop profile adds XFCE, LightDM, ShreeOS wallpapers
 and greeter branding, a configured top panel and dock, and coordinated GTK,
-icon, and font defaults. Its QEMU gate checks that the desktop session, panel,
-and dock start, but the image and appearance have not yet been validated on
-Linux. Neither profile has a graphical installer or supported disk
+icon, and font defaults. CI confirms the desktop session, panel, and dock
+processes start, but its QEMU screen capture is nearly blank and fails the
+visual-content gate. Neither profile has a graphical installer or supported disk
 installation procedure. Do not use it to install on a physical computer.
 
 ## Downloads and checksums
@@ -161,9 +161,10 @@ and manual dispatch. It builds in Debian Trixie, checks the SquashFS and
 manifest, then runs BIOS and UEFI QEMU boot checks with virtual block storage
 and Ethernet devices and timeouts. The boot marker checks the package database,
 storage detection, and NetworkManager DHCP route; the desktop profile also
-requires LightDM and an XFCE session for the live user. A green prototype
-workflow would validate only those checks; it would not certify physical
-hardware, an installer, or a release.
+requires LightDM, an XFCE session, the panel and dock, and a nonblank screenshot.
+The screenshot check currently fails. A green prototype workflow would validate
+only those checks; it would not certify physical hardware, an installer, or a
+release.
 
 Useful local checks include:
 
