@@ -49,7 +49,10 @@ def main() -> int:
     require(panel.find("property[@name='configver']") is not None
             and panel.find("property[@name='configver']").get("value") == "2",
             "XFCE panel defaults do not declare the current panel configuration schema")
-    panel_one = panel.find("property[@name='panel-1']")
+    panels = panel.find("property[@name='panels']")
+    require(panels is not None and panels.find("value[@value='1']") is not None,
+            "XFCE panel IDs are not stored in the current panel configuration hierarchy")
+    panel_one = panels.find("property[@name='panel-1']")
     require(panel_one is not None, "ShreeOS top panel is not configured")
     plugin_ids = {
         int(item.get("value", "-1"))

@@ -3,8 +3,7 @@
   <property name="configver" type="int" value="2" />
   <property name="panels" type="array">
     <value type="int" value="1" />
-  </property>
-  <property name="panel-1" type="empty">
+    <property name="panel-1" type="empty">
     <property name="autohide-behavior" type="uint" value="0" />
     <property name="background-rgba" type="array">
       <value type="double" value="0.10" />
@@ -37,6 +36,7 @@
     <property name="position" type="string" value="p=6;x=0;y=0" />
     <property name="position-locked" type="bool" value="true" />
     <property name="size" type="uint" value="34" />
+    </property>
   </property>
   <property name="plugins" type="empty">
     <property name="plugin-1" type="string" value="applicationsmenu">
