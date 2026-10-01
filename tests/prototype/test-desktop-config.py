@@ -144,6 +144,11 @@ def main() -> int:
             and store_icon.tag == "{http://www.w3.org/2000/svg}svg",
             "ShreeOS Software is missing its desktop launcher or original icon")
 
+    builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+    require('XFCE_DEFAULTS_TARGET="$BUILD_DIR/config/includes.chroot/etc/xdg/xfce4/xfconf/xfce-perchannel-xml"' in builder
+            and 'cp "$XFCE_DEFAULTS_SOURCE"/*.xml "$XFCE_DEFAULTS_TARGET/"' in builder,
+            "live image does not install ShreeOS XFCE defaults system-wide")
+
     app_icon = INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
     parse_xml(app_icon)
     require((INCLUDES / "usr/share/applications/shreeos-control-center.desktop").is_file(),

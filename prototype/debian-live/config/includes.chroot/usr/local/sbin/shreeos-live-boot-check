@@ -105,13 +105,38 @@ if [ -f /etc/shreeos/image-profile ] &&
   fi
   if command -v runuser >/dev/null 2>&1 && command -v xfconf-query >/dev/null 2>&1; then
     log 'XFCE desktop backdrop configuration:'
-    if backdrop_inventory="$(runuser -u shree -- env DISPLAY=:0 xfconf-query -c xfce4-desktop -lv 2>&1)"; then
+    session_pid="$(pgrep -u shree -x xfce4-session | head -n 1)"
+    session_env=""
+    if [ -n "$session_pid" ] && [ -r "/proc/${session_pid}/environ" ]; then
+      session_env="$(tr '\000' '\n' < "/proc/${session_pid}/environ")"
+    fi
+    session_display="$(printf '%s\n' "$session_env" | sed -n 's/^DISPLAY=//p' | head -n 1)"
+    session_bus="$(printf '%s\n' "$session_env" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1)"
+    session_runtime="$(printf '%s\n' "$session_env" | sed -n 's/^XDG_RUNTIME_DIR=//p' | head -n 1)"
+    log "XFCE session environment: DISPLAY=${session_display:-unset} DBUS_SESSION_BUS_ADDRESS=${session_bus:-unset} XDG_RUNTIME_DIR=${session_runtime:-unset}"
+    if backdrop_inventory="$(runuser -u shree -- env DISPLAY="${session_display:-:0}" \
+      DBUS_SESSION_BUS_ADDRESS="$session_bus" XDG_RUNTIME_DIR="$session_runtime" \
+      xfconf-query -c xfce4-desktop -lv 2>&1)"; then
       printf '%s\n' "$backdrop_inventory" | tail -n 16 \
         | while IFS= read -r diagnostic; do log "$diagnostic"; done
     else
       log "xfconf query failed: $backdrop_inventory"
     fi
   fi
+  for desktop_config in \
+    /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \
+    /home/shree/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \
+    /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml \
+    /home/shree/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+  do
+    if [ -r "$desktop_config" ]; then
+      log "XFCE config values from $desktop_config:"
+      grep -E 'panel-1|length|size|position|last-image|image-style' "$desktop_config" \
+        | tail -n 12 | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    else
+      log "XFCE config missing: $desktop_config"
+    fi
+  done
   journalctl -b -u lightdm.service --no-pager -n 40 2>/dev/null \
     | while IFS= read -r diagnostic; do log "LightDM: $diagnostic"; done
 

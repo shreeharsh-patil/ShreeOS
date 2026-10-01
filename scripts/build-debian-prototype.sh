@@ -46,6 +46,10 @@ if [ "$LIVE_PROFILE" = desktop ]; then
     "$BUILD_DIR/config/package-lists/"
   cp -a "$PROFILE_SOURCE/includes.chroot/." \
     "$BUILD_DIR/config/includes.chroot/"
+  XFCE_DEFAULTS_SOURCE="$BUILD_DIR/config/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml"
+  XFCE_DEFAULTS_TARGET="$BUILD_DIR/config/includes.chroot/etc/xdg/xfce4/xfconf/xfce-perchannel-xml"
+  mkdir -p "$XFCE_DEFAULTS_TARGET"
+  cp "$XFCE_DEFAULTS_SOURCE"/*.xml "$XFCE_DEFAULTS_TARGET/"
   mkdir -p \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps" \
