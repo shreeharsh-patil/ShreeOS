@@ -1,0 +1,274 @@
+#!/usr/bin/python3
+"""Small ShreeOS software browser backed by Debian APT and dpkg."""
+
+import re
+import os
+import subprocess
+import threading
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk
+
+
+CSS = b"""
+window.shreeos-store { background: #171e28; color: #f5f7fb; }
+headerbar.store-header { background: #202a37; border: 0; box-shadow: none; }
+entry.store-search { background: #2a3544; color: #fff; border: 1px solid #46566b;
+  border-radius: 12px; padding: 10px 14px; }
+list.store-results { background: transparent; }
+row.store-row { background: #222d3a; border: 1px solid #344355;
+  border-radius: 14px; margin: 6px 2px; padding: 10px; }
+label.store-title { color: #f5f7fb; font-size: 14px; font-weight: 600; }
+label.store-package, label.store-description, label.store-status { color: #aebbd0; }
+button.store-action { background: #3b6eae; color: white; border: 0;
+  border-radius: 9px; padding: 7px 15px; }
+button.store-action:hover { background: #4c83c8; }
+"""
+
+
+def installed_packages():
+    packages = set()
+    protected = set()
+    try:
+        with open("/var/lib/dpkg/status", encoding="utf-8") as status:
+            for paragraph in status.read().split("\n\n"):
+                fields = dict(line.split(": ", 1) for line in paragraph.splitlines()
+                              if ": " in line)
+                if fields.get("Status") == "install ok installed":
+                    package = fields.get("Package", "")
+                    packages.add(package)
+                    if fields.get("Essential") == "yes" or fields.get("Priority") in {"required", "important"}:
+                        protected.add(package)
+    except OSError:
+        pass
+    return packages, protected
+
+
+class ShreeStore(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="org.shreeos.Store")
+        self.installed, self.protected = installed_packages()
+        self.live_session = os.path.exists("/run/live/medium")
+        self.search_timeout = 0
+
+    def do_activate(self):
+        self.window = Gtk.ApplicationWindow(application=self)
+        self.window.set_title("Software — ShreeOS")
+        self.window.set_default_size(900, 650)
+        self.window.set_position(Gtk.WindowPosition.CENTER)
+        self.window.get_style_context().add_class("shreeos-store")
+
+        header = Gtk.HeaderBar(title="Software", show_close_button=True)
+        header.get_style_context().add_class("store-header")
+        self.window.set_titlebar(header)
+        refresh = Gtk.Button(label="Refresh catalog")
+        refresh.connect("clicked", self.refresh_catalog)
+        header.pack_end(refresh)
+        self.refresh_button = refresh
+        if self.live_session:
+            self.refresh_button.set_sensitive(False)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        content.set_margin_top(20)
+        content.set_margin_bottom(18)
+        content.set_margin_start(22)
+        content.set_margin_end(22)
+        self.window.add(content)
+
+        intro = Gtk.Label(label="Find and manage software for ShreeOS")
+        intro.set_xalign(0)
+        intro.set_halign(Gtk.Align.START)
+        intro.get_style_context().add_class("store-description")
+        content.pack_start(intro, False, False, 0)
+
+        self.search = Gtk.SearchEntry(placeholder_text="Search packages and applications")
+        self.search.get_style_context().add_class("store-search")
+        self.search.connect("search-changed", self.queue_search)
+        content.pack_start(self.search, False, False, 0)
+
+        self.status = Gtk.Label(label="Search the Debian package catalog")
+        self.status.set_xalign(0)
+        self.status.get_style_context().add_class("store-status")
+        content.pack_start(self.status, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        content.pack_start(scroll, True, True, 0)
+        self.results = Gtk.ListBox()
+        self.results.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.results.get_style_context().add_class("store-results")
+        scroll.add(self.results)
+
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            self.window.get_screen(), provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+        self.window.show_all()
+        self.search.grab_focus()
+
+    def queue_search(self, *_args):
+        if self.search_timeout:
+            GLib.source_remove(self.search_timeout)
+        self.search_timeout = GLib.timeout_add(250, self.run_search)
+
+    def run_search(self):
+        self.search_timeout = 0
+        query = self.search.get_text().strip()
+        self.fill_results(query)
+        return GLib.SOURCE_REMOVE
+
+    def fill_results(self, query):
+        for row in self.results.get_children():
+            self.results.remove(row)
+        if not query:
+            self.status.set_text(
+                "Install ShreeOS to manage packages" if self.live_session
+                else "Search the Debian package catalog"
+            )
+            self.results.show_all()
+            return
+        if len(query) > 72:
+            self.status.set_text("Search text is too long")
+            return
+
+        pattern = re.escape(query)
+        try:
+            output = subprocess.run(
+                ["apt-cache", "search", "--names-only", pattern],
+                check=False, capture_output=True, text=True, timeout=15,
+            ).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            self.status.set_text("Package catalog is unavailable. Check your network and try again.")
+            return
+
+        matches = []
+        for line in output.splitlines():
+            package, separator, description = line.partition(" - ")
+            if separator and re.fullmatch(r"[a-z0-9][a-z0-9+.-]{0,127}", package):
+                matches.append((package, description))
+            if len(matches) == 40:
+                break
+        if self.live_session:
+            self.status.set_text("Browse the catalog here; package changes are available after installing ShreeOS.")
+        else:
+            self.status.set_text(f"{len(matches)} matching packages · powered by APT")
+        for package, description in matches:
+            self.results.add(self.package_row(package, description))
+        self.results.show_all()
+
+    def package_row(self, package, description):
+        row = Gtk.ListBoxRow()
+        row.get_style_context().add_class("store-row")
+        line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        row.add(line)
+        icon = Gtk.Image.new_from_icon_name(
+            "application-x-executable", Gtk.IconSize.DIALOG,
+        )
+        line.pack_start(icon, False, False, 5)
+
+        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        labels.set_hexpand(True)
+        line.pack_start(labels, True, True, 0)
+        title = Gtk.Label(label=package)
+        title.set_xalign(0)
+        title.get_style_context().add_class("store-title")
+        labels.pack_start(title, False, False, 0)
+        package_label = Gtk.Label(label=description)
+        package_label.set_xalign(0)
+        package_label.set_ellipsize(3)
+        package_label.get_style_context().add_class("store-description")
+        labels.pack_start(package_label, False, False, 0)
+
+        installed = package in self.installed
+        protected = package in self.protected
+        button = Gtk.Button(label=("Required" if protected else "Remove")
+                            if installed else "Install")
+        button.set_sensitive(not self.live_session and not protected)
+        button.get_style_context().add_class("store-action")
+        button.connect("clicked", self.change_package, package, installed)
+        line.pack_end(button, False, False, 3)
+        return row
+
+    def change_package(self, _button, package, remove):
+        verb = "remove" if remove else "install"
+        prompt = Gtk.MessageDialog(
+            transient_for=self.window, modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.CANCEL,
+            text=f"{verb.title()} {package}?",
+        )
+        prompt.add_button(verb.title(), Gtk.ResponseType.ACCEPT)
+        prompt.format_secondary_text(
+            "APT will resolve dependencies and ask an administrator to authorize this change."
+        )
+        accepted = prompt.run() == Gtk.ResponseType.ACCEPT
+        prompt.destroy()
+        if not accepted:
+            return
+
+        self.status.set_text(f"Preparing to {verb} {package}…")
+        self.search.set_sensitive(False)
+        self.refresh_button.set_sensitive(False)
+        action = "remove" if remove else "install"
+        command = ["pkexec", "/usr/bin/apt-get", "-y", action, "--", package]
+        threading.Thread(target=self.run_package_action, args=(command, package, remove),
+                         daemon=True).start()
+
+    def run_package_action(self, command, package, remove):
+        try:
+            result = subprocess.run(command, check=False, timeout=900)
+            message = (f"{package} {('removed' if remove else 'installed')}"
+                       if result.returncode == 0 else
+                       "The package action was cancelled or could not be completed.")
+        except (OSError, subprocess.TimeoutExpired):
+            result = None
+            message = "The package manager could not complete the action."
+        GLib.idle_add(self.finish_package_action, package, remove, message,
+                      result is not None and result.returncode == 0)
+
+    def finish_package_action(self, package, remove, message, success):
+        self.search.set_sensitive(True)
+        self.refresh_button.set_sensitive(True)
+        self.status.set_text(message)
+        if success:
+            if remove:
+                self.installed.discard(package)
+            else:
+                self.installed.add(package)
+            self.fill_results(self.search.get_text().strip())
+        return GLib.SOURCE_REMOVE
+
+    def refresh_catalog(self, _button):
+        self.status.set_text("Refreshing the package catalog…")
+        self.search.set_sensitive(False)
+        self.refresh_button.set_sensitive(False)
+        threading.Thread(target=self.run_catalog_refresh, daemon=True).start()
+
+    def run_catalog_refresh(self):
+        try:
+            result = subprocess.run(
+                ["pkexec", "/usr/bin/apt-get", "update"], check=False, timeout=900,
+            )
+            success = result.returncode == 0
+            message = ("Package catalog refreshed" if success else
+                       "Catalog update was cancelled or could not be completed.")
+        except (OSError, subprocess.TimeoutExpired):
+            success = False
+            message = "The package catalog could not be refreshed."
+        GLib.idle_add(self.finish_catalog_refresh, message, success)
+
+    def finish_catalog_refresh(self, message, success):
+        self.search.set_sensitive(True)
+        self.refresh_button.set_sensitive(True)
+        self.status.set_text(message)
+        if success and self.search.get_text().strip():
+            self.fill_results(self.search.get_text().strip())
+        return GLib.SOURCE_REMOVE
+
+
+if __name__ == "__main__":
+    ShreeStore().run()

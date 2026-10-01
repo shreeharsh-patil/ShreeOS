@@ -3,6 +3,7 @@
 
 import subprocess
 import sys
+from pathlib import Path
 
 import gi
 
@@ -137,6 +138,19 @@ def brightness_percentage() -> int:
     if maximum <= 0:
         raise RuntimeError("No adjustable display backlight was found.")
     return max(0, min(100, round(current * 100 / maximum)))
+
+
+def battery_status() -> tuple[int, str] | None:
+    for supply in Path("/sys/class/power_supply").glob("*"):
+        try:
+            if (supply / "type").read_text(encoding="ascii").strip() != "Battery":
+                continue
+            capacity = int((supply / "capacity").read_text(encoding="ascii").strip())
+            status = (supply / "status").read_text(encoding="ascii").strip()
+        except (OSError, ValueError):
+            continue
+        return max(0, min(100, capacity)), status
+    return None
 
 
 def state_or_default(probe, default: bool = False) -> bool:
@@ -312,6 +326,7 @@ def main() -> int:
     grid.attach(focus, 0, 2, 1, 1)
     grid.attach(airplane, 1, 2, 1, 1)
 
+    tile_row = 3
     try:
         initial_brightness = brightness_percentage()
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
@@ -347,7 +362,21 @@ def main() -> int:
         brightness_box.pack_start(brightness_icon, False, False, 0)
         brightness_box.pack_start(brightness_label, False, False, 0)
         brightness_box.pack_start(brightness_slider, True, True, 0)
-        grid.attach(brightness_box, 0, 3, 2, 1)
+        grid.attach(brightness_box, 0, tile_row, 2, 1)
+        tile_row += 1
+
+    battery = battery_status()
+    if battery is not None:
+        capacity, status = battery
+        battery_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        battery_box.get_style_context().add_class("cc-tile")
+        battery_icon = Gtk.Image.new_from_icon_name("battery-good-symbolic", Gtk.IconSize.DIALOG)
+        battery_icon.set_pixel_size(22)
+        battery_label = Gtk.Label(label=f"Battery  ·  {capacity}%  ·  {status}", xalign=0)
+        battery_label.get_style_context().add_class("cc-tile-title")
+        battery_box.pack_start(battery_icon, False, False, 0)
+        battery_box.pack_start(battery_label, True, True, 0)
+        grid.attach(battery_box, 0, tile_row, 2, 1)
 
     section = Gtk.Label(label="More settings", xalign=0)
     section.get_style_context().add_class("cc-section")

@@ -107,8 +107,8 @@ def main() -> int:
     require(set(dock_items) == {path.name for path in launcher_dir.glob("*.dockitem")},
             "Plank launchers do not match the configured dock items")
     require({"shreeos-search.dockitem", "shreeos-overview.dockitem",
-             "shreeos-control-center.dockitem"} <= set(dock_items),
-            "the dock is missing ShreeOS search, overview, or quick controls")
+             "shreeos-control-center.dockitem", "shreeos-store.dockitem"} <= set(dock_items),
+            "the dock is missing a ShreeOS search, overview, software, or quick-controls launcher")
     known_debian_desktops = {
         "thunar.desktop", "firefox-esr.desktop", "xfce4-terminal.desktop",
         "org.xfce.ristretto.desktop", "org.xfce.mousepad.desktop",
@@ -134,6 +134,15 @@ def main() -> int:
             require((INCLUDES / command.lstrip("/")).is_file(),
                     f"ShreeOS desktop entry command is missing: {command}")
 
+    store = INCLUDES / "usr/local/bin/shreeos-store"
+    store_source = store.read_text(encoding="utf-8")
+    require(store.is_file() and "apt-cache" in store_source
+            and '"/usr/bin/apt-get"' in store_source and '"pkexec"' in store_source,
+            "ShreeOS Software is not connected to the real APT package manager")
+    require("shreeos-store.desktop" in {path.name for path in (INCLUDES / "usr/share/applications").glob("*.desktop")}
+            and (INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-store.svg").is_file(),
+            "ShreeOS Software is missing its desktop launcher or original icon")
+
     app_icon = INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
     parse_xml(app_icon)
     require((INCLUDES / "usr/share/applications/shreeos-control-center.desktop").is_file(),
@@ -144,6 +153,9 @@ def main() -> int:
     controls_source = control_center.read_text(encoding="utf-8")
     require('"brightnessctl", "set"' in controls_source and '"Focus mode"' in controls_source,
             "Control Center is missing hardware brightness or notification focus controls")
+    require("def battery_status()" in controls_source
+            and 'Path("/sys/class/power_supply")' in controls_source,
+            "Control Center does not display battery state on supported laptops")
     require('["plank", "--preferences"]' in controls_source,
             "Control Center is missing the dock preferences entry")
     for appearance_contract in (

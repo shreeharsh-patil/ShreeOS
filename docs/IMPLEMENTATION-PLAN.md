@@ -117,10 +117,12 @@ screenshots and an interactive session. An initial GTK
 Control Center provides Wi-Fi and Bluetooth power, sound mute, a dark/light
 appearance switch that also updates window borders, GTK preference, wallpaper,
 dock palette, and its own styling, a backlight slider when supported,
-notification focus mode, and links to XFCE's network, sound, display,
-appearance, power, and notification tools. It does not yet provide airplane
-mode, battery, or power-profile controls. The dock's own
-preferences are linked for size, position, and hide behavior. The GRUB splash
+notification focus mode, airplane mode for Wi-Fi and Bluetooth, battery charge
+and charging state when exposed through sysfs, and links to XFCE's network,
+sound, display, appearance, power, and notification tools. CPU power-profile
+selection, lid-action customization, and suspend/resume validation remain
+open. The dock's own preferences are linked for size, position, and hide
+behavior. The GRUB splash
 and menu theme are now branded and confirmed in the CI boot image at 800×600.
 Workspace overview, full notification center, lock screen,
 and installer experiences remain future work. The live account has a locked
@@ -147,6 +149,15 @@ Downloads, and Trash. Thunar's GTK bookmarks provide Desktop, Documents,
 Downloads, Pictures, Music, Videos, Computer, Network, and Trash. These are
 starter favorites; dock separators and drag/reorder behavior still depend on
 interactive review of the packaged Plank build.
+
+ShreeOS Software is now available from the dock and application menu. It
+searches Debian's APT package catalog and uses `apt-get` through `pkexec` for
+catalog refresh and package changes, while reading installed state from dpkg.
+It requires administrator authorization, disables package changes in the
+temporary live session, and prevents direct removal of essential or required
+packages. The installed-system authorization flow still needs review after the
+Debian-compatible installer exists; the live prototype has no persistent
+administrator account.
 
 The panel also enables XFCE Notifyd's recent-notification dropdown next to
 the clock. It is a history menu, not yet the requested calendar, widgets, and

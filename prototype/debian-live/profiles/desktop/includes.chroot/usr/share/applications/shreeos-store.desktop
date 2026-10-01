@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Software
+Comment=Discover and manage applications with APT
+Exec=/usr/local/bin/shreeos-store
+Icon=shreeos-store
+Terminal=false
+Categories=System;PackageManager;
+Keywords=software;packages;install;remove;apt;

@@ -2,7 +2,7 @@
 alignment='center'
 auto-pinning=true
 current-workspace-only=false
-dock-items=['thunar.dockitem', 'firefox-esr.dockitem', 'shreeos-search.dockitem', 'xfce4-terminal.dockitem', 'ristretto.dockitem', 'mousepad.dockitem', 'shreeos-overview.dockitem', 'shreeos-control-center.dockitem', 'xfce4-settings-manager.dockitem', 'downloads.dockitem', 'trash.dockitem']
+dock-items=['thunar.dockitem', 'firefox-esr.dockitem', 'shreeos-search.dockitem', 'shreeos-store.dockitem', 'xfce4-terminal.dockitem', 'ristretto.dockitem', 'mousepad.dockitem', 'shreeos-overview.dockitem', 'shreeos-control-center.dockitem', 'xfce4-settings-manager.dockitem', 'downloads.dockitem', 'trash.dockitem']
 hide-mode='intelligent'
 icon-size=48
 items-alignment='center'
