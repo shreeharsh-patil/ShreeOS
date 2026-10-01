@@ -13,7 +13,7 @@ BUILDDIR="$(pkg_builddir "$PKG_NAME")"
 
 lumen_step "Building ${PKG_NAME}-${PKG_VER}"
 
-for lib in popt zstd; do
+for lib in popt libzstd; do
   pkg-config --exists "$lib" || \
     lumen_die "Target ${lib} pkg-config metadata is missing from the ShreeOS sysroot"
 done
