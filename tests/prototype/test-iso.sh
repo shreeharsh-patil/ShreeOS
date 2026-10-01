@@ -89,7 +89,7 @@ run_boot_test() {
   fi
 
   xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 180s qemu-system-x86_64 \
-    -machine q35 -m 2048 -smp 2 -nic user,model=virtio-net-pci \
+    -machine q35 -m 2048 -smp 2 -vga virtio -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
     -display gtk -monitor "unix:$monitor_socket,server,nowait" \
@@ -153,6 +153,7 @@ for _ in range(10):
 else:
     raise SystemExit("QEMU monitor socket did not become available to stop the guest")
 client.recv(4096)
+time.sleep(5)
 client.sendall(f"screendump {output}\n".encode())
 client.recv(4096)
 client.sendall(b"quit\n")
