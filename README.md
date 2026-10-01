@@ -18,12 +18,13 @@ The repository contains two distinct build paths:
 | Path | What it currently provides | Status |
 |---|---|---|
 | Existing source-built image | Custom cross-build pipeline, Linux kernel, BusyBox-oriented early userspace, custom ShreeOS init and package tooling, and a small X11/dwm graphical stack | Existing experimental path; its README-era claims are not a substitute for testing the generated image |
-| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console BIOS/UEFI boot passes in CI; desktop image builds and reaches its session checks, but the captured desktop framebuffer is still blank |
+| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console BIOS/UEFI boot passes in CI; desktop session processes start, but first-login panel setup fails before the screenshot gate |
 
 There is no supported ShreeOS desktop release or public download at this time.
-CI has built the optional desktop profile and reached its XFCE boot marker,
-but its nearly blank QEMU screenshot fails the visual-content gate, so visual
-acceptance remains open. The desktop includes a ShreeOS XFCE appearance configuration: original
+CI has built the optional desktop profile and started its XFCE session, but a
+panel configuration migration error currently prevents first-login setup from
+finishing; the screenshot gate and visual acceptance remain open. The desktop
+includes a ShreeOS XFCE appearance configuration: original
 wallpapers and logo, a compact top panel, a centered Plank dock, four
 workspaces, a dark Arc GTK theme, Papirus icons, Inter UI text, and ShreeOS
 accent styling. This is an early desktop pass, not the complete shell described
@@ -70,7 +71,7 @@ generated with the image. Upstream packages retain their own licenses; see
 
 The prototype targets amd64 (x86-64) PCs and virtual machines. BIOS and UEFI
 boot are configured; the console image passes both QEMU paths, while desktop
-visual capture is still being debugged. Physical hardware
+panel setup and visual capture are still being debugged. Physical hardware
 coverage, Secure Boot, Wi-Fi, Bluetooth, audio, suspend/resume, and graphics
 acceleration have not yet been certified. The current source-built image has
 its own kernel and hardware limitations; consult the phase plan before using it
@@ -121,8 +122,8 @@ The base profile is a Live ISO with a compressed SquashFS root that boots to a
 console. The optional desktop profile adds XFCE, LightDM, ShreeOS wallpapers
 and greeter branding, a configured top panel and dock, and coordinated GTK,
 icon, and font defaults. CI confirms the desktop session, panel, and dock
-processes start, but its QEMU screen capture is nearly blank and fails the
-visual-content gate. Neither profile has a graphical installer or supported disk
+processes start, but its panel migration fails before a QEMU screen capture is
+accepted. Neither profile has a graphical installer or supported disk
 installation procedure. Do not use it to install on a physical computer.
 
 ## Downloads and checksums
@@ -162,7 +163,8 @@ manifest, then runs BIOS and UEFI QEMU boot checks with virtual block storage
 and Ethernet devices and timeouts. The boot marker checks the package database,
 storage detection, and NetworkManager DHCP route; the desktop profile also
 requires LightDM, an XFCE session, the panel and dock, and a nonblank screenshot.
-The screenshot check currently fails. A green prototype workflow would validate
+The desktop run currently fails while applying the ShreeOS panel configuration;
+the panel XML is being updated to declare the current XFCE schema. A green prototype workflow would validate
 only those checks; it would not certify physical hardware, an installer, or a
 release.
 

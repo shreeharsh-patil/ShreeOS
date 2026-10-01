@@ -1,6 +1,6 @@
 # ShreeOS Desktop Distribution Implementation Plan
 
-**Status:** The Debian Live base builds and passes BIOS/UEFI QEMU checks. The desktop image builds and reaches its BIOS session marker, but the captured framebuffer is nearly blank and fails the visual-content gate; desktop UEFI and interactive visual acceptance remain open. Installation, installed-system updates/recovery, and production release are not implemented.
+**Status:** The Debian Live base builds and passes BIOS/UEFI QEMU checks. The desktop image builds and starts XFCE, but first-login setup stops because the panel configuration lacks the current XFCE schema version. The nonblank screenshot gate, desktop UEFI, and interactive visual acceptance remain open. Installation, installed-system updates/recovery, and production release are not implemented.
 **Audit baseline:** repository commit `44677fdeb4e1` (2026-09-30).
 
 This plan turns the desktop-distribution request into reviewable milestones. It
@@ -88,14 +88,17 @@ install, reboot and update gates.
 
 The prototype lives under `prototype/debian-live/`. It pins Debian 13 Trixie
 package inputs to snapshot `20260929T000000Z`, pins live-build in CI, and has
-separate `base` and optional `desktop` profiles. On commit `8a4e827`, GitHub
-Actions built both profiles, and the base image passed BIOS and UEFI QEMU
-checks for the locked temporary account, package database, storage,
-NetworkManager and DHCP. The desktop BIOS run reached LightDM, an XFCE session,
-the panel, dock and boot marker, then failed because the post-boot screenshot
-was nearly blank; its UEFI desktop run did not start. Thus the desktop build
-and serial boot gate pass, but its display output is currently broken or not
-captured. This is not visual acceptance or physical-hardware coverage. The
+separate `base` and optional `desktop` profiles. On commit `34eca63`, GitHub
+Actions built both profiles and the base image passed BIOS and UEFI QEMU checks
+for the locked temporary account, package database, storage, NetworkManager
+and DHCP. The desktop BIOS run started LightDM, XFCE, the panel and dock, but
+the session setup script stopped because the panel's
+`/panels/panel-1/length` property was absent. XFCE logged a panel configuration
+migration and a type mismatch for `/panels`; the configuration was missing
+`configver=2`. The run therefore failed before the screenshot or desktop UEFI
+checks. The XML now declares schema version 2, and the next CI run will confirm
+whether that restores the ShreeOS panel and wallpaper. This is not visual
+acceptance or physical-hardware coverage. The
 desktop profile selects
 Debian's XFCE task and ShreeOS artwork, while excluding Debian's
 `non-free-firmware` archive. A boot-time hook locks the temporary live user's
@@ -199,8 +202,8 @@ boot parameters and an installer compatible with the Debian Live filesystem.
 
 ## Near-term work
 
-1. Review the post-boot desktop screenshots and launch key UI actions in the
-   QEMU session before describing the prototype as visually accepted.
+1. Confirm the XFCE panel schema fix in BIOS and UEFI, then review post-boot
+   desktop screenshots and key UI actions in the QEMU session.
 2. Refresh the audit against the current checkout and built ISO artifacts.
    Mark older measurements with their source commit and release rather than
    presenting them as current.

@@ -46,6 +46,9 @@ def main() -> int:
     panel = parse_xml(panel_path)
     require(panel.tag == "channel" and panel.get("name") == "xfce4-panel",
             "XFCE panel channel is missing or misnamed")
+    require(panel.find("property[@name='configver']") is not None
+            and panel.find("property[@name='configver']").get("value") == "2",
+            "XFCE panel defaults do not declare the current panel configuration schema")
     panel_one = panel.find("property[@name='panel-1']")
     require(panel_one is not None, "ShreeOS top panel is not configured")
     plugin_ids = {
