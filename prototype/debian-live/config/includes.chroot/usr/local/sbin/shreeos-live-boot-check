@@ -75,7 +75,10 @@ if [ -f /etc/shreeos/image-profile ] &&
   done
 
   log 'display session inventory:'
-  ps -eo user,pid,args | grep -E '[X]org|[X]wayland|[l]ightdm|[x]fce4-session' | tail -n 16 \
+  ps -eo user,pid,args | grep -E '[X]org|[X]wayland|[l]ightdm|[x]fce4-session|[x]fwm4|[x]fdesktop|[x]fce4-panel|[p]lank' | tail -n 24 \
+    | while IFS= read -r diagnostic; do log "$diagnostic"; done
+  log 'live user desktop processes:'
+  ps -u shree -o pid,args | tail -n 24 \
     | while IFS= read -r diagnostic; do log "$diagnostic"; done
   log 'active graphical logins:'
   loginctl list-sessions --no-legend | while IFS= read -r diagnostic; do
@@ -83,9 +86,30 @@ if [ -f /etc/shreeos/image-profile ] &&
   done
   if command -v runuser >/dev/null 2>&1 && command -v xrandr >/dev/null 2>&1; then
     log 'X display :0 mode inventory:'
-    if runuser -u shree -- env DISPLAY=:0 xrandr --current 2>&1 | tail -n 12 \
-      | while IFS= read -r diagnostic; do log "$diagnostic"; done; then
-      :
+    if mode_inventory="$(runuser -u shree -- env DISPLAY=:0 xrandr --current 2>&1)"; then
+      printf '%s\n' "$mode_inventory" \
+        | grep -E '^(Screen|[[:alnum:]-]+ connected)|^[[:space:]].*[*+]' \
+        | tail -n 16 | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    else
+      log "xrandr query failed: $mode_inventory"
+    fi
+  fi
+  if command -v runuser >/dev/null 2>&1 && command -v wmctrl >/dev/null 2>&1; then
+    log 'visible X11 window inventory:'
+    if window_inventory="$(runuser -u shree -- env DISPLAY=:0 wmctrl -lG 2>&1)"; then
+      printf '%s\n' "$window_inventory" | tail -n 16 \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    else
+      log "wmctrl query failed: $window_inventory"
+    fi
+  fi
+  if command -v runuser >/dev/null 2>&1 && command -v xfconf-query >/dev/null 2>&1; then
+    log 'XFCE desktop backdrop configuration:'
+    if backdrop_inventory="$(runuser -u shree -- env DISPLAY=:0 xfconf-query -c xfce4-desktop -lv 2>&1)"; then
+      printf '%s\n' "$backdrop_inventory" | tail -n 16 \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    else
+      log "xfconf query failed: $backdrop_inventory"
     fi
   fi
   journalctl -b -u lightdm.service --no-pager -n 40 2>/dev/null \
