@@ -25,9 +25,10 @@ make -j"${LUMEN_MAKE_JOBS}" \
   CC="${CC}" \
   AR="${AR}" \
   RANLIB="${RANLIB}" \
-  HOST=glibc \
+  HOST="${LUMEN_TARGET_TRIPLET}" \
   SHARED=yes \
   ZLIB=no \
+  DNS=no \
   LIBKMOD=no \
   PREFIX=/usr
 
@@ -35,6 +36,7 @@ make install \
   PREFIX=/usr \
   SHARED=yes \
   ZLIB=no \
+  DNS=no \
   LIBKMOD=no \
   DESTDIR="${LUMEN_STAGE_ROOT}"
 

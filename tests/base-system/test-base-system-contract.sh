@@ -526,6 +526,16 @@ else
   fail "acl recipe has no sysroot dependency assertion for libattr"
 fi
 
+# pciutils' configure script needs the target OS in its host triple. A former
+# HOST=glibc value selected an unsupported OS and left PCILIB_VERSION unset.
+pciutils_recipe="$REPO_ROOT/base-system/scripts/49-pciutils.sh"
+if grep -Fq 'HOST="${LUMEN_TARGET_TRIPLET}"' "$pciutils_recipe" &&
+  grep -Fq 'DNS=no' "$pciutils_recipe"; then
+  check "pciutils uses the target OS triple and disables host DNS detection" 0
+else
+  fail "pciutils does not configure against the ShreeOS target environment"
+fi
+
 # gettext is not in the Phase 2 package set. Both recipes must disable NLS
 # explicitly, otherwise they bind to whatever gettext the CI runner image
 # happens to ship and the build stops being reproducible.
