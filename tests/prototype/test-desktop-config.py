@@ -139,8 +139,9 @@ def main() -> int:
     require(store.is_file() and "apt-cache" in store_source
             and '"/usr/bin/apt-get"' in store_source and '"pkexec"' in store_source,
             "ShreeOS Software is not connected to the real APT package manager")
+    store_icon = parse_xml(INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-store.svg")
     require("shreeos-store.desktop" in {path.name for path in (INCLUDES / "usr/share/applications").glob("*.desktop")}
-            and (INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-store.svg").is_file(),
+            and store_icon.tag == "{http://www.w3.org/2000/svg}svg",
             "ShreeOS Software is missing its desktop launcher or original icon")
 
     app_icon = INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
