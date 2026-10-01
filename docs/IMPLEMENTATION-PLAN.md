@@ -1,6 +1,6 @@
 # ShreeOS Desktop Distribution Implementation Plan
 
-**Status:** The isolated Debian Live base and XFCE desktop prototypes build and pass BIOS/UEFI QEMU boot checks in GitHub Actions. Installation, installed-system updates/recovery, production release, and interactive visual acceptance remain open.
+**Status:** The Debian Live base builds and passes BIOS/UEFI QEMU checks. The desktop image builds and reaches its BIOS session marker, but the captured framebuffer is nearly blank and fails the visual-content gate; desktop UEFI and interactive visual acceptance remain open. Installation, installed-system updates/recovery, and production release are not implemented.
 **Audit baseline:** repository commit `44677fdeb4e1` (2026-09-30).
 
 This plan turns the desktop-distribution request into reviewable milestones. It
@@ -88,19 +88,24 @@ install, reboot and update gates.
 
 The prototype lives under `prototype/debian-live/`. It pins Debian 13 Trixie
 package inputs to snapshot `20260929T000000Z`, pins live-build in CI, and has
-separate `base` and optional `desktop` profiles. On commit `cd9eda4`, GitHub
-Actions built both profiles and passed BIOS and UEFI QEMU checks. Those checks
-verified the locked temporary account, package database, storage, NetworkManager
-and DHCP; the desktop image also reached LightDM, an XFCE session, the panel and
-Plank dock. This confirms prototype boot and service gates, not interactive
-visual acceptance or physical-hardware coverage. The desktop profile selects
+separate `base` and optional `desktop` profiles. On commit `8a4e827`, GitHub
+Actions built both profiles, and the base image passed BIOS and UEFI QEMU
+checks for the locked temporary account, package database, storage,
+NetworkManager and DHCP. The desktop BIOS run reached LightDM, an XFCE session,
+the panel, dock and boot marker, then failed because the post-boot screenshot
+was nearly blank; its UEFI desktop run did not start. Thus the desktop build
+and serial boot gate pass, but its display output is currently broken or not
+captured. This is not visual acceptance or physical-hardware coverage. The
+desktop profile selects
 Debian's XFCE task and ShreeOS artwork, while excluding Debian's
 `non-free-firmware` archive. A boot-time hook locks the temporary live user's
 default password; the QEMU marker checks that the account has no password
 login or sudo access, an intact apt/dpkg package database, QEMU block-device
 detection, and an Ethernet DHCP route. In desktop mode it also waits for
-LightDM, an XFCE session, the panel, and Plank. GitHub Actions run `36755735115`
-on commit `cd9eda4` passed those checks in BIOS and UEFI QEMU. The desktop is
+LightDM, an XFCE session, the panel, and Plank, then checks that the captured
+screen contains visible content. GitHub Actions run
+[`36866372061`](https://github.com/shreeharsh-patil/ShreeOS/actions/runs/36866372061)
+on commit `8a4e827` failed that final desktop screenshot check. The desktop is
 still not a release.
 
 The optional desktop now has a staged appearance layer: Arc-Dark GTK styling
@@ -125,7 +130,10 @@ open. The dock's own preferences are linked for size, position, and hide
 behavior. The GRUB splash
 and menu theme are now branded and confirmed in the CI boot image at 800×600.
 Workspace overview, full notification center, lock screen,
-and installer experiences remain future work. The live account has a locked
+and installer experiences remain future work. ShreeOS Software searches the
+Debian APT catalog, reads dpkg installed state, and uses administrator-gated
+`apt-get` actions outside the nonpersistent live session; the installed-system
+authorization flow is still unreviewed. The live account has a locked
 password by design, so it does not expose a lock shortcut that would leave a
 session impossible to unlock.
 
