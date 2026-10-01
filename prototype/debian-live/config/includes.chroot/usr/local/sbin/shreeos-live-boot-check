@@ -74,20 +74,29 @@ if [ -f /etc/shreeos/image-profile ] &&
     elapsed=$((elapsed + 1))
   done
 
-  for display_log in \
-    /var/log/Xorg.0.log \
-    /var/log/lightdm/x-0.log \
-    /var/log/lightdm/lightdm.log \
-    /home/shree/.local/share/xorg/Xorg.0.log
-  do
-    if [ -r "$display_log" ]; then
-      while IFS= read -r diagnostic; do
-        log "display diagnostic: ${diagnostic}"
-      done <<EOF
-$(grep -Ei '\(EE\)|fatal server error|no screens found|failed to|cannot open /dev/dri' "$display_log" | tail -n 16 || true)
-EOF
-    fi
+  log 'display session inventory:'
+  ps -eo user,pid,args | grep -E '[X]org|[X]wayland|[l]ightdm|[x]fce4-session' | tail -n 16 \
+    | while IFS= read -r diagnostic; do log "$diagnostic"; done
+  log 'active graphical logins:'
+  loginctl list-sessions --no-legend | while IFS= read -r diagnostic; do
+    log "$diagnostic"
   done
+  if command -v runuser >/dev/null 2>&1 && command -v xrandr >/dev/null 2>&1; then
+    log 'X display :0 mode inventory:'
+    if runuser -u shree -- env DISPLAY=:0 xrandr --current 2>&1 | tail -n 12 \
+      | while IFS= read -r diagnostic; do log "$diagnostic"; done; then
+      :
+    fi
+  fi
+  journalctl -b -u lightdm.service --no-pager -n 40 2>/dev/null \
+    | while IFS= read -r diagnostic; do log "LightDM: $diagnostic"; done
+
+  find /var/log /home/shree -type f \
+    \( -iname 'Xorg*.log' -o -iname 'x-*.log' -o -iname '*lightdm*.log' \) \
+    -exec grep -HnEi '\(EE\)|fatal server error|no screens found|failed to|cannot open /dev/dri' {} + \
+    | tail -n 24 | while IFS= read -r diagnostic; do
+      log "display log: $diagnostic"
+    done
 fi
 
 log 'all live boot checks passed'
