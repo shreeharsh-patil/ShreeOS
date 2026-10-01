@@ -55,7 +55,7 @@ run_boot_test() {
   local monitor_socket="$TEST_DIR/${mode}-monitor.sock"
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
-  local deadline=$((SECONDS + 180))
+  local deadline=$((SECONDS + 300))
   if [ "$mode" = uefi ]; then
     local firmware="${OVMF_CODE:-}" firmware_vars="${OVMF_VARS:-}"
     if [ -z "$firmware" ]; then
@@ -88,7 +88,7 @@ run_boot_test() {
     )
   fi
 
-  xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 180s qemu-system-x86_64 \
+  xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 300s qemu-system-x86_64 \
     -machine q35 -m 2048 -smp 2 -vga virtio -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \

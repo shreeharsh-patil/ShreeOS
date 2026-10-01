@@ -50,18 +50,23 @@ log 'live account has no sudo access'
 
 if [ -f /etc/shreeos/image-profile ] &&
   [ "$(cat /etc/shreeos/image-profile)" = desktop ]; then
+  log 'desktop profile detected; checking GTK runtime'
   python3 -c 'import gi; gi.require_version("Gtk", "3.0")' || {
     fail 'the ShreeOS Control Center GTK runtime is unavailable'
   }
+  log 'GTK runtime is available'
   [ -x /usr/local/bin/shreeos-control-center ] || {
     fail 'the ShreeOS Control Center launcher is missing'
   }
+  log 'Control Center launcher is available'
   [ -x /usr/local/bin/shreeos-search ] || {
     fail 'the ShreeOS Search launcher is missing'
   }
+  log 'Search launcher is available'
   [ -x /usr/local/bin/shreeos-overview ] || {
     fail 'the Workspace Overview launcher is missing'
   }
+  log 'Workspace Overview launcher is available'
   elapsed=0
   until systemctl is-active --quiet display-manager.service &&
     pgrep -u shree -x xfce4-session >/dev/null &&
