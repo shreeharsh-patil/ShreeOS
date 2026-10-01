@@ -13,22 +13,26 @@ BlueZ/Blueman, common desktop applications, ShreeOS wallpaper and greeter
 branding, and the DFSG-compliant `firmware-linux-free` package from `main`.
 It also configures an XFCE top panel, four workspaces, left-aligned window
 controls, a centered translucent Plank dock with magnification, original dark
-and light wallpapers, and Arc/Papirus/Inter appearance defaults. The desktop
-is experimental and has not yet been built, booted, or visually verified in
-this workspace. Its XFCE session is a staged desktop composition, not yet a
-custom shell with a ShreeOS control center, overview, notification center, or
-installer. An initial GTK Control Center offers Wi-Fi, Bluetooth, audio and
-dark/light appearance switches, a hardware backlight slider when available,
-and notification focus mode with links to existing XFCE tools; its interactive
-behavior still needs Linux desktop validation. Airplane mode and power-profile
-controls are still missing. Neither profile is a supported desktop release.
+and light wallpapers, and Arc/Papirus/Inter appearance defaults. Linux CI
+builds the desktop image and reaches its XFCE session marker, but the post-boot
+QEMU screenshot remains nearly blank and is rejected, so the desktop is not
+visually verified. Its XFCE session is a staged desktop composition, not yet a
+custom shell with a full notification center or installer. The GTK Control
+Center offers Wi-Fi, Bluetooth and airplane-mode controls, audio and dark/light
+appearance switches, a hardware backlight slider and battery indicator when
+supported, notification focus mode, and links to existing XFCE tools. ShreeOS
+Software searches APT and invokes real `apt-get` actions with administrator
+authorization; package changes are disabled in the temporary live session.
+Interactive behavior still needs Linux desktop validation. Power profiles,
+suspend/resume validation, and lid-action customization remain open. Neither
+profile is a supported desktop release.
 `Super+Space` opens Shree Search for applications, files in common user
 folders, and bounded calculator expressions; the GUI still needs Linux review.
 `Super+Up` opens a text-based Workspace Overview for switching desktops and
 activating, moving, or closing windows. It has no window thumbnails or gesture
 support yet. Thunar's sidebar includes common personal folders, Computer,
-Network, and Trash; the dock includes ShreeOS search and quick controls, and
-the top panel has a recent-notifications dropdown.
+Network, and Trash; the dock includes ShreeOS search, overview, Software, and
+quick controls, and the top panel has a recent-notifications dropdown.
 Ctrl+Alt+Left/Right switches workspaces; Ctrl+Alt+Shift+Left/Right moves the
 focused window, and Super+1–4 selects a workspace directly.
 Super+Shift+S opens XFCE Screenshooter in region-selection mode.

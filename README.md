@@ -18,21 +18,25 @@ The repository contains two distinct build paths:
 | Path | What it currently provides | Status |
 |---|---|---|
 | Existing source-built image | Custom cross-build pipeline, Linux kernel, BusyBox-oriented early userspace, custom ShreeOS init and package tooling, and a small X11/dwm graphical stack | Existing experimental path; its README-era claims are not a substitute for testing the generated image |
-| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console base plus optional XFCE desktop profile; full ISO builds and QEMU boots are pending Linux CI validation |
+| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console BIOS/UEFI boot passes in CI; desktop image builds and reaches its session checks, but the captured desktop framebuffer is still blank |
 
 There is no supported ShreeOS desktop release or public download at this time.
-The optional desktop profile has not yet been built, booted, or visually
-verified. It now includes a ShreeOS XFCE appearance configuration: original
+CI has built the optional desktop profile and reached its XFCE boot marker,
+but its nearly blank QEMU screenshot fails the visual-content gate, so visual
+acceptance remains open. The desktop includes a ShreeOS XFCE appearance configuration: original
 wallpapers and logo, a compact top panel, a centered Plank dock, four
 workspaces, a dark Arc GTK theme, Papirus icons, Inter UI text, and ShreeOS
 accent styling. This is an early desktop pass, not the complete shell described
-in the roadmap. An initial ShreeOS Control Center provides Wi-Fi, Bluetooth,
-audio, and appearance switches plus links to XFCE settings tools; it still
-offers a backlight slider when supported and a notification focus toggle; it
-needs a Linux GUI review and does not yet cover airplane mode or power
-profiles. Dock preferences open Plank's configuration for size, position, and
-hide behavior. A graphical installer, broader hardware support, advanced
-window overview, and installed-system workflow remain open.
+in the roadmap. The ShreeOS Control Center provides Wi-Fi, Bluetooth, and
+airplane-mode controls; audio mute, dark/light appearance, focus mode,
+brightness when supported, and battery state on supported laptops; and links to
+XFCE settings tools. ShreeOS Software searches the APT catalog and delegates
+package changes to `apt-get` with administrator authorization. Changes are
+disabled in the temporary live session and removal of essential packages is
+blocked. These interfaces still need interactive Linux review. Dock
+preferences open Plank's configuration for size, position, and hide behavior.
+A graphical installer, broader hardware support, animated window overview,
+and installed-system workflow remain open.
 `Super+Space` opens Shree Search for applications, files in common user
 folders, and safe calculator expressions; `Super+Up` opens Workspace Overview
 to switch workspaces, activate, move, or close listed windows. Animated window
@@ -65,7 +69,8 @@ generated with the image. Upstream packages retain their own licenses; see
 ## Supported architecture and hardware
 
 The prototype targets amd64 (x86-64) PCs and virtual machines. BIOS and UEFI
-boot are configured and will be exercised in QEMU by CI. Physical hardware
+boot are configured; the console image passes both QEMU paths, while desktop
+visual capture is still being debugged. Physical hardware
 coverage, Secure Boot, Wi-Fi, Bluetooth, audio, suspend/resume, and graphics
 acceleration have not yet been certified. The current source-built image has
 its own kernel and hardware limitations; consult the phase plan before using it
