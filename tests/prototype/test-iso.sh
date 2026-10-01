@@ -153,7 +153,9 @@ for _ in range(10):
 else:
     raise SystemExit("QEMU monitor socket did not become available to stop the guest")
 client.recv(4096)
-time.sleep(5)
+client.sendall(b"sendkey shift\n")
+client.recv(4096)
+time.sleep(10)
 client.sendall(f"screendump {output}\n".encode())
 client.recv(4096)
 client.sendall(b"quit\n")

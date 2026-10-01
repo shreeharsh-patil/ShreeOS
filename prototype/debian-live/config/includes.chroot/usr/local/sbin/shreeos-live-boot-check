@@ -125,17 +125,54 @@ if [ -f /etc/shreeos/image-profile ] &&
       log "wmctrl query failed: $window_inventory"
     fi
   fi
+  session_pid="$(pgrep -u shree -x xfce4-session | head -n 1)"
+  session_env=""
+  if [ -n "$session_pid" ] && [ -r "/proc/${session_pid}/environ" ]; then
+    session_env="$(tr '\000' '\n' < "/proc/${session_pid}/environ")"
+  fi
+  session_display="$(printf '%s\n' "$session_env" | sed -n 's/^DISPLAY=//p' | head -n 1)"
+  session_bus="$(printf '%s\n' "$session_env" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1)"
+  session_runtime="$(printf '%s\n' "$session_env" | sed -n 's/^XDG_RUNTIME_DIR=//p' | head -n 1)"
+  log "XFCE session environment: DISPLAY=${session_display:-unset} DBUS_SESSION_BUS_ADDRESS=${session_bus:-unset} XDG_RUNTIME_DIR=${session_runtime:-unset}"
+  if command -v runuser >/dev/null 2>&1 && command -v xfconf-query >/dev/null 2>&1; then
+    log 'live XFCE panel settings:'
+    if panel_inventory="$(runuser -u shree -- env DISPLAY="${session_display:-:0}" \
+      DBUS_SESSION_BUS_ADDRESS="$session_bus" XDG_RUNTIME_DIR="$session_runtime" \
+      xfconf-query -c xfce4-panel -lv 2>&1)"; then
+      printf '%s\n' "$panel_inventory" | tail -n 32 \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    else
+      log "panel configuration query failed: $panel_inventory"
+    fi
+  fi
+  if command -v runuser >/dev/null 2>&1 && command -v xwininfo >/dev/null 2>&1; then
+    log 'X11 root window tree:'
+    if x_window_tree="$(runuser -u shree -- env DISPLAY="${session_display:-:0}" xwininfo -root -tree 2>&1)"; then
+      printf '%s\n' "$x_window_tree" | tail -n 32 \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    else
+      log "X11 window tree query failed: $x_window_tree"
+    fi
+  fi
+  if command -v runuser >/dev/null 2>&1 && command -v xset >/dev/null 2>&1; then
+    log 'X11 screensaver and DPMS state:'
+    if screensaver_state="$(runuser -u shree -- env DISPLAY="${session_display:-:0}" xset q 2>&1)"; then
+      printf '%s\n' "$screensaver_state" \
+        | grep -E 'timeout:|prefer blanking:|DPMS is|Standby:|Suspend:|Off:' \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    else
+      log "X11 screensaver query failed: $screensaver_state"
+    fi
+  fi
+  for xorg_log in /var/log/Xorg.0.log /var/log/lightdm/x-0.log; do
+    if [ -r "$xorg_log" ]; then
+      log "X11 server details from $xorg_log:"
+      grep -E 'Loading.*driver|modeset|virtio|Virtual-1|connected|\(EE\)|\(WW\)' "$xorg_log" \
+        | tail -n 24 | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    fi
+  done
   if command -v runuser >/dev/null 2>&1 && command -v xfconf-query >/dev/null 2>&1; then
     log 'XFCE desktop backdrop configuration:'
-    session_pid="$(pgrep -u shree -x xfce4-session | head -n 1)"
-    session_env=""
-    if [ -n "$session_pid" ] && [ -r "/proc/${session_pid}/environ" ]; then
-      session_env="$(tr '\000' '\n' < "/proc/${session_pid}/environ")"
-    fi
-    session_display="$(printf '%s\n' "$session_env" | sed -n 's/^DISPLAY=//p' | head -n 1)"
-    session_bus="$(printf '%s\n' "$session_env" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1)"
-    session_runtime="$(printf '%s\n' "$session_env" | sed -n 's/^XDG_RUNTIME_DIR=//p' | head -n 1)"
-    log "XFCE session environment: DISPLAY=${session_display:-unset} DBUS_SESSION_BUS_ADDRESS=${session_bus:-unset} XDG_RUNTIME_DIR=${session_runtime:-unset}"
     if backdrop_inventory="$(runuser -u shree -- env DISPLAY="${session_display:-:0}" \
       DBUS_SESSION_BUS_ADDRESS="$session_bus" XDG_RUNTIME_DIR="$session_runtime" \
       xfconf-query -c xfce4-desktop -lv 2>&1)"; then
