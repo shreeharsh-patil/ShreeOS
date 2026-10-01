@@ -39,8 +39,9 @@ Debian's signed repositories for installed-system updates.
 
 Build in Debian 13 (Trixie) as root. Required tools are `live-build`,
 `debootstrap`, `xorriso`, `squashfs-tools`, `grub-pc-bin`,
-`grub-efi-amd64-bin`, `mtools`, `dosfstools` and `qemu-system-x86` for boot
-validation. Desktop screenshot capture also uses `xvfb` and `xauth`. CI
+`grub-efi-amd64-bin`, `mtools`, `dosfstools`, `qemu-system-x86` and
+`qemu-system-gui` for boot validation. Desktop screenshot capture also uses
+`xvfb` and `xauth`. CI
 installs these in a Debian Trixie container and pins
 `live-build` to the version in `versions.conf`.
 

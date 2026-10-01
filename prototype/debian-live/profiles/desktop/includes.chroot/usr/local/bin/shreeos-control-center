@@ -7,7 +7,7 @@ import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, GLib, Gtk
 
 
 CSS = """
@@ -62,6 +62,18 @@ def wifi_enabled() -> bool:
 
 def bluetooth_enabled() -> bool:
     return "powered: yes" in run_command(["bluetoothctl", "show"]).lower()
+
+
+def set_bluetooth_power(enabled: bool) -> None:
+    try:
+        run_command(["bluetoothctl", "power", "on" if enabled else "off"])
+    except RuntimeError as error:
+        if "no default controller" not in str(error).lower():
+            raise
+
+
+def airplane_mode_enabled() -> bool:
+    return not wifi_enabled() and not bluetooth_enabled()
 
 
 def audio_muted() -> bool:
@@ -274,11 +286,31 @@ def main() -> int:
             "--create", "-t", "bool", "-s", "true" if enabled else "false",
         ]),
     )
+    radio_restore_state = {"wifi": True, "bluetooth": True}
+
+    def change_airplane_mode(enabled: bool) -> None:
+        if enabled:
+            radio_restore_state["wifi"] = state_or_default(wifi_enabled)
+            radio_restore_state["bluetooth"] = state_or_default(bluetooth_enabled)
+            set_bluetooth_power(False)
+            run_command(["nmcli", "radio", "wifi", "off"])
+        else:
+            run_command([
+                "nmcli", "radio", "wifi",
+                "on" if radio_restore_state["wifi"] else "off",
+            ])
+            set_bluetooth_power(radio_restore_state["bluetooth"])
+
+    airplane = toggle_switch(
+        "Airplane mode", "Turn off wireless radios", "airplane-mode-symbolic",
+        state_or_default(airplane_mode_enabled), change_airplane_mode,
+    )
     grid.attach(wifi, 0, 0, 1, 1)
     grid.attach(bluetooth, 1, 0, 1, 1)
     grid.attach(muted, 0, 1, 1, 1)
     grid.attach(dark, 1, 1, 1, 1)
     grid.attach(focus, 0, 2, 1, 1)
+    grid.attach(airplane, 1, 2, 1, 1)
 
     try:
         initial_brightness = brightness_percentage()

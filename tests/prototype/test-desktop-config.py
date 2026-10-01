@@ -187,6 +187,11 @@ def main() -> int:
             "Workspace Overview executable is missing")
     require((INCLUDES / "usr/share/applications/shreeos-overview.desktop").is_file(),
             "Workspace Overview application entry is missing")
+    control_center = (INCLUDES / "usr/local/bin/shreeos-control-center").read_text(encoding="utf-8")
+    require("from gi.repository import Gdk, GLib, Gtk" in control_center,
+            "Control Center brightness slider is missing its GLib runtime")
+    require('"Airplane mode"' in control_center and "change_airplane_mode" in control_center,
+            "Control Center is missing the airplane mode radio toggle")
     bookmarks = (SKEL / ".config/gtk-3.0/bookmarks").read_text(encoding="utf-8").splitlines()
     for favorite in ("Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos"):
         require(any(line.endswith(f" {favorite}") for line in bookmarks),
