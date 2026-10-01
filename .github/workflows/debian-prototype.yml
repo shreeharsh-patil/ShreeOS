@@ -52,7 +52,7 @@ jobs:
             live-build=1:20250505+deb13u1 \
             debootstrap xorriso squashfs-tools \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
-            qemu-system-x86 qemu-utils ovmf rsync ca-certificates \
+            qemu-system-x86 qemu-utils ovmf xvfb xauth rsync ca-certificates \
             debian-archive-keyring shellcheck python3
 
       - name: Check shell syntax and errors

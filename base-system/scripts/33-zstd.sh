@@ -40,6 +40,13 @@ make -C lib install \
   LIBDIR="/usr/lib" \
   INCLUDEDIR="/usr/include" \
   DESTDIR="${LUMEN_STAGE_ROOT}"
+# Request the metadata target directly so dependent cross builds can discover
+# zstd even if the aggregate install target omits that dependency.
+make -C lib install-pc \
+  PREFIX=/usr \
+  LIBDIR="/usr/lib" \
+  INCLUDEDIR="/usr/include" \
+  DESTDIR="${LUMEN_STAGE_ROOT}"
 install -Dm755 programs/zstd \
   "${LUMEN_STAGE_ROOT}/usr/bin/zstd"
 for link in zstdcat zstdmt unzstd; do
@@ -50,5 +57,9 @@ base_sync_sysroot
 
 compgen -G "${LUMEN_STAGE_ROOT}/usr/lib/libzstd.so*" >/dev/null || \
   lumen_die "Target libzstd shared library was not staged"
+[ -s "${LUMEN_STAGE_ROOT}/usr/lib/pkgconfig/libzstd.pc" ] || \
+  lumen_die "Target libzstd pkg-config metadata was not staged"
+[ -s "${LUMEN_SYSROOT}/usr/lib/pkgconfig/libzstd.pc" ] || \
+  lumen_die "Target libzstd pkg-config metadata was not copied to the sysroot"
 
 lumen_ok "${PKG_NAME}-${PKG_VER} built successfully"

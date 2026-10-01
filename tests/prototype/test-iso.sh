@@ -11,7 +11,7 @@ case "$PROFILE" in
   base|desktop) ;;
   *) echo "Unknown profile: $PROFILE" >&2; exit 2 ;;
 esac
-for tool in xorriso unsquashfs qemu-system-x86_64 qemu-img timeout sha256sum; do
+for tool in xorriso unsquashfs qemu-system-x86_64 qemu-img timeout sha256sum xvfb-run; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Missing ISO test dependency: $tool" >&2
     exit 2
@@ -88,11 +88,11 @@ run_boot_test() {
     )
   fi
 
-  timeout --signal=TERM 180s qemu-system-x86_64 \
+  xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 180s qemu-system-x86_64 \
     -machine q35 -m 2048 -smp 2 -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
-    -display none -monitor "unix:$monitor_socket,server,nowait" \
+    -display gtk -monitor "unix:$monitor_socket,server,nowait" \
     -serial "file:$log" -no-reboot "${firmware_args[@]}" >"$emulator_log" 2>&1 &
   local emulator_pid=$!
   sleep 20
@@ -181,6 +181,29 @@ PY
     [ ! -f "$log" ] || cat "$log" >&2
     [ ! -s "$emulator_log" ] || cat "$emulator_log" >&2
     return 1
+  fi
+  if [ "$PROFILE" = desktop ]; then
+    python3 - "$screen_dump" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+data = path.read_bytes()
+if not data.startswith(b"P6"):
+    raise SystemExit(f"Desktop screenshot is not a binary PPM: {path}")
+parts = data.split(maxsplit=4)
+if len(parts) != 5:
+    raise SystemExit(f"Desktop screenshot has an invalid PPM header: {path}")
+width, height, maximum = map(int, parts[1:4])
+pixels = parts[4]
+if maximum != 255 or len(pixels) != width * height * 3:
+    raise SystemExit(f"Desktop screenshot has invalid pixel data: {path}")
+lit_pixels = sum(1 for i in range(0, len(pixels), 3)
+                 if max(pixels[i:i + 3]) > 24)
+if lit_pixels < width * height // 20:
+    raise SystemExit(f"Desktop screenshot is blank or nearly blank: {path}")
+print(f"Desktop screenshot contains visible content ({width}x{height}).")
+PY
   fi
   echo "${mode} live boot reached multi-user.target."
 }
