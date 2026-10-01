@@ -66,9 +66,10 @@ if [ -f /etc/shreeos/image-profile ] &&
   until systemctl is-active --quiet display-manager.service &&
     pgrep -u shree -x xfce4-session >/dev/null &&
     pgrep -u shree -x xfce4-panel >/dev/null &&
-    pgrep -u shree -x plank >/dev/null; do
+    pgrep -u shree -x plank >/dev/null &&
+    [ -f /home/shree/.config/shreeos/xfce-session-ready ]; do
     if [ "$elapsed" -ge 120 ]; then
-      fail 'desktop session, panel, or dock did not start within 120 seconds'
+      fail 'desktop session, panel, dock, or ShreeOS first-login setup did not finish within 120 seconds'
     fi
     sleep 1
     elapsed=$((elapsed + 1))

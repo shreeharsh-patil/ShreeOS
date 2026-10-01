@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+marker="$HOME/.config/shreeos/xfce-session-ready"
+[ -e "$marker" ] && exit 0
+
+xfconf-query -c xfce4-panel -p /panels/panel-1/length -s 100
+xfconf-query -c xfce4-panel -p /panels/panel-1/length-adjust -s false
+xfconf-query -c xfce4-panel -p /panels/panel-1/position -s 'p=6;x=0;y=0'
+xfconf-query -c xfce4-panel -p /panels/panel-1/position-locked -s true
+xfconf-query -c xfce4-panel -p /panels/panel-1/size -s 34
+
+wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-dark.svg
+for monitor in monitor0 monitor1 monitorVirtual-1; do
+  for workspace in workspace0 workspace1 workspace2 workspace3; do
+    image_property="/backdrop/screen0/$monitor/$workspace/last-image"
+    style_property="/backdrop/screen0/$monitor/$workspace/image-style"
+    xfconf-query -c xfce4-desktop -p "$image_property" --create --type string -s "$wallpaper"
+    xfconf-query -c xfce4-desktop -p "$style_property" --create --type int -s 5
+  done
+done
+
+xfce4-panel --restart
+mkdir -p "${marker%/*}"
+touch "$marker"

@@ -69,7 +69,8 @@ jobs:
             prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-dock-session \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-downloads \
-            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-trash
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-open-trash \
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup
 
       - name: Validate prototype configuration
         run: |

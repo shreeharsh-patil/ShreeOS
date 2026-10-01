@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS desktop setup
+Comment=Apply the ShreeOS first-login desktop defaults
+Exec=/usr/local/bin/shreeos-session-setup
+OnlyShowIn=XFCE;
+NoDisplay=true
+Terminal=false
