@@ -10,6 +10,7 @@ log_exit_status() {
 trap log_exit_status EXIT
 logger -t shreeos-session-setup 'Applying ShreeOS XFCE panel and wallpaper defaults'
 
+logger -t shreeos-session-setup 'Applying panel geometry'
 xfconf-query -c xfce4-panel -p /panels/panel-1/length -s 100
 xfconf-query -c xfce4-panel -p /panels/panel-1/length-adjust -s false
 xfconf-query -c xfce4-panel -p /panels/panel-1/position -s 'p=6;x=0;y=0'
@@ -17,6 +18,7 @@ xfconf-query -c xfce4-panel -p /panels/panel-1/position-locked -s true
 xfconf-query -c xfce4-panel -p /panels/panel-1/size -s 34
 
 wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-dark.svg
+logger -t shreeos-session-setup 'Applying ShreeOS wallpaper to available workspaces'
 for monitor in monitor0 monitor1 monitorVirtual-1; do
   for workspace in workspace0 workspace1 workspace2 workspace3; do
     image_property="/backdrop/screen0/$monitor/$workspace/last-image"
@@ -26,6 +28,7 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
   done
 done
 
+logger -t shreeos-session-setup 'Restarting XFCE panel to apply its layout'
 xfce4-panel --restart
 mkdir -p "${marker%/*}"
 touch "$marker"
