@@ -135,7 +135,7 @@ class ShreeStore(Gtk.Application):
             self.status.set_text("Search text is too long")
             return
 
-        pattern = re.escape(query)
+        pattern = ".*".join(re.escape(token) for token in query.split())
         try:
             output = subprocess.run(
                 ["apt-cache", "search", "--names-only", pattern],
@@ -155,7 +155,10 @@ class ShreeStore(Gtk.Application):
         if self.live_session:
             self.status.set_text("Browse the catalog here; package changes are available after installing ShreeOS.")
         else:
-            self.status.set_text(f"{len(matches)} matching packages · powered by APT")
+            if matches:
+                self.status.set_text(f"Showing {len(matches)} package results · powered by APT")
+            else:
+                self.status.set_text("No matching packages. Refresh the catalog to get the latest results.")
         for package, description in matches:
             self.results.add(self.package_row(package, description))
         self.results.show_all()
