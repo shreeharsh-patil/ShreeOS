@@ -136,7 +136,9 @@ jobs:
           set -Eeuo pipefail
           exec > >(tee -a build-logs/base-system-validation.log) 2>&1
           bash scripts/verify-stage.sh base-system
-          bash tests/base-system/test-base-system-contract.sh
+          # This job has only assembled the Phase 2 package stage. The full
+          # filesystem/account contract runs later, after rootfs assembly.
+          bash tests/base-system/test-base-system-contract.sh --static
           bash tests/base-system/test-rootfs-pruning.sh
 
       - name: Report installed base system

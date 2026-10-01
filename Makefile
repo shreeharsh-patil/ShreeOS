@@ -376,6 +376,7 @@ test-rootfs-prune:
 	bash tests/base-system/test-rootfs-pruning.sh
 
 test-base-system: test-rootfs-prune
+	bash tests/base-system/test-base-system-contract.sh
 	bash tests/smoke/test-base-system.sh
 
 .PHONY: test-smoke

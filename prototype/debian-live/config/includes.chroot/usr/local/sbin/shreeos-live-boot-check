@@ -73,6 +73,21 @@ if [ -f /etc/shreeos/image-profile ] &&
     sleep 1
     elapsed=$((elapsed + 1))
   done
+
+  for display_log in \
+    /var/log/Xorg.0.log \
+    /var/log/lightdm/x-0.log \
+    /var/log/lightdm/lightdm.log \
+    /home/shree/.local/share/xorg/Xorg.0.log
+  do
+    if [ -r "$display_log" ]; then
+      while IFS= read -r diagnostic; do
+        log "display diagnostic: ${diagnostic}"
+      done <<EOF
+$(grep -Ei '\(EE\)|fatal server error|no screens found|failed to|cannot open /dev/dri' "$display_log" | tail -n 16 || true)
+EOF
+    fi
+  done
 fi
 
 log 'all live boot checks passed'
