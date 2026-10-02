@@ -47,15 +47,8 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
     xfconf-query -c xfce4-desktop -p "$style_property" --create --type int -s 5
   done
 done
-logger -t shreeos-session-setup 'Restarting XFCE desktop to draw the ShreeOS wallpaper'
-xfdesktop --quit
-for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  if ! pgrep -x xfdesktop >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-xfdesktop --disable-wm-check &
+logger -t shreeos-session-setup 'Reloading XFCE desktop to draw the ShreeOS wallpaper'
+xfdesktop --reload
 
 if [ -r /run/live/medium/live/filesystem.squashfs ]; then
   logger -t shreeos-session-setup 'Keeping the passwordless live account unlockable'

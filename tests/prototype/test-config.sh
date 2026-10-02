@@ -88,7 +88,7 @@ grep -Fq 'image-show" type="bool" value="true"' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'image-show' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
-grep -Fq 'xfdesktop --quit' \
+grep -Fq 'xfdesktop --reload' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
 grep -Fq 'sleep 15' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
