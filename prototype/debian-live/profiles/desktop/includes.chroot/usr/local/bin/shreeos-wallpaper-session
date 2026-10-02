@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Keep a reliable desktop wallpaper surface below XFCE's panel and dock."""
+
+import sys
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("Gtk", "3.0")
+
+from gi.repository import Gdk, GdkPixbuf, Gtk
+
+
+def main() -> int:
+    wallpaper = sys.argv[1] if len(sys.argv) > 1 else "/usr/share/backgrounds/shreeos/shreeos-calm-light.png"
+    screen = Gdk.Screen.get_default()
+    if screen is None:
+        return 1
+
+    width = max(1, screen.get_width())
+    height = max(1, screen.get_height())
+    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(wallpaper, width, height, False)
+
+    window = Gtk.Window()
+    window.set_decorated(False)
+    window.set_accept_focus(False)
+    window.set_skip_pager_hint(True)
+    window.set_skip_taskbar_hint(True)
+    window.set_type_hint(Gdk.WindowTypeHint.DESKTOP)
+    window.set_keep_below(True)
+    window.set_default_size(width, height)
+    window.move(0, 0)
+    window.add(Gtk.Image.new_from_pixbuf(pixbuf))
+    window.show_all()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

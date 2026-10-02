@@ -71,6 +71,9 @@ if kill -0 "$desktop_pid" >/dev/null 2>&1; then
 else
   logger -t shreeos-session-setup 'XFCE desktop restart exited; retaining applied wallpaper settings'
 fi
+# Keep a GTK-backed wallpaper surface below XFCE for display drivers where
+# xfdesktop cannot map a root window after a live-mode change.
+python3 /usr/local/bin/shreeos-wallpaper-session "$wallpaper" >/dev/null 2>&1 &
 
 if [ -r /run/live/medium/live/filesystem.squashfs ]; then
   logger -t shreeos-session-setup 'Keeping the passwordless live account unlockable'
