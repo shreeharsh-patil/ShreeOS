@@ -168,6 +168,10 @@ def main() -> int:
     require('XFCE_DEFAULTS_TARGET="$BUILD_DIR/config/includes.chroot/etc/xdg/xfce4/xfconf/xfce-perchannel-xml"' in builder
             and 'cp "$XFCE_DEFAULTS_SOURCE"/*.xml "$XFCE_DEFAULTS_TARGET/"' in builder,
             "live image does not install ShreeOS XFCE defaults system-wide")
+    require('usr/share/images/desktop-base' in builder
+            and 'usr/share/images/desktop-base/default' in builder
+            and 'shreeos-calm-dark.png' in builder,
+            "live image does not provide the ShreeOS wallpaper at xfdesktop's Debian fallback path")
     session_setup = INCLUDES / "usr/local/bin/shreeos-session-setup"
     session_setup_source = session_setup.read_text(encoding="utf-8")
     require(session_setup.is_file() and "xfce4-panel --restart" not in session_setup_source

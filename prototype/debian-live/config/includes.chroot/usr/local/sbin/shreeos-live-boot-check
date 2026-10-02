@@ -123,6 +123,7 @@ elif [ -f /etc/shreeos/image-profile ] &&
     | while IFS= read -r diagnostic; do log "$diagnostic"; done
   for session_log in \
     /home/shree/.cache/shreeos-session-setup.log \
+    /home/shree/.cache/shreeos-dock-session.log \
     /home/shree/.xsession-errors
   do
     if [ -r "$session_log" ]; then
