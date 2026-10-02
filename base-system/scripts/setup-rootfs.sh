@@ -158,7 +158,8 @@ EOF
 printf '%s:x:%s:\n' "${DESKTOP_USER}" "${DESKTOP_GID}" \
   >> "${LUMEN_STAGE_ROOT}/etc/group"
 
-cat > "${LUMEN_STAGE_ROOT}/etc/shadow" <<'EOF'
+shadow_tmp="$(mktemp "${LUMEN_STAGE_ROOT}/etc/.shadow.XXXXXX")"
+cat > "$shadow_tmp" <<'EOF'
 root:!::0:::::
 daemon:*::0:::::
 bin:*::0:::::
@@ -179,14 +180,15 @@ EOF
 # last-change day) keeps chage and PAM stacks from rejecting the account, and
 # the empty second field for root means root has no password-based login at all.
 printf '%s:!:%s:0:99999:7:::\n' "${DESKTOP_USER}" "${SHADOW_EPOCH_DAYS:-19700}" \
-  >> "${LUMEN_STAGE_ROOT}/etc/shadow"
+  >> "$shadow_tmp"
 # field 3 must be numeric for the account to be valid; assert it rather than
 # trusting the heredoc above to stay correct as accounts are added.
 if awk -F: 'NF >= 3 && $1 !~ /^#/ && $3 != "" && $3 !~ /^[0-9]+$/ { found = 1 }
-           END { exit !found }' "${LUMEN_STAGE_ROOT}/etc/shadow"; then
+           END { exit !found }' "$shadow_tmp"; then
   lumen_die "Generated /etc/shadow has a non-numeric last-change field"
 fi
-chmod 0600 "${LUMEN_STAGE_ROOT}/etc/shadow"
+chmod 0600 "$shadow_tmp"
+mv -f "$shadow_tmp" "${LUMEN_STAGE_ROOT}/etc/shadow"
 # Ownership is intentionally not set here. The build runs unprivileged, so chown
 # would fail outright, and it would be a no-op regardless: make-rootfs.sh packs
 # the tree with `cpio --owner=0:0`, so every entry in the shipped archive is

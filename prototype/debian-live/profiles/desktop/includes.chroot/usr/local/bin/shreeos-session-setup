@@ -54,7 +54,20 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
   done
 done
 logger -t shreeos-session-setup 'Refreshing the XFCE desktop surface with the ShreeOS wallpaper'
-xfdesktop --reload
+# xfdesktop can still be registering its D-Bus name when this autostart hook
+# runs. Retry briefly, but do not discard the working xfconf settings or block
+# the rest of the session when the refresh helper reports a transient timeout.
+desktop_refresh_status=1
+for attempt in 1 2 3 4 5; do
+  if xfdesktop --reload; then
+    desktop_refresh_status=0
+    break
+  fi
+  sleep 1
+done
+if [ "$desktop_refresh_status" -ne 0 ]; then
+  logger -t shreeos-session-setup 'XFCE desktop refresh timed out; retaining applied wallpaper settings'
+fi
 
 if [ -r /run/live/medium/live/filesystem.squashfs ]; then
   logger -t shreeos-session-setup 'Keeping the passwordless live account unlockable'

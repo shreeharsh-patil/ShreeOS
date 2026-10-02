@@ -313,6 +313,16 @@ fi
 # the final runtime tree after every package has been installed.
 bash "${SCRIPT_DIR}/prune-development-files.sh" "${LUMEN_STAGE_ROOT}"
 
+# Keep the security boundary explicit at the last point before the stage is
+# verified and archived. Some unprivileged install tools preserve a 0640 mode
+# when they replace /etc/sudoers; that mode is not safe for a sudo policy and
+# is easy to miss because the file contents remain correct. Reapply and verify
+# the exact mode after every assembly step.
+chmod 0440 "${LUMEN_STAGE_ROOT}/etc/sudoers"
+sudoers_mode="$(stat -c '%a' "${LUMEN_STAGE_ROOT}/etc/sudoers")"
+[ "$sudoers_mode" = "440" ] || \
+  lumen_die "/etc/sudoers has unsafe mode ${sudoers_mode}; expected 0440"
+
 # 5. Verify base system essentials
 lumen_step "Verifying base system"
 for bin in bash ls mount false; do
