@@ -58,7 +58,11 @@ logger -t shreeos-session-setup 'Refreshing the XFCE desktop surface with the Sh
 # display mode. Restart it after applying the wallpaper so the root window is
 # sized to the current 1280x768 canvas. Do not use the D-Bus xfdesktop --reload
 # command here: it can block indefinitely while the session bus is still settling.
-pkill -x xfdesktop >/dev/null 2>&1 || true
+# xfdesktop can ignore a normal TERM while it is waiting on the session bus;
+# remove every stale instance so its old 640x480 root window cannot remain over
+# the newly selected display mode.
+pkill -9 -x xfdesktop >/dev/null 2>&1 || true
+sleep 1
 xfdesktop >/dev/null 2>&1 &
 desktop_pid=$!
 sleep 2
