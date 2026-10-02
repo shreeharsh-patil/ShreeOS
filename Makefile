@@ -263,6 +263,8 @@ rootfs: $(FORCE_TARGET) $(MARKER_DIR)/.rootfs-$(PROFILE)
 
 $(MARKER_DIR)/.rootfs-$(PROFILE): $(MARKER_DIR)/.base-system $(MARKER_DIR)/.kernel-$(PROFILE) $(MARKER_DIR)/.packages $(MARKER_DIR)/.desktop-$(PROFILE) $(ROOTFS_DEPS) | check-base-cache check-kernel-cache check-packages-cache check-desktop-cache check-rootfs-cache
 	fakeroot -- bash rootfs/scripts/make-rootfs.sh
+	# fakeroot can keep permission changes in its metadata; finalize security modes on the real stage.
+	. build.conf && chmod 0440 "$$SHREEOS_STAGE_ROOT/etc/sudoers" && test "$$(stat -c '%a' "$$SHREEOS_STAGE_ROOT/etc/sudoers")" = 440
 	bash scripts/verify-stage.sh rootfs
 	@touch $@
 
