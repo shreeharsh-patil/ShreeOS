@@ -111,7 +111,7 @@ def main() -> int:
     require(dock.get("hide-mode") == "'none'",
             "ShreeOS dock should remain visible on the desktop")
     dock_autostart = configparser.ConfigParser(interpolation=None)
-    dock_autostart.read(INCLUDES / "etc/xdg/autostart/shreeos-dock.desktop", encoding="utf-8")
+    dock_autostart.read(SKEL / ".config/autostart/shreeos-dock.desktop", encoding="utf-8")
     require(dock_autostart.get("Desktop Entry", "Exec", fallback="")
             == "/usr/local/bin/shreeos-dock-session",
             "XFCE does not start the ShreeOS dock with its ShreeOS configuration")
@@ -207,6 +207,10 @@ def main() -> int:
     parse_xml(installer_icon)
     require((INCLUDES / "usr/share/applications/shreeos-installer.desktop").is_file(),
             "ShreeOS installer is missing its application menu entry")
+    build_script = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+    require('branding/icons/installer.svg' in build_script
+            and 'etc/calamares/branding/shreeos/' in build_script,
+            "prototype builder does not package ShreeOS installer branding")
 
     app_icon = INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
     parse_xml(app_icon)
