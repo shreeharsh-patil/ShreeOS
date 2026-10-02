@@ -53,9 +53,9 @@ fi
 if [ "$PROFILE" = plasma ]; then
   for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
     sddm-theme-breeze breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
-    plasma-discover plasma-discover-backend-flatpak flatpak \
+    plasma-discover plasma-discover-backend-flatpak flatpak packagekit \
     plasma-nm plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
-    fonts-inter kdialog libnotify-bin plymouth plymouth-themes calamares calamares-settings-debian; do
+    fonts-inter x11-xserver-utils kdialog libnotify-bin plymouth plymouth-themes calamares calamares-settings-debian; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Plasma ISO package manifest is missing: $package" >&2
       exit 1
@@ -73,6 +73,14 @@ if [ "$PROFILE" = plasma ]; then
     usr/local/bin/shreeos-open-downloads \
     usr/local/bin/shreeos-open-trash \
     usr/local/bin/shreeos-theme \
+    usr/local/bin/shreeos-installer \
+    usr/local/libexec/shreeos-installer-privileged \
+    usr/share/applications/shreeos-installer.desktop \
+    usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg \
+    usr/share/polkit-1/actions/org.shreeos.installer.policy \
+    etc/calamares/settings.conf \
+    etc/calamares/branding/shreeos/branding.desc \
+    etc/calamares/branding/shreeos/shreeos-logo.svg \
     usr/share/sddm/themes/shreeos/Main.qml \
     usr/share/sddm/themes/shreeos/theme.conf \
     usr/local/sbin/shreeos-sddm-live-autologin \

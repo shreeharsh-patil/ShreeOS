@@ -26,3 +26,6 @@ retains its Debian copyright and license record under `/usr/share/doc/`.
 This is a component map, not a complete notice bundle. Before redistributing
 an image, inspect the exact package manifest and preserve all corresponding
 Debian copyright and license files. See [THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
+
+For the elementary/Pantheon versus KDE/Plasma architecture comparison, see the
+[desktop component integration matrix](COMPONENT_INTEGRATION_MATRIX.md).

@@ -14,6 +14,7 @@ kde-spectacle
 plasma-discover
 plasma-discover-backend-flatpak
 flatpak
+packagekit
 ark
 plasma-nm
 plasma-pa
@@ -36,5 +37,6 @@ xdg-user-dirs
 calamares
 calamares-settings-debian
 pkexec
+x11-xserver-utils
 kdialog
 libnotify-bin

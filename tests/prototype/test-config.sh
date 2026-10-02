@@ -33,6 +33,7 @@ boot_check="$CONFIG_DIR/config/includes.chroot/usr/local/sbin/shreeos-live-boot-
 test -f "$lock_hook"
 test -x "$lock_hook"
 test -f "$boot_check"
+test -x "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/lib/shreeos/first_run.py"
 grep -Fq 'passwd --lock shree' "$lock_hook"
 grep -Fq 'live-config.hooks=filesystem' \
   "$REPO_ROOT/scripts/build-debian-prototype.sh"
@@ -97,9 +98,9 @@ plasma_unique="$(printf '%s\n' "$plasma_actual" | uniq)"
 test "$plasma_actual" = "$plasma_unique"
 for required in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm sddm-theme-breeze \
   breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
-  plasma-discover plasma-discover-backend-flatpak flatpak plasma-nm \
+  plasma-discover plasma-discover-backend-flatpak flatpak packagekit plasma-nm \
   plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
-  fonts-inter kdialog libnotify-bin; do
+  fonts-inter x11-xserver-utils kdialog libnotify-bin; do
   grep -Fxq "$required" "$plasma_packages" || {
     echo "Plasma profile is missing: $required" >&2
     exit 1
@@ -112,6 +113,7 @@ grep -Fq 'User=shree' "$plasma_includes/etc/sddm.conf.d/20-shreeos-live-autologi
 test -s "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
 test -s "$plasma_includes/usr/share/sddm/themes/shreeos/theme.conf"
 test -x "$plasma_includes/usr/local/sbin/shreeos-sddm-live-autologin"
+test -x "$CONFIG_DIR/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot"
 grep -Fq 'sddm.login(userPicker.currentText' \
   "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
 grep -Fq 'sddm.canPowerOff' \
@@ -133,6 +135,7 @@ test -s "$REPO_ROOT/themes/plasma/colors/ShreeOS-Dark.colors"
 grep -Fq 'plasma-apply-wallpaperimage' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
 grep -Fq 'ShreeOS Dark' "$plasma_includes/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/defaults"
 grep -Fq 'shreeos-trash.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
+grep -Fq 'shreeos-installer.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
 grep -Fq 'org.kde.plasma.appmenu' "$REPO_ROOT/desktop/plasma/layout.js"
 grep -Fq 'org.kde.plasma.icontasks' "$REPO_ROOT/desktop/plasma/layout.js"
 grep -Fq 'org.kde.discover.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
@@ -141,6 +144,14 @@ grep -Fq 'org.kde.plasma.digitalclock' "$plasma_includes/usr/local/bin/shreeos-p
 test -s "$plasma_includes/usr/share/applications/shreeos-appearance.desktop"
 test -s "$plasma_includes/usr/share/applications/shreeos-downloads.desktop"
 test -s "$plasma_includes/usr/share/applications/shreeos-trash.desktop"
+grep -Fq 'profiles/desktop/includes.chroot/usr/local/bin/shreeos-installer' \
+  "$REPO_ROOT/scripts/build-debian-prototype.sh"
+grep -Fq 'profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged' \
+  "$REPO_ROOT/scripts/build-debian-prototype.sh"
+test -s "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/calamares/branding/shreeos/branding.desc"
+grep -Fq 'etc/calamares/branding/shreeos' "$REPO_ROOT/scripts/build-debian-prototype.sh"
+grep -Fq 'branding/logo/shreeos-logo.svg' "$REPO_ROOT/scripts/build-debian-prototype.sh"
+test -s "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/share/polkit-1/actions/org.shreeos.installer.policy"
 test -s "$plasma_includes/etc/systemd/system/shreeos-sddm-live-autologin.service"
 grep -Fq '20-shreeos-live-autologin.conf' \
   "$plasma_includes/usr/local/sbin/shreeos-sddm-live-autologin"

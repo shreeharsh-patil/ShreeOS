@@ -96,6 +96,28 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/package-lists/"
   cp -a "$PROFILE_SOURCE/includes.chroot/." \
     "$BUILD_DIR/config/includes.chroot/"
+  mkdir -p "$BUILD_DIR/config/includes.chroot/etc/calamares"
+  cp -a "$CONFIG_SOURCE/profiles/desktop/includes.chroot/etc/calamares/." \
+    "$BUILD_DIR/config/includes.chroot/etc/calamares/"
+  mkdir -p \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/libexec" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/applications" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/polkit-1/actions" \
+    "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos"
+  cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/bin/shreeos-installer" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/"
+  cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/libexec/"
+  cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/applications/shreeos-installer.desktop" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/applications/"
+  cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/"
+  cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/polkit-1/actions/org.shreeos.installer.policy" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/polkit-1/actions/"
+  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+    "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/"
   mkdir -p \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps"
@@ -123,6 +145,9 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-open-trash" \
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-theme" \
     "$BUILD_DIR/config/includes.chroot/usr/local/sbin/shreeos-sddm-live-autologin"
+  chmod 0755 \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-installer" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/libexec/shreeos-installer-privileged"
   for wallpaper in "$REPO_ROOT"/branding/wallpapers/*.svg; do
     rsvg-convert --width=1920 \
       --output="$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/$(basename "${wallpaper%.svg}").png" \

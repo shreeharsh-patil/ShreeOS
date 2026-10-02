@@ -54,6 +54,7 @@ tasks.writeConfig(
     "applications:firefox-esr.desktop," +
     "applications:org.kde.discover.desktop," +
     "applications:systemsettings.desktop," +
+    "applications:shreeos-installer.desktop," +
     "applications:shreeos-trash.desktop"
 );
 dock.locked = true;

@@ -107,7 +107,9 @@ validate with `bash tests/prototype/test-iso.sh out/shreeos-0.3.0-prototype-plas
 This is a separate profile; it does not replace the existing XFCE desktop.
 Discover uses Debian's PackageKit backend for system packages and the
 preconfigured Flathub remote through Discover's Flatpak backend. No Flatpak
-apps are bundled in the ISO. The Plasma profile's package/session integration
-still requires Linux CI and QEMU review.
+apps are bundled in the ISO. Its application menu also includes the branded
+Calamares installer, using the ShreeOS install configuration and live-only
+privilege policy. The Plasma profile's package/session integration still
+requires Linux CI and QEMU review.
 See [`docs/KDE-PLASMA-INTEGRATION.md`](../../docs/KDE-PLASMA-INTEGRATION.md)
 for the repository audit, component matrix, and current scope.
