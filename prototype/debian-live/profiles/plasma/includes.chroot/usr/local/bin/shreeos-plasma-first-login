@@ -9,8 +9,19 @@ mkdir -p "${marker%/*}"
 # applying the layout. Resetting the layout during Plasma startup can terminate
 # the shell before it has loaded the ShreeOS panel and dock.
 sleep 10
-plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout
-plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-calm-dark.png
+apply_attempt=0
+while [ "$apply_attempt" -lt 30 ]; do
+  if plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout &&
+    plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-calm-dark.png; then
+    break
+  fi
+  apply_attempt=$((apply_attempt + 1))
+  sleep 1
+done
+if [ "$apply_attempt" -ge 30 ]; then
+  logger -t shreeos-plasma-first-login 'Plasma session did not accept ShreeOS desktop defaults'
+  exit 1
+fi
 config="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
 attempt=0
 while [ "$attempt" -lt 30 ]; do
