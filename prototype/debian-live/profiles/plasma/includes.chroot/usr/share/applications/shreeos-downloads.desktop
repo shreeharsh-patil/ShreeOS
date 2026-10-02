@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Downloads
+Comment=Open the Downloads folder
+Exec=/usr/local/bin/shreeos-open-downloads
+Icon=folder-download
+Terminal=false
+Categories=System;FileTools;

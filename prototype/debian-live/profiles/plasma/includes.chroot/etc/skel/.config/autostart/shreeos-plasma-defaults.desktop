@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=ShreeOS Plasma defaults
-Comment=Set the ShreeOS wallpaper for the Plasma session
-Exec=plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-calm-dark.png
+Comment=Apply the ShreeOS desktop defaults once for this user
+Exec=/usr/local/bin/shreeos-plasma-first-login
 OnlyShowIn=KDE;
 NoDisplay=true
 Terminal=false

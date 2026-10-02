@@ -30,8 +30,8 @@ release; the XFCE profile's screenshot gate is still under investigation.
 | Root filesystem | CPIO initramfs in legacy; live-build SquashFS in prototype | Extend the prototype package list and chroot includes |
 | ISO and boot | GRUB hybrid ISO in legacy; live-build GRUB BIOS/UEFI in prototype | Keep existing prototype boot pipeline and add a `plasma` profile |
 | Existing GUI | X11/dwm and custom scripts; separate XFCE desktop prototype | Preserve both; add a separate SDDM/Plasma profile |
-| Login | No full legacy desktop login; LightDM for XFCE prototype | SDDM with upstream Breeze greeter and ShreeOS-owned defaults |
-| Panel and dock | dwm bar in legacy; XFCE panel + Plank in prototype | Start with Plasma defaults/configuration; custom shell work is later |
+| Login | No full legacy desktop login; LightDM for XFCE prototype | SDDM with ShreeOS-owned QML greeter and live-only autologin |
+| Panel and dock | dwm bar in legacy; XFCE panel + Plank in prototype | Configure native Plasma panels: Kickoff and app menu at top, system tray and date on right, centered floating auto-hide icon-task dock |
 | Networking, audio, Bluetooth, power | Basic custom tools in legacy; NM/PipeWire/BlueZ in prototype | Use plasma-nm, plasma-pa, BlueDevil, PowerDevil and their services |
 | Installer | Shell installer in legacy; Calamares config in prototype | Retain upstream Calamares dependency/config; validate install flow later |
 | CI | Multiple legacy workflows; Debian prototype build/QEMU workflow | Extend prototype validation to package manifest and Plasma session |
@@ -40,23 +40,26 @@ release; the XFCE profile's screenshot gate is still under investigation.
 
 The new `plasma` profile installs Debian's `kde-plasma-desktop`, SDDM, Dolphin,
 Konsole, Ark, Spectacle, Plasma network/audio widgets, PowerDevil and BlueDevil.
-It uses ShreeOS's existing original logo and wallpapers, dark Breeze color
-defaults, Papirus icons, four virtual desktops, KRunner's Meta+Space shortcut,
-and an SDDM autologin for the locked-password temporary live user. No KDE source
-is vendored or forked.
+It applies an original ShreeOS top menu/status bar and floating dock through
+Plasma's layout scripting API, with pinned Dolphin, Downloads, Konsole, Firefox,
+System Settings and Trash launchers. An original ShreeOS QML theme styles the
+SDDM greeter with ShreeOS branding. The greeter theme persists into installed
+systems, while a boot-time check removes the live-only autologin override from
+an installed system. ShreeOS dark and light color schemes, matching Konsole
+schemes, GTK theme defaults and an appearance switcher are included with the
+original logo and wallpapers. Four virtual desktops and KRunner's Meta+Space
+shortcut are configured. Discover uses Debian's PackageKit backend for system
+packages and the Flatpak backend with Flathub preconfigured for user-selected
+applications. No app payloads are bundled from Flathub. No KDE source is
+vendored or forked.
 
-Discover does not have a configured package source in this profile yet. Debian's
-prototype has apt/dpkg, but Discover's usable Debian backend has not been
-established here, and no Flatpak remote is configured. Do not treat Discover
-as a working software center until a supported backend and source are added
-and tested.
-
-This slice is a package-and-session foundation, not the finished ShreeOS shell.
-It does not yet implement the custom floating dock, top-panel arrangement,
-original light/dark theme packages, custom SDDM/lock-screen artwork, quick
-settings, custom KWin effects, or an installed-system acceptance run. The
-first QEMU gate checks the package manifest and that SDDM starts Plasma; visual
-and functional hardware acceptance remains required.
+The configured panel uses upstream Plasma widgets, so the system tray and its
+available network, Bluetooth, audio, and notification controls retain their
+native service integrations. This is not a separate ShreeOS quick-settings
+application. Hover scaling, custom KWin effects, a custom Plasma lock screen,
+and an installed-system acceptance run remain future work. CI checks
+the image assets, session startup and ShreeOS panel/dock configuration in BIOS
+and UEFI QEMU; visual and physical-hardware acceptance remains required.
 
 ## Upstream-code provenance
 
@@ -66,3 +69,6 @@ component. Before each copy, record the exact upstream path and revision,
 inspect its license and notices, preserve required text, and document ShreeOS
 changes. For this profile, KDE applications and components remain Debian
 package dependencies.
+
+The original layout uses KDE's documented [Plasma scripting API](https://develop.kde.org/docs/plasma/scripting/)
+and examples. The original login theme uses SDDM's documented [QML theme API](https://github.com/sddm/sddm/wiki/Theming).

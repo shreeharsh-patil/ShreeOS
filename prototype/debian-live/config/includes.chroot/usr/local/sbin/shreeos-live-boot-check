@@ -52,13 +52,16 @@ if [ -f /etc/shreeos/image-profile ] &&
   [ "$(cat /etc/shreeos/image-profile)" = plasma ]; then
   log 'Plasma profile detected; checking SDDM and Plasma session'
   elapsed=0
-  until systemctl is-active --quiet sddm.service &&
+    until systemctl is-active --quiet sddm.service &&
     pgrep -u shree -x plasmashell >/dev/null &&
-    pgrep -u shree -x kwin_x11 >/dev/null; do
+    pgrep -u shree -x kwin_x11 >/dev/null &&
+    [ -f /home/shree/.config/shreeos/plasma-defaults-applied ] &&
+    grep -Fq 'plugin=org.kde.plasma.appmenu' /home/shree/.config/plasma-org.kde.plasma.desktop-appletsrc &&
+    grep -Fq 'plugin=org.kde.plasma.icontasks' /home/shree/.config/plasma-org.kde.plasma.desktop-appletsrc; do
     if [ "$elapsed" -ge 90 ]; then
       ps -eo user,pid,args | grep -E '[s]ddm|[p]lasmashell|[k]win_x11' \
         | while IFS= read -r diagnostic; do log "$diagnostic"; done
-      fail 'SDDM did not start a Plasma session within 90 seconds'
+      fail 'SDDM did not start Plasma or apply ShreeOS desktop defaults within 90 seconds'
     fi
     sleep 1
     elapsed=$((elapsed + 1))

@@ -103,6 +103,26 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/"
+  mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps"
+  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos.svg"
+  rsvg-convert --width=256 --height=256 \
+    --output="$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/shreeos-logo.png" \
+    "$REPO_ROOT/branding/logo/shreeos-logo.svg"
+  mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts"
+  mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/color-schemes"
+  cp "$REPO_ROOT/themes/plasma/colors/ShreeOS-Dark.colors" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/color-schemes/ShreeOS Dark.colors"
+  cp "$REPO_ROOT/themes/plasma/colors/ShreeOS-Light.colors" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/color-schemes/ShreeOS Light.colors"
+  cp "$REPO_ROOT/desktop/plasma/layout.js" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js"
+  chmod 0755 \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-plasma-first-login" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-open-downloads" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-open-trash" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-theme" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/sbin/shreeos-sddm-live-autologin"
   for wallpaper in "$REPO_ROOT"/branding/wallpapers/*.svg; do
     rsvg-convert --width=1920 \
       --output="$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/$(basename "${wallpaper%.svg}").png" \

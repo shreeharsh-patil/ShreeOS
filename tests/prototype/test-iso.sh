@@ -52,11 +52,41 @@ if [ "$PROFILE" = desktop ]; then
 fi
 if [ "$PROFILE" = plasma ]; then
   for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
-    sddm-theme-breeze dolphin konsole ark kde-spectacle plasma-nm plasma-pa powerdevil bluedevil; do
+    sddm-theme-breeze breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
+    plasma-discover plasma-discover-backend-flatpak flatpak \
+    plasma-nm plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
+    fonts-inter kdialog libnotify-bin plymouth plymouth-themes calamares calamares-settings-debian; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Plasma ISO package manifest is missing: $package" >&2
       exit 1
     }
+  done
+  image_contents="$(unsquashfs -ll "$SQUASHFS")"
+  for image_path in \
+    etc/shreeos/image-profile \
+    etc/sddm.conf.d/10-shreeos.conf \
+    etc/sddm.conf.d/20-shreeos-live-autologin.conf \
+    etc/systemd/system/shreeos-sddm-live-autologin.service \
+    etc/skel/.config/autostart/shreeos-plasma-defaults.desktop \
+    usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js \
+    usr/local/bin/shreeos-plasma-first-login \
+    usr/local/bin/shreeos-open-downloads \
+    usr/local/bin/shreeos-open-trash \
+    usr/local/bin/shreeos-theme \
+    usr/share/sddm/themes/shreeos/Main.qml \
+    usr/share/sddm/themes/shreeos/theme.conf \
+    usr/local/sbin/shreeos-sddm-live-autologin \
+    usr/share/color-schemes/ShreeOS Dark.colors \
+    usr/share/color-schemes/ShreeOS Light.colors \
+    usr/share/konsole/ShreeOS Dark.colorscheme \
+    usr/share/konsole/ShreeOS Light.colorscheme \
+    usr/share/flatpak/remotes.d/flathub.flatpakrepo \
+    usr/share/pixmaps/shreeos-logo.png \
+    usr/share/icons/hicolor/scalable/apps/shreeos.svg; do
+    if ! grep -Fq "squashfs-root/$image_path" <<<"$image_contents"; then
+      echo "Plasma ISO is missing ShreeOS desktop asset: $image_path" >&2
+      exit 1
+    fi
   done
 fi
 

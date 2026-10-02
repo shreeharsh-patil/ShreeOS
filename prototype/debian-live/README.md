@@ -105,7 +105,9 @@ Plasma packages with SDDM and ShreeOS-owned session defaults. Build it with
 `SHREEOS_LIVE_PROFILE=plasma bash scripts/build-debian-prototype.sh` and
 validate with `bash tests/prototype/test-iso.sh out/shreeos-0.3.0-prototype-plasma-amd64.iso plasma`.
 This is a separate profile; it does not replace the existing XFCE desktop.
-Discover is not configured as an enabled software source yet. The Plasma
-profile's package/session integration still requires Linux CI and QEMU review.
+Discover uses Debian's PackageKit backend for system packages and the
+preconfigured Flathub remote through Discover's Flatpak backend. No Flatpak
+apps are bundled in the ISO. The Plasma profile's package/session integration
+still requires Linux CI and QEMU review.
 See [`docs/KDE-PLASMA-INTEGRATION.md`](../../docs/KDE-PLASMA-INTEGRATION.md)
 for the repository audit, component matrix, and current scope.

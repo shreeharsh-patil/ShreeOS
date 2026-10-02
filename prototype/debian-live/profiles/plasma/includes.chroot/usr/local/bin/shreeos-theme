@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+
+choice="${1:-}"
+if [ -z "$choice" ]; then
+  choice="$(kdialog --menu 'Choose ShreeOS appearance' \
+    dark 'ShreeOS Dark' light 'ShreeOS Light')" || exit 0
+fi
+
+case "$choice" in
+  dark)
+    scheme='ShreeOS Dark'
+    gtk_theme=Breeze-Dark
+    icons=Papirus-Dark
+    wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-dark.png
+    dark=true
+    ;;
+  light)
+    scheme='ShreeOS Light'
+    gtk_theme=Breeze
+    icons=Papirus
+    wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-light.png
+    dark=false
+    ;;
+  *)
+    echo 'Usage: shreeos-theme [dark|light]' >&2
+    exit 2
+    ;;
+esac
+
+plasma-apply-colorscheme "$scheme"
+plasma-apply-wallpaperimage "$wallpaper"
+for gtk_version in 3.0 4.0; do
+  config="$HOME/.config/gtk-$gtk_version/settings.ini"
+  kwriteconfig6 --file "$config" --group Settings --key gtk-theme-name "$gtk_theme"
+  kwriteconfig6 --file "$config" --group Settings --key gtk-icon-theme-name "$icons"
+  kwriteconfig6 --file "$config" --group Settings --key gtk-application-prefer-dark-theme "$dark"
+done
+kwriteconfig6 --file "$HOME/.local/share/konsole/ShreeOS.profile" \
+  --group Appearance --key ColorScheme "$scheme"
+notify-send 'ShreeOS appearance' "$scheme is active. Reopen GTK apps to refresh their theme."

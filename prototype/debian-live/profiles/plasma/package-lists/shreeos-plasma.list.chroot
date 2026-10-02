@@ -6,9 +6,14 @@ plasma-desktop
 plasma-workspace
 sddm
 sddm-theme-breeze
+breeze-gtk-theme
+breeze-cursor-theme
 dolphin
 konsole
 kde-spectacle
+plasma-discover
+plasma-discover-backend-flatpak
+flatpak
 ark
 plasma-nm
 plasma-pa
@@ -31,3 +36,5 @@ xdg-user-dirs
 calamares
 calamares-settings-debian
 pkexec
+kdialog
+libnotify-bin

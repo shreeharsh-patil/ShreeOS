@@ -83,6 +83,10 @@ for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli 
 done
 grep -Fq 'shreeos-calm-dark.png' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+grep -Fq 'image-show" type="bool" value="true"' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+grep -Fq 'image-show' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
 grep -Fq 'shreeos-logo.svg' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/lightdm/lightdm-gtk-greeter.conf.d/50-shreeos.conf"
 grep -Fxq desktop \
@@ -91,19 +95,72 @@ plasma_packages="$CONFIG_DIR/profiles/plasma/package-lists/shreeos-plasma.list.c
 plasma_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$plasma_packages" | sort)"
 plasma_unique="$(printf '%s\n' "$plasma_actual" | uniq)"
 test "$plasma_actual" = "$plasma_unique"
-for required in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm sddm-theme-breeze dolphin konsole ark kde-spectacle plasma-nm \
-  plasma-pa powerdevil bluedevil pipewire-audio network-manager; do
+for required in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm sddm-theme-breeze \
+  breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
+  plasma-discover plasma-discover-backend-flatpak flatpak plasma-nm \
+  plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
+  fonts-inter kdialog libnotify-bin; do
   grep -Fxq "$required" "$plasma_packages" || {
     echo "Plasma profile is missing: $required" >&2
     exit 1
   }
 done
 plasma_includes="$CONFIG_DIR/profiles/plasma/includes.chroot"
-grep -Fq 'Session=plasmax11.desktop' "$plasma_includes/etc/sddm.conf.d/10-shreeos.conf"
-grep -Fq 'User=shree' "$plasma_includes/etc/sddm.conf.d/10-shreeos.conf"
+grep -Fq 'Current=shreeos' "$plasma_includes/etc/sddm.conf.d/10-shreeos.conf"
+grep -Fq 'Session=plasmax11.desktop' "$plasma_includes/etc/sddm.conf.d/20-shreeos-live-autologin.conf"
+grep -Fq 'User=shree' "$plasma_includes/etc/sddm.conf.d/20-shreeos-live-autologin.conf"
+test -s "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
+test -s "$plasma_includes/usr/share/sddm/themes/shreeos/theme.conf"
+test -x "$plasma_includes/usr/local/sbin/shreeos-sddm-live-autologin"
+grep -Fq 'sddm.login(userPicker.currentText' \
+  "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
+grep -Fq 'sddm.canPowerOff' \
+  "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
+grep -Fq 'width: Screen.width' \
+  "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
+grep -Fq 'shreeos-logo.png' \
+  "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
 grep -Fq 'Meta+Space' "$plasma_includes/etc/skel/.config/kglobalshortcutsrc"
-grep -Fq 'plasma-apply-wallpaperimage' \
+grep -Fq 'Exec=/usr/local/bin/shreeos-plasma-first-login' \
   "$plasma_includes/etc/skel/.config/autostart/shreeos-plasma-defaults.desktop"
+test -x "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
+test -x "$plasma_includes/usr/local/bin/shreeos-open-downloads"
+test -x "$plasma_includes/usr/local/bin/shreeos-open-trash"
+test -x "$plasma_includes/usr/local/bin/shreeos-theme"
+test -f "$REPO_ROOT/desktop/plasma/layout.js"
+test -s "$REPO_ROOT/themes/plasma/colors/ShreeOS-Light.colors"
+test -s "$REPO_ROOT/themes/plasma/colors/ShreeOS-Dark.colors"
+grep -Fq 'plasma-apply-wallpaperimage' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
+grep -Fq 'ShreeOS Dark' "$plasma_includes/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/defaults"
+grep -Fq 'shreeos-trash.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
+grep -Fq 'org.kde.plasma.appmenu' "$REPO_ROOT/desktop/plasma/layout.js"
+grep -Fq 'org.kde.plasma.icontasks' "$REPO_ROOT/desktop/plasma/layout.js"
+grep -Fq 'org.kde.discover.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
+grep -Fq 'org.kde.plasma.kickoff' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
+grep -Fq 'org.kde.plasma.digitalclock' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
+test -s "$plasma_includes/usr/share/applications/shreeos-appearance.desktop"
+test -s "$plasma_includes/usr/share/applications/shreeos-downloads.desktop"
+test -s "$plasma_includes/usr/share/applications/shreeos-trash.desktop"
+test -s "$plasma_includes/etc/systemd/system/shreeos-sddm-live-autologin.service"
+grep -Fq '20-shreeos-live-autologin.conf' \
+  "$plasma_includes/usr/local/sbin/shreeos-sddm-live-autologin"
+grep -Fq '/run/live/medium' \
+  "$plasma_includes/usr/local/sbin/shreeos-sddm-live-autologin"
+grep -Fq 'systemctl enable shreeos-sddm-live-autologin.service' \
+  "$CONFIG_DIR/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot"
+grep -Fq 'file:///usr/share/backgrounds/shreeos/shreeos-calm-dark.png' \
+  "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
+test -s "$plasma_includes/etc/skel/.local/share/konsole/ShreeOS.profile"
+grep -Fq 'DefaultProfile=ShreeOS.profile' "$plasma_includes/etc/skel/.config/konsolerc"
+test -s "$plasma_includes/etc/skel/.config/gtk-4.0/settings.ini"
+test -s "$plasma_includes/usr/share/konsole/ShreeOS Dark.colorscheme"
+test -s "$plasma_includes/usr/share/konsole/ShreeOS Light.colorscheme"
+grep -Fq 'Url=https://dl.flathub.org/repo/' \
+  "$plasma_includes/usr/share/flatpak/remotes.d/flathub.flatpakrepo"
+grep -Fq 'GPGKey=' "$plasma_includes/usr/share/flatpak/remotes.d/flathub.flatpakrepo"
+grep -Fq 'plasma-apply-colorscheme' "$plasma_includes/usr/local/bin/shreeos-theme"
+grep -Fq 'desktop/plasma/layout.js' "$REPO_ROOT/scripts/build-debian-prototype.sh"
+grep -Fq 'shreeos-logo.png' "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fxq plasma "$plasma_includes/etc/shreeos/image-profile"
 desktop_includes="$CONFIG_DIR/profiles/desktop/includes.chroot"
 test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
@@ -136,5 +193,5 @@ grep -Fq 'shreeos-calm-dark.png' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'rsvg-convert --width=1920' "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'shreeos-calm-dark.png' \
-  "$CONFIG_DIR/profiles/plasma/includes.chroot/etc/skel/.config/autostart/shreeos-plasma-defaults.desktop"
+  "$CONFIG_DIR/profiles/plasma/includes.chroot/usr/local/bin/shreeos-plasma-first-login"
 printf 'Debian prototype configuration contract passed.\n'

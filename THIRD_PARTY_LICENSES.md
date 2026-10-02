@@ -56,9 +56,11 @@ redistribution. Debian package records: [Arc](https://packages.debian.org/trixie
 [Inter](https://packages.debian.org/trixie/fonts-inter).
 
 The experimental Plasma profile adds KDE Plasma, KWin, SDDM, Dolphin, Konsole,
-Ark, KDE Spectacle, plasma-nm, plasma-pa, PowerDevil and BlueDevil from
-Debian's signed Trixie package repositories. No KDE source tree is included in
-ShreeOS.
+Ark, KDE Spectacle, Discover, its Flatpak backend, Flatpak, plasma-nm, plasma-pa,
+PowerDevil and BlueDevil from Debian's signed Trixie package repositories.
+The Flathub remote definition and signing key are included so Discover can
+offer Flatpak apps; application payloads are fetched only when selected by the
+user. No KDE source tree is included in ShreeOS.
 The image's `/live/filesystem.packages` manifest identifies exact binary
 packages and versions; retain each package's installed
 `/usr/share/doc/<package>/copyright` record when redistributing. A component

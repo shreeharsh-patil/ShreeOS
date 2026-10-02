@@ -1,11 +1,12 @@
 [General]
-ColorScheme=BreezeDark
-Name=ShreeOS
+ColorScheme=ShreeOS Dark
+Name=ShreeOS Dark
+font=Inter,10,-1,5,50,0,0,0,0,0
 TerminalApplication=konsole
 TerminalService=org.kde.konsole
 
 [KDE]
-LookAndFeelPackage=org.kde.breeze.desktop
+LookAndFeelPackage=org.shreeos.desktop
 widgetStyle=Breeze
 
 [Icons]

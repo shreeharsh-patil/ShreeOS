@@ -8,7 +8,10 @@ retains its Debian copyright and license record under `/usr/share/doc/`.
 |---|---|---|---|
 | KDE Plasma (`kde-plasma-desktop`, `plasma-desktop`, `plasma-workspace`) | [KDE](https://invent.kde.org/plasma) | GPL-2.0-or-later and LGPL-2.1-or-later components; file-specific notices apply | Official desktop and workspace packages |
 | KWin (`kwin-x11`) | [KDE KWin](https://invent.kde.org/plasma/kwin) | GPL-2.0-or-later; package record governs | Official X11 window manager and compositor |
-| SDDM | [SDDM](https://github.com/sddm/sddm) | GPL-2.0-or-later; package record governs | Official display manager with Breeze theme |
+| SDDM | [SDDM](https://github.com/sddm/sddm) | GPL-2.0-or-later; package record governs | Official display manager with ShreeOS-authored QML greeter |
+| KDE Discover (`plasma-discover`) | [KDE Discover](https://invent.kde.org/plasma/discover) | GPL-2.0-or-later; package record governs | Official software center with Debian PackageKit backend |
+| Discover Flatpak backend and Flatpak | [KDE Discover](https://invent.kde.org/plasma/discover), [Flatpak](https://github.com/flatpak/flatpak) | GPL-2.0-or-later; package records govern | User-selected Flatpak app installs from the preconfigured Flathub remote |
+| Flathub remote definition | [Flathub](https://flathub.org/) | Repository config with Flathub signing key; no app payloads bundled | Enables Flatpak app discovery in Discover |
 | Dolphin | [KDE Dolphin](https://invent.kde.org/system/dolphin) | GPL-2.0-or-later; package record governs | Official file manager |
 | Konsole | [KDE Konsole](https://invent.kde.org/utilities/konsole) | GPL-2.0-or-later; package record governs | Official terminal |
 | Ark | [KDE Ark](https://invent.kde.org/utilities/ark) | GPL-2.0-or-later; package record governs | Official archive manager |

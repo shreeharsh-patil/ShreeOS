@@ -1,0 +1,22 @@
+[kdeglobals][General]
+ColorScheme=ShreeOS Dark
+Name=ShreeOS Dark
+font=Inter,10,-1,5,50,0,0,0,0,0
+
+[kdeglobals][KDE]
+widgetStyle=Breeze
+
+[kdeglobals][Icons]
+Theme=Papirus-Dark
+
+[kwinrc][Desktops]
+Number=4
+Rows=1
+
+[kwinrc][Windows]
+Placement=Centered
+FocusPolicy=ClickToFocus
+
+[kwinrc][org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze

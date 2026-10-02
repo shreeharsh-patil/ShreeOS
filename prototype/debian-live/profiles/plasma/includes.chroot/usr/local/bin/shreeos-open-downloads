@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+downloads="$(xdg-user-dir DOWNLOAD)"
+exec dolphin "$downloads"

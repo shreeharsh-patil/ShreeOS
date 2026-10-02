@@ -24,8 +24,10 @@ logger -t shreeos-session-setup 'Applying ShreeOS wallpaper to available workspa
 for monitor in monitor0 monitor1 monitorVirtual-1; do
   for workspace in workspace0 workspace1 workspace2 workspace3; do
     image_property="/backdrop/screen0/$monitor/$workspace/last-image"
+    show_property="/backdrop/screen0/$monitor/$workspace/image-show"
     style_property="/backdrop/screen0/$monitor/$workspace/image-style"
     xfconf-query -c xfce4-desktop -p "$image_property" --create --type string -s "$wallpaper"
+    xfconf-query -c xfce4-desktop -p "$show_property" --create --type bool -s true
     xfconf-query -c xfce4-desktop -p "$style_property" --create --type int -s 5
   done
 done

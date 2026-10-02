@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+marker="$HOME/.config/shreeos/plasma-defaults-applied"
+[ -e "$marker" ] && exit 0
+
+mkdir -p "${marker%/*}"
+plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout
+plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-calm-dark.png
+config="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+attempt=0
+while [ "$attempt" -lt 30 ]; do
+  if grep -Fq 'plugin=org.kde.plasma.icontasks' "$config" &&
+    grep -Fq 'plugin=org.kde.plasma.systemtray' "$config" &&
+    grep -Fq 'plugin=org.kde.plasma.kickoff' "$config" &&
+    grep -Fq 'plugin=org.kde.plasma.appmenu' "$config" &&
+    grep -Fq 'plugin=org.kde.plasma.digitalclock' "$config"; then
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+if [ "$attempt" -ge 30 ]; then
+  logger -t shreeos-plasma-first-login 'Plasma did not write the ShreeOS menu bar, system tray, clock, and dock configuration'
+  exit 1
+fi
+touch "$marker"

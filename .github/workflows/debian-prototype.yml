@@ -6,6 +6,8 @@ on:
     paths:
       - 'prototype/debian-live/**'
       - 'branding/**'
+      - 'desktop/plasma/**'
+      - 'themes/plasma/**'
       - 'scripts/build-debian-prototype.sh'
       - 'tests/prototype/**'
       - 'Makefile'
@@ -15,6 +17,8 @@ on:
     paths:
       - 'prototype/debian-live/**'
       - 'branding/**'
+      - 'desktop/plasma/**'
+      - 'themes/plasma/**'
       - 'scripts/build-debian-prototype.sh'
       - 'tests/prototype/**'
       - 'Makefile'
@@ -76,7 +80,12 @@ jobs:
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-installer \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged \
             prototype/debian-live/profiles/desktop/hooks/9000-shreeos-plymouth.hook.chroot \
-            prototype/debian-live/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot
+            prototype/debian-live/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-plasma-first-login \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-open-downloads \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-open-trash \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-theme \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/sbin/shreeos-sddm-live-autologin
 
       - name: Validate prototype configuration
         run: |

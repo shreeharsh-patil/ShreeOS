@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Trash
+Comment=Open the Trash
+Exec=dolphin trash:/
+Icon=user-trash
+Terminal=false
+Categories=System;FileTools;

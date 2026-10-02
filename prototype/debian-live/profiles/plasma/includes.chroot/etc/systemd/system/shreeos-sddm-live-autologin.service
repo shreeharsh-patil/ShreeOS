@@ -1,0 +1,14 @@
+[Unit]
+Description=Restrict ShreeOS SDDM autologin to the live session
+DefaultDependencies=no
+After=local-fs.target
+Before=multi-user.target display-manager.service sddm.service
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/shreeos-sddm-live-autologin
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

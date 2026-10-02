@@ -1,0 +1,11 @@
+[SddmGreeterTheme]
+Name=ShreeOS
+Description=Original ShreeOS graphical login theme
+Author=ShreeOS Project
+Copyright=Copyright 2026 ShreeOS Project
+License=MIT
+Type=sddm-theme
+Version=1.0
+Screenshot=
+MainScript=Main.qml
+ConfigFile=theme.conf

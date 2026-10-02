@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Appearance
+GenericName=Appearance settings
+Comment=Switch between ShreeOS Light and ShreeOS Dark
+Exec=/usr/local/bin/shreeos-theme
+Icon=preferences-desktop-theme-global
+Terminal=false
+Categories=Settings;DesktopSettings;
+StartupNotify=true

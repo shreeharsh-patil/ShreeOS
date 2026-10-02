@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+override=/etc/sddm.conf.d/20-shreeos-live-autologin.conf
+if [ -e /run/live/medium ]; then
+  logger -t shreeos-sddm-live-autologin 'Keeping autologin for the locked-password live user'
+  exit 0
+fi
+
+rm -f "$override"
+logger -t shreeos-sddm-live-autologin 'Disabled live-user autologin for the installed system'
