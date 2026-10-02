@@ -172,7 +172,8 @@ def main() -> int:
     session_setup_source = session_setup.read_text(encoding="utf-8")
     require(session_setup.is_file() and "xfce4-panel --restart" not in session_setup_source
             and "xfce4-desktop" in session_setup_source and "xfdesktop --reload" in session_setup_source
-            and "xfdesktop --disable-wm-check" in session_setup_source
+            and "xfdesktop --quit" not in session_setup_source
+            and "xfdesktop --disable-wm-check" not in session_setup_source
             and '"/lock/enabled"' in session_setup_source,
             "first login does not safely apply ShreeOS panel and wallpaper settings")
     require((INCLUDES / "etc/xdg/autostart/shreeos-session-setup.desktop").is_file(),
