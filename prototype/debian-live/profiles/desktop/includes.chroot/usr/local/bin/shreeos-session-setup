@@ -54,16 +54,18 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
   done
 done
 logger -t shreeos-session-setup 'Releasing the XFCE desktop surface and drawing the ShreeOS wallpaper on the X root window'
-xfdesktop --quit
-if pgrep -x xfdesktop >/dev/null 2>&1; then
-  pkill -TERM -x xfdesktop
-fi
+pkill -TERM -x xfdesktop
 for attempt in 1 2 3 4 5; do
   if ! pgrep -x xfdesktop >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
+if pgrep -x xfdesktop >/dev/null 2>&1; then
+  logger -t shreeos-session-setup 'Sending SIGKILL to the unresponsive XFCE desktop surface'
+  pkill -KILL -x xfdesktop
+fi
+sleep 1
 if pgrep -x xfdesktop >/dev/null 2>&1; then
   logger -t shreeos-session-setup 'xfdesktop did not release its desktop window'
   exit 1
