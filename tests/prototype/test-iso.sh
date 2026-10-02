@@ -43,7 +43,7 @@ if [ "$PROFILE" = desktop ]; then
     xfce4-screensaver libnotify-bin \
     libreoffice-writer atril ristretto galculator xarchiver xdg-user-dirs \
     calamares calamares-settings-debian pkexec onboard orca \
-    speech-dispatcher-espeak-ng librsvg2-common; do
+    speech-dispatcher-espeak-ng librsvg2-common plymouth plymouth-themes; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Desktop ISO package manifest is missing: $package" >&2
       exit 1
@@ -58,6 +58,7 @@ run_boot_test() {
   local monitor_socket="$TEST_DIR/${mode}-monitor.sock"
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
+  local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
   local deadline=$((SECONDS + 300))
   if [ "$mode" = uefi ]; then
     local firmware="${OVMF_CODE:-}" firmware_vars="${OVMF_VARS:-}"
@@ -100,12 +101,12 @@ run_boot_test() {
   local emulator_pid=$!
   sleep 20
   if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-    if python3 - "$monitor_socket" "$menu_dump" <<'PY'
+    if python3 - "$monitor_socket" "$menu_dump" "$splash_dump" <<'PY'
 import socket
 import sys
 import time
 
-monitor, output = sys.argv[1:]
+monitor, output, splash = sys.argv[1:]
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(3)
 for _ in range(10):
@@ -122,6 +123,9 @@ client.recv(4096)
 client.sendall(b"sendkey home\n")
 client.recv(4096)
 client.sendall(b"sendkey ret\n")
+client.recv(4096)
+time.sleep(3)
+client.sendall(f"screendump {splash}\n".encode())
 client.recv(4096)
 client.close()
 PY
@@ -179,6 +183,9 @@ PY
     fi
     if [ -s "$menu_dump" ]; then
       cp -- "$menu_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-menu.ppm"
+    fi
+    if [ -s "$splash_dump" ]; then
+      cp -- "$splash_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-splash.ppm"
     fi
   fi
 

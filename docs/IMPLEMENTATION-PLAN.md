@@ -136,7 +136,10 @@ open. The dock's own preferences are linked for size, position, and hide
 behavior. The GRUB splash
 and menu theme are now branded and confirmed in the CI boot image at 800×600.
 Workspace Overview remains text based without thumbnails or gestures. A full
-notification center and animated boot splash remain future work. The initial
+notification center remains future work. A custom Plymouth theme now places
+the ShreeOS logo over a dark gradient with animated blue dots, and the desktop
+boot arguments request the splash; BIOS/UEFI splash appearance is not yet
+verified. The initial
 installed login now has a Welcome window for settings and software shortcuts;
 it has not yet been reviewed in the VM. Super+L routes through a password-aware
 lock handler; the installed screen-saver lock and unlock flow still need

@@ -53,7 +53,7 @@ jobs:
             debootstrap xorriso squashfs-tools \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
             qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync ca-certificates \
-            debian-archive-keyring shellcheck python3
+            debian-archive-keyring shellcheck python3 librsvg2-bin
 
       - name: Check shell syntax and errors
         run: |
@@ -74,7 +74,8 @@ jobs:
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-lock-screen \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-first-run \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-installer \
-            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged
+            prototype/debian-live/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged \
+            prototype/debian-live/profiles/desktop/hooks/9000-shreeos-plymouth.hook.chroot
 
       - name: Validate prototype configuration
         run: |

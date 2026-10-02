@@ -22,6 +22,12 @@ for tool in lb debootstrap xorriso unsquashfs grub-mkrescue sha256sum dpkg-query
     exit 2
   }
 done
+if [ "$LIVE_PROFILE" = desktop ]; then
+  command -v rsvg-convert >/dev/null 2>&1 || {
+    echo "Missing desktop image asset tool: rsvg-convert (install librsvg2-bin)." >&2
+    exit 2
+  }
+fi
 installed_lb_version="$(dpkg-query -W -f='${Version}' live-build)"
 if [ "$installed_lb_version" != "$LIVE_BUILD_VERSION" ]; then
   echo "live-build $LIVE_BUILD_VERSION is required; found $installed_lb_version" >&2
@@ -67,6 +73,16 @@ if [ "$LIVE_PROFILE" = desktop ]; then
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
     "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/"
+  rsvg-convert --width=256 \
+    --output="$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos/logo.png" \
+    "$REPO_ROOT/branding/logo/shreeos-logo.svg"
+  rsvg-convert \
+    --output="$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos/dot.png" \
+    "$PROFILE_SOURCE/includes.chroot/usr/share/plymouth/themes/shreeos/dot.svg"
+  mkdir -p "$BUILD_DIR/config/hooks/live"
+  cp "$PROFILE_SOURCE/hooks/9000-shreeos-plymouth.hook.chroot" \
+    "$BUILD_DIR/config/hooks/live/"
+  chmod 0755 "$BUILD_DIR/config/hooks/live/9000-shreeos-plymouth.hook.chroot"
 fi
 
 if [ "$LIVE_PROFILE" = desktop ]; then
@@ -84,6 +100,7 @@ ln -sfn ../shreeos-boot-check.service \
 SNAPSHOT="https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/"
 SECURITY_SNAPSHOT="https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/"
 LIVE_APPEND="boot=live components live-config.components=${LIVE_APPEND_COMPONENTS} live-config.hooks=filesystem live-config.hostname=shreeos live-config.username=shree live-config.user-fullname=ShreeOS-Live-User live-config.locales=en_US.UTF-8 console=tty0 console=ttyS0,115200n8"
+if [ "$LIVE_PROFILE" = desktop ]; then LIVE_APPEND="$LIVE_APPEND quiet splash"; fi
 
 (
   cd "$BUILD_DIR"

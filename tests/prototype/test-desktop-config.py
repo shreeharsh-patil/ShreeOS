@@ -305,6 +305,25 @@ def main() -> int:
             "desktop image is missing screen reader, on-screen keyboard, or accessibility settings")
     require("\nlibrsvg2-common\n" in package_list,
             "desktop wallpaper SVG support must be explicitly installed")
+    require("\nplymouth\n" in package_list and "\nplymouth-themes\n" in package_list,
+            "desktop image is missing Plymouth and its script theme support")
+    splash_dir = INCLUDES / "usr/share/plymouth/themes/shreeos"
+    splash_theme = (splash_dir / "shreeos.plymouth").read_text(encoding="utf-8")
+    splash_script = (splash_dir / "shreeos.script").read_text(encoding="utf-8")
+    require("ModuleName=script" in splash_theme and "shreeos.script" in splash_theme
+            and 'Image("logo.png")' in splash_script
+            and "Plymouth.SetRefreshFunction(refresh_callback)" in splash_script
+            and "Math.Cos" in splash_script,
+            "ShreeOS animated Plymouth theme is missing its logo or loading animation")
+    splash_hook = ROOT / "prototype/debian-live/profiles/desktop/hooks/9000-shreeos-plymouth.hook.chroot"
+    require(splash_hook.is_file()
+            and "plymouth-set-default-theme -R shreeos" in splash_hook.read_text(encoding="utf-8"),
+            "ShreeOS Plymouth theme is not selected in the generated initramfs")
+    dot_image = splash_dir / "dot.svg"
+    require(dot_image.is_file(), "ShreeOS Plymouth loading indicator source image is missing")
+    parse_xml(dot_image)
+    require("rsvg-convert" in build_script and "quiet splash" in build_script,
+            "desktop build does not rasterize ShreeOS Plymouth assets or request the splash")
     lock_entry = configparser.ConfigParser(interpolation=None)
     lock_entry.read(INCLUDES / "usr/share/applications/shreeos-lock-screen.desktop", encoding="utf-8")
     require(lock_entry.get("Desktop Entry", "Exec", fallback="") == "/usr/local/bin/shreeos-lock-screen",

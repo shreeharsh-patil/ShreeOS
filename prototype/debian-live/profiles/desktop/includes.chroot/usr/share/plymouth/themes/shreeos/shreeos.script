@@ -1,0 +1,36 @@
+Window.SetBackgroundTopColor(0.035, 0.047, 0.075);
+Window.SetBackgroundBottomColor(0.055, 0.071, 0.110);
+
+logo_image = Image("logo.png");
+logo_sprite = Sprite(logo_image);
+label_image = Image.Text("ShreeOS", 0.91, 0.94, 1.0);
+label_sprite = Sprite(label_image);
+dot_image = Image("dot.png");
+dot_a = Sprite(dot_image);
+dot_b = Sprite(dot_image);
+dot_c = Sprite(dot_image);
+tick = 0;
+
+fun refresh_callback() {
+    center_x = Window.GetX() + Window.GetWidth() / 2;
+    center_y = Window.GetY() + Window.GetHeight() / 2;
+
+    logo_sprite.SetX(center_x - logo_image.GetWidth() / 2);
+    logo_sprite.SetY(center_y - logo_image.GetHeight() / 2 - 36);
+    label_sprite.SetX(center_x - label_image.GetWidth() / 2);
+    label_sprite.SetY(center_y + 76);
+
+    dot_a.SetX(center_x - 26 - dot_image.GetWidth() / 2);
+    dot_a.SetY(center_y + 124);
+    dot_b.SetX(center_x - dot_image.GetWidth() / 2);
+    dot_b.SetY(center_y + 124);
+    dot_c.SetX(center_x + 26 - dot_image.GetWidth() / 2);
+    dot_c.SetY(center_y + 124);
+
+    dot_a.SetOpacity(0.35 + 0.65 * (Math.Cos(tick * 0.14) + 1) / 2);
+    dot_b.SetOpacity(0.35 + 0.65 * (Math.Cos(tick * 0.14 + 2.094) + 1) / 2);
+    dot_c.SetOpacity(0.35 + 0.65 * (Math.Cos(tick * 0.14 + 4.188) + 1) / 2);
+    tick++;
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);

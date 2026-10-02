@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=ShreeOS
+Description=ShreeOS dark animated boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/shreeos
+ScriptFile=/usr/share/plymouth/themes/shreeos/shreeos.script

@@ -24,6 +24,8 @@ network-manager-applet
 papirus-icon-theme
 pavucontrol
 pipewire-audio
+plymouth
+plymouth-themes
 python3-gi
 speech-dispatcher-espeak-ng
 plank

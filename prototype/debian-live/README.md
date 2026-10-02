@@ -91,3 +91,6 @@ sudo access. The desktop QEMU test requires the XFCE session to start before
 it passes, and now also requires the panel and dock processes. Static CI checks
 validate the XML, menu, wallpaper, theme, and dock launcher contracts. The
 appearance and interactive behavior still require a graphical Linux review.
+The desktop profile now configures an original Plymouth theme with a centered
+ShreeOS logo and animated blue loading dots; BIOS/UEFI splash appearance still
+needs verification.
