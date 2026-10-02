@@ -9,6 +9,8 @@ log_exit_status() {
 }
 trap log_exit_status EXIT
 logger -t shreeos-session-setup 'Applying ShreeOS XFCE panel and wallpaper defaults'
+mkdir -p "$HOME/.cache"
+exec >>"$HOME/.cache/shreeos-session-setup.log" 2>&1
 
 logger -t shreeos-session-setup 'Applying panel geometry'
 xfconf-query -c xfce4-panel -p /panels/panel-1/length -s 100
@@ -28,8 +30,9 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
   done
 done
 
-logger -t shreeos-session-setup 'Restarting XFCE panel to apply its layout'
-xfce4-panel --restart
+# xfce4-panel reads its layout during session startup and listens for xfconf
+# changes. Restarting it from this autostart hook races the session manager's
+# own panel startup and can leave the desktop without a mapped panel window.
 mkdir -p "${marker%/*}"
 touch "$marker"
 logger -t shreeos-session-setup 'ShreeOS first-login desktop setup completed'

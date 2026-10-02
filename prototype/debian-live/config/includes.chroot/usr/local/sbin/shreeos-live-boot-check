@@ -102,6 +102,21 @@ if [ -f /etc/shreeos/image-profile ] &&
   log 'live user desktop processes:'
   ps -u shree -o pid,args | tail -n 24 \
     | while IFS= read -r diagnostic; do log "$diagnostic"; done
+  for session_log in \
+    /home/shree/.cache/shreeos-session-setup.log \
+    /home/shree/.xsession-errors
+  do
+    if [ -r "$session_log" ]; then
+      log "desktop session output from $session_log:"
+      tail -n 60 "$session_log" \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+    fi
+  done
+  log 'desktop component journal:'
+  journalctl -b _UID=1000 --no-pager 2>/dev/null \
+    | grep -Ei 'xfce4-panel|xfce4-session|xfdesktop|plank|shreeos-session-setup' \
+    | tail -n 40 \
+    | while IFS= read -r diagnostic; do log "$diagnostic"; done
   log 'active graphical logins:'
   loginctl list-sessions --no-legend | while IFS= read -r diagnostic; do
     log "$diagnostic"

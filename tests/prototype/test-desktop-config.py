@@ -156,9 +156,9 @@ def main() -> int:
             "live image does not install ShreeOS XFCE defaults system-wide")
     session_setup = INCLUDES / "usr/local/bin/shreeos-session-setup"
     session_setup_source = session_setup.read_text(encoding="utf-8")
-    require(session_setup.is_file() and "xfce4-panel --restart" in session_setup_source
+    require(session_setup.is_file() and "xfce4-panel --restart" not in session_setup_source
             and "xfce4-desktop" in session_setup_source,
-            "first login does not apply ShreeOS panel and wallpaper settings")
+            "first login does not safely apply ShreeOS panel and wallpaper settings")
     require((INCLUDES / "etc/xdg/autostart/shreeos-session-setup.desktop").is_file(),
             "first-login ShreeOS desktop setup is not registered with XFCE")
     boot_check = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check").read_text(encoding="utf-8")
