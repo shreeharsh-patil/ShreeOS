@@ -48,8 +48,10 @@ shortcuts to Control Center and Software. It records completion in the user's
 home and skips the temporary live session.
 The desktop image also includes a ShreeOS-branded Calamares configuration for
 installing from its live SquashFS. Its helper is restricted to the live-media
-installer and restores the temporary `/etc/fstab` change on exit. An
-end-to-end disk install, reboot, login, and update test is still required
+installer and restores the temporary `/etc/fstab` change on exit.
+The Debian-branded installer icon autostart is masked in the user profile; the
+ShreeOS installer remains available from its own application entry and dock.
+An end-to-end disk install, reboot, login, and update test is still required
 before this can be described as installable. The image identifies itself as a
 Debian-derived ShreeOS prototype and uses Debian's signed repositories for
 installed-system updates.

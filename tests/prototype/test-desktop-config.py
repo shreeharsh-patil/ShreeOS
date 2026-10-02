@@ -143,8 +143,12 @@ def main() -> int:
     for desktop in INCLUDES.rglob("*.desktop"):
         entry = configparser.ConfigParser(interpolation=None)
         entry.read(desktop, encoding="utf-8")
-        require(entry.has_section("Desktop Entry") and entry.has_option("Desktop Entry", "Exec"),
+        require(entry.has_section("Desktop Entry"),
                 f"invalid ShreeOS desktop entry: {desktop}")
+        if entry.getboolean("Desktop Entry", "Hidden", fallback=False):
+            continue
+        require(entry.has_option("Desktop Entry", "Exec"),
+                f"visible desktop entry has no Exec command: {desktop}")
         command = entry.get("Desktop Entry", "Exec").split()[0]
         if command.startswith("/usr/local/bin/shreeos-"):
             require((INCLUDES / command.lstrip("/")).is_file(),
@@ -227,6 +231,12 @@ def main() -> int:
             and "Open Control Center" in first_run_source
             and "Open ShreeOS Software" in first_run_source,
             "first-login welcome experience is missing or runs on the temporary live desktop")
+    upstream_installer_autostart = configparser.ConfigParser(interpolation=None)
+    upstream_installer_autostart.read(
+        SKEL / ".config/autostart/calamares-desktop-icon.desktop", encoding="utf-8"
+    )
+    require(upstream_installer_autostart.getboolean("Desktop Entry", "Hidden", fallback=False),
+            "the Debian-branded Calamares icon generator must be hidden for ShreeOS users")
 
     app_icon = INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
     parse_xml(app_icon)
