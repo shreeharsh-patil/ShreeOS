@@ -29,6 +29,8 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
     xfconf-query -c xfce4-desktop -p "$style_property" --create --type int -s 5
   done
 done
+logger -t shreeos-session-setup 'Reloading XFCE desktop to draw the ShreeOS wallpaper'
+xfdesktop --reload
 
 # xfce4-panel reads its layout during session startup and listens for xfconf
 # changes. Restarting it from this autostart hook races the session manager's

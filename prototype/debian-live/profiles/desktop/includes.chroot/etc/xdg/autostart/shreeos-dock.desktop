@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Dock
+Comment=Start the ShreeOS dock with its saved layout
+Exec=/usr/local/bin/shreeos-dock-session
+OnlyShowIn=XFCE;
+NoDisplay=true
+Terminal=false

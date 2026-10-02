@@ -108,6 +108,13 @@ def main() -> int:
     require(dock.getboolean("zoom-enabled"), "dock hover magnification is not enabled")
     require(dock.get("position") == "'bottom'" and dock.get("alignment") == "'center'",
             "dock is not centered at the bottom")
+    require(dock.get("hide-mode") == "'none'",
+            "ShreeOS dock should remain visible on the desktop")
+    dock_autostart = configparser.ConfigParser(interpolation=None)
+    dock_autostart.read(INCLUDES / "etc/xdg/autostart/shreeos-dock.desktop", encoding="utf-8")
+    require(dock_autostart.get("Desktop Entry", "Exec", fallback="")
+            == "/usr/local/bin/shreeos-dock-session",
+            "XFCE does not start the ShreeOS dock with its ShreeOS configuration")
     dock_items = ast.literal_eval(dock["dock-items"])
     launcher_dir = SKEL / ".config/plank/launchers"
     require(set(dock_items) == {path.name for path in launcher_dir.glob("*.dockitem")},
@@ -157,7 +164,7 @@ def main() -> int:
     session_setup = INCLUDES / "usr/local/bin/shreeos-session-setup"
     session_setup_source = session_setup.read_text(encoding="utf-8")
     require(session_setup.is_file() and "xfce4-panel --restart" not in session_setup_source
-            and "xfce4-desktop" in session_setup_source,
+            and "xfce4-desktop" in session_setup_source and "xfdesktop --reload" in session_setup_source,
             "first login does not safely apply ShreeOS panel and wallpaper settings")
     require((INCLUDES / "etc/xdg/autostart/shreeos-session-setup.desktop").is_file(),
             "first-login ShreeOS desktop setup is not registered with XFCE")

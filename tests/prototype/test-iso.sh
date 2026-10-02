@@ -205,6 +205,18 @@ lit_pixels = sum(1 for i in range(0, len(pixels), 3)
                  if max(pixels[i:i + 3]) > 24)
 if lit_pixels < width * height // 20:
     raise SystemExit(f"Desktop screenshot is blank or nearly blank: {path}")
+desktop_top = 40
+desktop_bottom = height - 64
+desktop_pixels = pixels[desktop_top * width * 3:desktop_bottom * width * 3]
+wallpaper_pixels = sum(1 for i in range(0, len(desktop_pixels), 3)
+                       if max(desktop_pixels[i:i + 3]) > 8)
+if wallpaper_pixels < width * (desktop_bottom - desktop_top) // 2:
+    raise SystemExit(f"ShreeOS wallpaper is missing from the desktop area: {path}")
+dock_pixels = pixels[(height - 64) * width * 3:]
+visible_dock_pixels = sum(1 for i in range(0, len(dock_pixels), 3)
+                          if max(dock_pixels[i:i + 3]) > 50)
+if visible_dock_pixels < max(24, width * 64 // 300):
+    raise SystemExit(f"ShreeOS dock is missing from the bottom of the desktop: {path}")
 print(f"Desktop screenshot contains visible content ({width}x{height}).")
 PY
   fi
