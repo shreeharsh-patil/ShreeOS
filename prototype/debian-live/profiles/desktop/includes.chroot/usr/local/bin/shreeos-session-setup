@@ -29,7 +29,10 @@ for attempt in 1 2 3 4 5 6 7 8 9 10; do
   fi
   sleep 1
 done
-sleep 3
+# xfdesktop 4.20 migrates the monitor/workspace settings as it starts. Apply
+# ShreeOS defaults after that migration has finished, or it can leave the
+# mapped desktop black while xfconf still reports the requested image.
+sleep 15
 if [ ! -r "$wallpaper" ]; then
   logger -t shreeos-session-setup "ShreeOS wallpaper is unavailable: $wallpaper"
   exit 1

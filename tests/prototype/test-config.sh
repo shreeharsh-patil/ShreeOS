@@ -90,7 +90,7 @@ grep -Fq 'image-show' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
 grep -Fq 'xfdesktop --quit' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
-grep -Fq 'sleep 3' \
+grep -Fq 'sleep 15' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
 grep -Fq 'Exec=/usr/local/bin/shreeos-dock-session' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/xdg/autostart/shreeos-dock.desktop"
@@ -188,6 +188,9 @@ test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xse
 test -s "$desktop_includes/usr/share/plank/themes/ShreeOS/dock.theme"
 test -s "$desktop_includes/usr/share/plank/themes/ShreeOS-Light/dock.theme"
 test -x "$desktop_includes/usr/local/bin/shreeos-dock-session"
+grep -Fq 'pgrep -x xfwm4' "$desktop_includes/usr/local/bin/shreeos-dock-session"
+grep -Fq 'shreeos-dock-session.log' "$desktop_includes/usr/local/bin/shreeos-dock-session"
+grep -Fq 'sleep 15' "$desktop_includes/usr/local/bin/shreeos-session-setup"
 test -x "$desktop_includes/usr/local/bin/shreeos-control-center"
 test -x "$desktop_includes/usr/local/bin/shreeos-search"
 test -x "$desktop_includes/usr/local/bin/shreeos-overview"
