@@ -45,10 +45,10 @@ if [ -z "$DISK_IMAGE" ]; then
     chmod 600 "$CREDS_FILE"
     printf 'testrootpass\ntestuserpass\n' > "$CREDS_FILE"
     if [ "$(id -u)" -eq 0 ]; then
-      bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --username=shree --credentials-file="$CREDS_FILE"
+      bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --username=shree-test --credentials-file="$CREDS_FILE"
     elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
       SUDO=(sudo -n -E)
-      "${SUDO[@]}" bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --username=shree --credentials-file="$CREDS_FILE"
+      "${SUDO[@]}" bash "$PROJECT_ROOT/installer/scripts/install-to-disk.sh" "$DISK_IMAGE" --yes --username=shree-test --credentials-file="$CREDS_FILE"
     elif [ "$REQUIRE_ARTIFACTS" = "1" ]; then
       shreeos_die "passwordless sudo/root privileges are required for the installed-disk test"
     else

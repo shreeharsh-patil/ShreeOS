@@ -143,10 +143,12 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 fi
 
+# The live rootfs already ships the locked default desktop account. Use a
+# separate account here so this test exercises installer account creation.
 if "${INSTALL_PREFIX[@]}" env SHREEOS_BUILD_DIR="$INSTALL_BUILD_DIR" bash "${ROOT_DIR}/installer/scripts/install-to-disk.sh" "$TEST_DISK" --yes \
     --hostname="shreeos-e2e" \
     --timezone="UTC" \
-    --username="shree" \
+    --username="shree-e2e" \
     --credentials-file="$CREDS_FILE" \
     --boot-mode="both" > "$INSTALL_LOG" 2>&1; then
   shreeos_ok "Automated installation to virtual disk succeeded"

@@ -95,10 +95,10 @@ if [ "$PROFILE" = plasma ]; then
     usr/share/sddm/themes/shreeos/Main.qml \
     usr/share/sddm/themes/shreeos/theme.conf \
     usr/local/sbin/shreeos-sddm-live-autologin \
-    usr/share/color-schemes/ShreeOS Dark.colors \
-    usr/share/color-schemes/ShreeOS Light.colors \
-    usr/share/konsole/ShreeOS Dark.colorscheme \
-    usr/share/konsole/ShreeOS Light.colorscheme \
+    "usr/share/color-schemes/ShreeOS Dark.colors" \
+    "usr/share/color-schemes/ShreeOS Light.colors" \
+    "usr/share/konsole/ShreeOS Dark.colorscheme" \
+    "usr/share/konsole/ShreeOS Light.colorscheme" \
     usr/share/flatpak/remotes.d/flathub.flatpakrepo \
     usr/share/pixmaps/shreeos-logo.png \
     usr/share/icons/hicolor/scalable/apps/shreeos.svg; do
