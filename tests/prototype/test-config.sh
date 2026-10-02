@@ -72,7 +72,7 @@ desktop_packages="$CONFIG_DIR/profiles/desktop/package-lists/shreeos-desktop.lis
 desktop_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$desktop_packages" | sort)"
 desktop_unique="$(printf '%s\n' "$desktop_actual" | uniq)"
 test "$desktop_actual" = "$desktop_unique"
-for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli firefox-esr fonts-inter plank \
+for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli feh firefox-esr fonts-inter plank \
   firmware-linux-free papirus-icon-theme pipewire-audio \
   python3-gi \
   lightdm-gtk-greeter network-manager-applet task-xfce-desktop xfce4-screenshooter \
@@ -88,7 +88,9 @@ grep -Fq 'image-show" type="bool" value="true"' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'image-show' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
-grep -Fq 'xfdesktop --reload' \
+grep -Fq 'xfdesktop --quit' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
+grep -Fq 'feh --no-fehbg --bg-fill "$wallpaper"' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
 grep -Fq 'sleep 15' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
