@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+password_state="$(passwd -S "$(id -un)" | awk '{ print $2 }')"
+if [ "$password_state" != P ]; then
+  if [ -r /run/live/medium/live/filesystem.squashfs ]; then
+    notify-send --app-name=ShreeOS "Lock screen unavailable" \
+      "This temporary live session has no unlock password."
+  else
+    notify-send --app-name=ShreeOS "Set an account password first" \
+      "This account cannot be locked until it has a password."
+  fi
+  exit 1
+fi
+
+exec xflock4

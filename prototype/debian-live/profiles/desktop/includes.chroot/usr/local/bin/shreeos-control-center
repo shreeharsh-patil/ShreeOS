@@ -391,6 +391,7 @@ def main() -> int:
         ("video-display-symbolic", "Displays", ["xfce4-display-settings"]),
         ("preferences-system-power-symbolic", "Power", ["xfce4-power-manager-settings"]),
         ("preferences-system-notifications-symbolic", "Notifications", ["xfce4-notifyd-config"]),
+        ("preferences-desktop-accessibility-symbolic", "Accessibility", ["xfce4-accessibility-settings"]),
         ("preferences-desktop-dock-symbolic", "Dock", ["plank", "--preferences"]),
         ("help-about-symbolic", "About ShreeOS", ["/usr/local/bin/shreeos-about"]),
     ]

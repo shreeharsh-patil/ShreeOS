@@ -1,6 +1,6 @@
 # ShreeOS Desktop Distribution Implementation Plan
 
-**Status:** The Debian Live base builds and passes BIOS/UEFI QEMU checks. The desktop image builds, starts XFCE and reaches its boot marker, but QEMU captures an all-black screen. The nonblank screenshot gate, desktop UEFI, and interactive visual acceptance remain open. Installation, installed-system updates/recovery, and production release are not implemented.
+**Status:** The Debian Live base and desktop image have built and passed BIOS/UEFI QEMU boot checks. The prior desktop capture showed the panel but a black wallpaper area and hidden dock. Commit `61982a9` adds wallpaper reload, visible dock configuration, and checks for wallpaper and dock pixels; its stricter CI run is still building. Interactive visual acceptance, installation, installed-system updates/recovery, and production release remain open.
 **Audit baseline:** repository commit `44677fdeb4e1` (2026-09-30).
 
 This plan turns the desktop-distribution request into reviewable milestones. It
@@ -99,7 +99,8 @@ autostart hook had also raced XFCE startup and has been removed. Commit
 `61982a9` adds a desktop reload after applying wallpaper settings, keeps the
 Plank dock visible, and checks the wallpaper and dock regions in the QEMU
 screenshot. That commit also adds the ShreeOS-branded Calamares configuration
-and scoped live-media launcher. Its CI run is pending; this is not yet visual
+and scoped live-media launcher. Its CI run `36961861311` is still building the
+desktop profile; the base profile has passed. This is not yet visual
 acceptance, an install test, or physical-hardware coverage. The
 desktop profile selects
 Debian's XFCE task and ShreeOS artwork, while excluding Debian's
@@ -133,16 +134,25 @@ open. The dock's own preferences are linked for size, position, and hide
 behavior. The GRUB splash
 and menu theme are now branded and confirmed in the CI boot image at 800×600.
 Workspace Overview remains text based without thumbnails or gestures. A full
-notification center, usable lock screen, first-boot flow, and animated boot
-splash remain future work. Calamares is now configured with ShreeOS branding,
+notification center and animated boot splash remain future work. The initial
+installed login now has a Welcome window for settings and software shortcuts;
+it has not yet been reviewed in the VM. Super+L routes through a password-aware
+lock handler; the installed screen-saver lock and unlock flow still need
+visual and input validation.
+Orca, eSpeak NG speech output, Onboard, and XFCE accessibility settings are
+now selected in the desktop profile; the reader, speech service, keyboard and
+settings have not yet had keyboard-only or screen-reader validation. Super+Alt+O
+starts Orca directly.
+Calamares is now configured with ShreeOS branding,
 the live SquashFS source, account setup, GRUB, and a confirmation before disk
 changes; QEMU installation, reboot, account login, and update validation are
 still open. ShreeOS Software searches the
 Debian APT catalog, reads dpkg installed state, and uses administrator-gated
 `apt-get` actions outside the nonpersistent live session; the installed-system
-authorization flow is still unreviewed. The live account has a locked
-password by design, so it does not expose a lock shortcut that would leave a
-session impossible to unlock. The Control Center also opens an original
+authorization flow is still unreviewed. The live account has a locked password
+by design, so its lock shortcut reports that the temporary session cannot be
+locked; installed accounts with a password use XFCE Screensaver through
+`xflock4`. The Control Center also opens an original
 About ShreeOS dialog backed by `/etc/os-release`, which identifies ShreeOS and
 discloses Debian as its upstream.
 
@@ -206,17 +216,19 @@ installer currently starts from the desktop session.
 
 ## Near-term work
 
-1. Pass the stricter desktop BIOS/UEFI screenshot gate for both wallpaper and
-   dock visibility, then review the screenshot and key UI actions.
-2. Refresh the audit against the current checkout and built ISO artifacts.
+1. Finish CI validation for the wallpaper and dock screenshot gate, then review
+   the screenshot and key UI actions.
+2. Review the first-run welcome, accessibility launch paths, and lock/unlock
+   flow in a Linux desktop session.
+3. Refresh the audit against the current checkout and built ISO artifacts.
    Mark older measurements with their source commit and release rather than
    presenting them as current.
-3. Keep source downloads checksum-verified, pin the base-image repository
+4. Keep source downloads checksum-verified, pin the base-image repository
    snapshot/release inputs, and record package manifests and licenses in the
    output.
-4. Test the Calamares installer configuration by installing to a disposable
+5. Test the Calamares installer configuration by installing to a disposable
    virtual disk, rebooting without the ISO, logging in, using package
    operations, and shutting down.
-5. Define and test signed repository/update policy and recovery behavior.
-6. Extend CI to validate the installed system and publish only the same ISO
+6. Define and test signed repository/update policy and recovery behavior.
+7. Extend CI to validate the installed system and publish only the same ISO
    artifact after every acceptance gate passes.

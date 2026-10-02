@@ -40,8 +40,10 @@ if [ "$PROFILE" = desktop ]; then
     python3-gi wmctrl lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
     xfce4-appfinder xfce4-notifyd xfce4-power-manager \
     xfce4-pulseaudio-plugin xfce4-screenshooter mousepad synaptic parole \
+    xfce4-screensaver libnotify-bin \
     libreoffice-writer atril ristretto galculator xarchiver xdg-user-dirs \
-    calamares calamares-settings-debian pkexec; do
+    calamares calamares-settings-debian pkexec onboard orca \
+    speech-dispatcher-espeak-ng; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Desktop ISO package manifest is missing: $package" >&2
       exit 1

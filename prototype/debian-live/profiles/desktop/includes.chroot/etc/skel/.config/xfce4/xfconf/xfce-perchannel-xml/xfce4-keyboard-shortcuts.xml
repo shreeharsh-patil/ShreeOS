@@ -4,6 +4,8 @@
     <property name="custom" type="empty">
       <property name="&lt;Super&gt;space" type="string" value="/usr/local/bin/shreeos-search" />
       <property name="&lt;Super&gt;Up" type="string" value="/usr/local/bin/shreeos-overview" />
+      <property name="&lt;Super&gt;l" type="string" value="/usr/local/bin/shreeos-lock-screen" />
+      <property name="&lt;Super&gt;&lt;Alt&gt;o" type="string" value="orca" />
       <property name="&lt;Super&gt;e" type="string" value="thunar" />
       <property name="&lt;Super&gt;&lt;Shift&gt;s" type="string" value="xfce4-screenshooter -r" />
     </property>

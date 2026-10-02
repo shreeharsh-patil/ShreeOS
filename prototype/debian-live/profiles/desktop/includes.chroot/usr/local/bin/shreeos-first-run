@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+if [ -r /run/live/medium/live/filesystem.squashfs ]; then
+  exit 0
+fi
+
+marker="$HOME/.config/shreeos/first-run-complete"
+[ -e "$marker" ] && exit 0
+
+exec /usr/bin/python3 /usr/local/lib/shreeos/first_run.py

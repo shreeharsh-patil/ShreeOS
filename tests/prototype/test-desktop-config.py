@@ -164,7 +164,8 @@ def main() -> int:
     session_setup = INCLUDES / "usr/local/bin/shreeos-session-setup"
     session_setup_source = session_setup.read_text(encoding="utf-8")
     require(session_setup.is_file() and "xfce4-panel --restart" not in session_setup_source
-            and "xfce4-desktop" in session_setup_source and "xfdesktop --reload" in session_setup_source,
+            and "xfce4-desktop" in session_setup_source and "xfdesktop --reload" in session_setup_source
+            and '"/lock/enabled"' in session_setup_source,
             "first login does not safely apply ShreeOS panel and wallpaper settings")
     require((INCLUDES / "etc/xdg/autostart/shreeos-session-setup.desktop").is_file(),
             "first-login ShreeOS desktop setup is not registered with XFCE")
@@ -211,6 +212,18 @@ def main() -> int:
     require('branding/icons/installer.svg' in build_script
             and 'etc/calamares/branding/shreeos/' in build_script,
             "prototype builder does not package ShreeOS installer branding")
+
+    first_run = INCLUDES / "usr/local/bin/shreeos-first-run"
+    first_run_entry = configparser.ConfigParser(interpolation=None)
+    first_run_entry.read(SKEL / ".config/autostart/shreeos-first-run.desktop", encoding="utf-8")
+    first_run_source = (INCLUDES / "usr/local/lib/shreeos/first_run.py").read_text(encoding="utf-8")
+    require(first_run.is_file()
+            and "/run/live/medium/live/filesystem.squashfs" in first_run.read_text(encoding="utf-8")
+            and first_run_entry.get("Desktop Entry", "Exec", fallback="") == "/usr/local/bin/shreeos-first-run"
+            and "first-run-complete" in first_run_source
+            and "Open Control Center" in first_run_source
+            and "Open ShreeOS Software" in first_run_source,
+            "first-login welcome experience is missing or runs on the temporary live desktop")
 
     app_icon = INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
     parse_xml(app_icon)
@@ -259,8 +272,28 @@ def main() -> int:
     require(screenshot_shortcut is not None
             and screenshot_shortcut.get("value") == "xfce4-screenshooter -r",
             "Super+Shift+S is not bound to the screenshot region tool")
-    require(shortcuts.find("./property/property/property[@name='<Super>l']") is None,
-            "a password-locked live account must not expose an unusable lock shortcut")
+    lock_shortcut = shortcuts.find("./property/property/property[@name='<Super>l']")
+    require(lock_shortcut is not None
+            and lock_shortcut.get("value") == "/usr/local/bin/shreeos-lock-screen",
+            "Super+L must use the ShreeOS lock handler for live and installed accounts")
+    screen_reader_shortcut = shortcuts.find("./property/property/property[@name='<Super><Alt>o']")
+    require(screen_reader_shortcut is not None and screen_reader_shortcut.get("value") == "orca",
+            "Super+Alt+O must provide a direct screen-reader launch shortcut")
+    lock_script = INCLUDES / "usr/local/bin/shreeos-lock-screen"
+    require(lock_script.is_file()
+            and "/run/live/medium/live/filesystem.squashfs" in lock_script.read_text(encoding="utf-8")
+            and "exec xflock4" in lock_script.read_text(encoding="utf-8"),
+            "lock screen handler must avoid locking the passwordless live session")
+    require("\nxfce4-screensaver\n" in package_list and "\nlibnotify-bin\n" in package_list,
+            "desktop image is missing the ShreeOS lock and notification components")
+    require("\nonboard\n" in package_list and "\norca\n" in package_list
+            and "\nspeech-dispatcher-espeak-ng\n" in package_list
+            and '"Accessibility", ["xfce4-accessibility-settings"]' in controls_source,
+            "desktop image is missing screen reader, on-screen keyboard, or accessibility settings")
+    lock_entry = configparser.ConfigParser(interpolation=None)
+    lock_entry.read(INCLUDES / "usr/share/applications/shreeos-lock-screen.desktop", encoding="utf-8")
+    require(lock_entry.get("Desktop Entry", "Exec", fallback="") == "/usr/local/bin/shreeos-lock-screen",
+            "ShreeOS lock-screen app entry is missing")
     overview_shortcut = shortcuts.find("./property/property/property[@name='<Super>Up']")
     require(overview_shortcut is not None and overview_shortcut.get("value") == "/usr/local/bin/shreeos-overview",
             "Super+Up is not bound to Workspace Overview")

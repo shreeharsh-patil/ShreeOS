@@ -32,6 +32,14 @@ done
 logger -t shreeos-session-setup 'Reloading XFCE desktop to draw the ShreeOS wallpaper'
 xfdesktop --reload
 
+if [ -r /run/live/medium/live/filesystem.squashfs ]; then
+  logger -t shreeos-session-setup 'Keeping the passwordless live account unlockable'
+  xfconf-query -c xfce4-screensaver -p "/lock/enabled" --create --type bool -s false
+else
+  logger -t shreeos-session-setup 'Enabling the password-protected installed-session lock'
+  xfconf-query -c xfce4-screensaver -p "/lock/enabled" --create --type bool -s true
+fi
+
 # xfce4-panel reads its layout during session startup and listens for xfconf
 # changes. Restarting it from this autostart hook races the session manager's
 # own panel startup and can leave the desktop without a mapped panel window.

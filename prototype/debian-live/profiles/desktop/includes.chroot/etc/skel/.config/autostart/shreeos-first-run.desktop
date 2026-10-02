@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Welcome
+Comment=Welcome to your new ShreeOS desktop
+Exec=/usr/local/bin/shreeos-first-run
+OnlyShowIn=XFCE;
+Terminal=false
+StartupNotify=true
+X-GNOME-Autostart-enabled=true

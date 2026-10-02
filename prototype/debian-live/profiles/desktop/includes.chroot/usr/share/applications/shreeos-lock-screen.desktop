@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lock Screen
+Comment=Lock your ShreeOS session
+Exec=/usr/local/bin/shreeos-lock-screen
+Icon=system-lock-screen
+Categories=System;Security;
+Terminal=false
+StartupNotify=true

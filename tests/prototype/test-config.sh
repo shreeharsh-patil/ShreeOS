@@ -112,6 +112,7 @@ test -f "$desktop_includes/etc/skel/.config/plank/launchers/shreeos-search.docki
 test -f "$desktop_includes/etc/skel/.config/plank/launchers/shreeos-overview.dockitem"
 test -s "$desktop_includes/etc/skel/.config/gtk-3.0/bookmarks"
 test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-dock.desktop"
+test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-first-run.desktop"
 test ! -e "$desktop_includes/etc/skel/.config/autostart/plank.desktop"
 grep -Fq 'shreeos-calm-dark.svg' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"

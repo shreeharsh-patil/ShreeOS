@@ -18,8 +18,10 @@ boots the desktop in BIOS and UEFI and captures the top panel, but the latest
 reviewed screenshots still have a black wallpaper area and no visible dock.
 A wallpaper reload and dock startup fix are being validated in CI now. Its
 XFCE session is a staged desktop composition, not yet a custom shell with a
-full notification center. The GTK Control
-Center offers Wi-Fi, Bluetooth and airplane-mode controls, audio and dark/light
+full notification center. Accessibility settings, Orca screen reader,
+speech-dispatcher with eSpeak NG, and Onboard on-screen keyboard are available
+in the desktop profile; Super+Alt+O starts Orca. The GTK Control Center offers Wi-Fi, Bluetooth and
+airplane-mode controls, audio and dark/light
 appearance switches, a hardware backlight slider and battery indicator when
 supported, notification focus mode, and links to existing XFCE tools. ShreeOS
 Software searches APT and invokes real `apt-get` actions with administrator
@@ -36,7 +38,13 @@ Network, and Trash; the dock includes ShreeOS search, overview, Software, and
 quick controls, and the top panel has a recent-notifications dropdown.
 Ctrl+Alt+Left/Right switches workspaces; Ctrl+Alt+Shift+Left/Right moves the
 focused window, and Super+1–4 selects a workspace directly.
+Super+L locks a password-protected installed account. The temporary live
+session shows a notification instead of locking itself without an unlock
+password.
 Super+Shift+S opens XFCE Screenshooter in region-selection mode.
+On the first login to an installed system, ShreeOS opens a Welcome window with
+shortcuts to Control Center and Software. It records completion in the user's
+home and skips the temporary live session.
 The desktop image also includes a ShreeOS-branded Calamares configuration for
 installing from its live SquashFS. Its helper is restricted to the live-media
 installer and restores the temporary `/etc/fstab` change on exit. An
