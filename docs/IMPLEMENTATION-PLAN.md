@@ -88,18 +88,19 @@ install, reboot and update gates.
 
 The prototype lives under `prototype/debian-live/`. It pins Debian 13 Trixie
 package inputs to snapshot `20260929T000000Z`, pins live-build in CI, and has
-separate `base` and optional `desktop` profiles. On commit `fd313a4`, GitHub
+separate `base` and optional `desktop` profiles. On commit `28f2b38`, GitHub
 Actions built both profiles and the base image passed BIOS and UEFI QEMU checks
 for the locked temporary account, package database, storage, NetworkManager
-and DHCP. The desktop BIOS run started LightDM, XFCE, the panel and dock, and
-reached the ShreeOS boot marker. It then failed because the captured screen was
-all black. Earlier runs identified two XFCE panel configuration defects: the
-missing schema version and the panel definition stored outside its `panels`
-property. Both have been corrected. The latest run confirms the session setup
-completes but does not yet explain the black framebuffer; the next run logs the
-X11 window tree, effective panel settings, display driver, screen saver and
-DPMS state, and wakes the display before capture. This is not visual acceptance
-or physical-hardware coverage. The
+and DHCP. The desktop image also booted in BIOS and UEFI and its screenshot
+gate passed after the XFCE panel became visible. Visual inspection showed the
+wallpaper area was still black and the dock was hidden. The earlier XFCE panel
+schema and hierarchy defects are fixed; a panel restart from the first-login
+autostart hook had also raced XFCE startup and has been removed. Commit
+`61982a9` adds a desktop reload after applying wallpaper settings, keeps the
+Plank dock visible, and checks the wallpaper and dock regions in the QEMU
+screenshot. That commit also adds the ShreeOS-branded Calamares configuration
+and scoped live-media launcher. Its CI run is pending; this is not yet visual
+acceptance, an install test, or physical-hardware coverage. The
 desktop profile selects
 Debian's XFCE task and ShreeOS artwork, while excluding Debian's
 `non-free-firmware` archive. A boot-time hook locks the temporary live user's
@@ -107,10 +108,8 @@ default password; the QEMU marker checks that the account has no password
 login or sudo access, an intact apt/dpkg package database, QEMU block-device
 detection, and an Ethernet DHCP route. In desktop mode it also waits for
 LightDM, an XFCE session, the panel, and Plank, then checks that the captured
-screen contains visible content. GitHub Actions run
-[`36866372061`](https://github.com/shreeharsh-patil/ShreeOS/actions/runs/36866372061)
-on commit `8a4e827` failed that final desktop screenshot check. The desktop is
-still not a release.
+screen includes a wallpaper and visible dock. The desktop is still not a
+release.
 
 The optional desktop now has a staged appearance layer: Arc-Dark GTK styling
 with ShreeOS blue focus accents, Papirus-Dark icons, Inter UI text, a ShreeOS
@@ -133,8 +132,12 @@ selection, lid-action customization, and suspend/resume validation remain
 open. The dock's own preferences are linked for size, position, and hide
 behavior. The GRUB splash
 and menu theme are now branded and confirmed in the CI boot image at 800×600.
-Workspace overview, full notification center, lock screen,
-and installer experiences remain future work. ShreeOS Software searches the
+Workspace Overview remains text based without thumbnails or gestures. A full
+notification center, usable lock screen, first-boot flow, and animated boot
+splash remain future work. Calamares is now configured with ShreeOS branding,
+the live SquashFS source, account setup, GRUB, and a confirmation before disk
+changes; QEMU installation, reboot, account login, and update validation are
+still open. ShreeOS Software searches the
 Debian APT catalog, reads dpkg installed state, and uses administrator-gated
 `apt-get` actions outside the nonpersistent live session; the installed-system
 authorization flow is still unreviewed. The live account has a locked
@@ -193,27 +196,27 @@ mode; its package and key binding are covered by the prototype checks.
 The prototype workflow also runs Bash syntax checks and ShellCheck before
 building either image, then validates SquashFS and BIOS/UEFI QEMU boot paths.
 The boot test saves both menu and post-boot screen captures for visual review.
-This Windows workspace cannot execute Debian Live or QEMU locally. The existing
-`installer/` targets the legacy source-built rootfs and is not compatible with
-the Debian Live filesystem. The installer phase needs a
-Debian-compatible design, an exact target-disk and partition-plan review, and
-explicit destructive confirmation. The prototype boot menu still does not
-provide a true safe-graphics mode or installer entry; those require supported
-boot parameters and an installer compatible with the Debian Live filesystem.
+This Windows workspace cannot execute Debian Live or QEMU locally. The legacy
+`installer/` still targets the source-built rootfs and is not used by the Debian
+Live profile. The new Calamares integration needs an install from ISO to a
+disposable disk, reboot without the ISO, account login, package operations,
+shutdown, and an update/recovery check. The prototype boot menu still does not
+provide a true safe-graphics mode or an installer boot entry; the graphical
+installer currently starts from the desktop session.
 
 ## Near-term work
 
-1. Diagnose the all-black QEMU capture, then pass desktop BIOS and UEFI and
-   review the screenshot and key UI actions before visual acceptance.
+1. Pass the stricter desktop BIOS/UEFI screenshot gate for both wallpaper and
+   dock visibility, then review the screenshot and key UI actions.
 2. Refresh the audit against the current checkout and built ISO artifacts.
    Mark older measurements with their source commit and release rather than
    presenting them as current.
 3. Keep source downloads checksum-verified, pin the base-image repository
    snapshot/release inputs, and record package manifests and licenses in the
    output.
-4. Implement the Debian-compatible installer now that desktop boot passes; test
-   installation, reboot, account login, package operations and shutdown on a
-   disposable virtual disk.
+4. Test the Calamares installer configuration by installing to a disposable
+   virtual disk, rebooting without the ISO, logging in, using package
+   operations, and shutting down.
 5. Define and test signed repository/update policy and recovery behavior.
 6. Extend CI to validate the installed system and publish only the same ISO
    artifact after every acceptance gate passes.
