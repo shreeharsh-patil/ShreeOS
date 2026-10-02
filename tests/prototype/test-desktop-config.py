@@ -175,8 +175,7 @@ def main() -> int:
     session_setup = INCLUDES / "usr/local/bin/shreeos-session-setup"
     session_setup_source = session_setup.read_text(encoding="utf-8")
     require(session_setup.is_file() and "xfce4-panel --restart" not in session_setup_source
-            and "xfce4-desktop" in session_setup_source and "pkill -TERM -x xfdesktop" in session_setup_source
-            and 'feh --no-fehbg --bg-fill "$wallpaper"' in session_setup_source
+            and "xfce4-desktop" in session_setup_source and "xfdesktop --reload" in session_setup_source
             and "xfdesktop --disable-wm-check" not in session_setup_source
             and '"/lock/enabled"' in session_setup_source,
             "first login does not safely apply ShreeOS panel and wallpaper settings")
@@ -187,8 +186,7 @@ def main() -> int:
             "desktop boot acceptance does not wait for first-login ShreeOS setup")
 
     package_list = (PROFILE / "package-lists/shreeos-desktop.list.chroot").read_text(encoding="utf-8")
-    require("\ncalamares\n" in package_list and "\ncalamares-settings-debian\n" in package_list
-            and "\nfeh\n" in package_list,
+    require("\ncalamares\n" in package_list and "\ncalamares-settings-debian\n" in package_list,
             "desktop profile is missing the Debian-maintained Calamares installer")
     installer = INCLUDES / "usr/local/bin/shreeos-installer"
     root_installer = INCLUDES / "usr/local/libexec/shreeos-installer-privileged"

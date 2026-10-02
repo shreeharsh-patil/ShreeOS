@@ -72,7 +72,7 @@ desktop_packages="$CONFIG_DIR/profiles/desktop/package-lists/shreeos-desktop.lis
 desktop_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$desktop_packages" | sort)"
 desktop_unique="$(printf '%s\n' "$desktop_actual" | uniq)"
 test "$desktop_actual" = "$desktop_unique"
-for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli feh firefox-esr fonts-inter plank \
+for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli firefox-esr fonts-inter plank \
   firmware-linux-free papirus-icon-theme pipewire-audio \
   python3-gi \
   lightdm-gtk-greeter network-manager-applet task-xfce-desktop xfce4-screenshooter \
@@ -88,11 +88,9 @@ grep -Fq 'image-show" type="bool" value="true"' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'image-show' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
-grep -Fq 'pkill -TERM -x xfdesktop' \
+grep -Fq 'xfdesktop --reload' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
-grep -Fq 'feh --no-fehbg --bg-fill "$wallpaper"' \
-  "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
-grep -Fq 'sleep 15' \
+grep -Fq 'sleep 3' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/usr/local/bin/shreeos-session-setup"
 grep -Fq 'Exec=/usr/local/bin/shreeos-dock-session' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/xdg/autostart/shreeos-dock.desktop"
@@ -192,7 +190,7 @@ test -s "$desktop_includes/usr/share/plank/themes/ShreeOS-Light/dock.theme"
 test -x "$desktop_includes/usr/local/bin/shreeos-dock-session"
 grep -Fq 'pgrep -x xfwm4' "$desktop_includes/usr/local/bin/shreeos-dock-session"
 grep -Fq 'shreeos-dock-session.log' "$desktop_includes/usr/local/bin/shreeos-dock-session"
-grep -Fq 'sleep 15' "$desktop_includes/usr/local/bin/shreeos-session-setup"
+grep -Fq 'sleep 3' "$desktop_includes/usr/local/bin/shreeos-session-setup"
 test -x "$desktop_includes/usr/local/bin/shreeos-control-center"
 test -x "$desktop_includes/usr/local/bin/shreeos-search"
 test -x "$desktop_includes/usr/local/bin/shreeos-overview"

@@ -38,7 +38,7 @@ done
 # xfdesktop 4.20 migrates the monitor/workspace settings as it starts. Apply
 # ShreeOS defaults after that migration has finished, or it can leave the
 # mapped desktop black while xfconf still reports the requested image.
-sleep 15
+sleep 3
 if [ ! -r "$wallpaper" ]; then
   logger -t shreeos-session-setup "ShreeOS wallpaper is unavailable: $wallpaper"
   exit 1
@@ -53,24 +53,8 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
     xfconf-query -c xfce4-desktop -p "$style_property" --create --type int -s 5
   done
 done
-logger -t shreeos-session-setup 'Releasing the XFCE desktop surface and drawing the ShreeOS wallpaper on the X root window'
-pkill -TERM -x xfdesktop
-for attempt in 1 2 3 4 5; do
-  if ! pgrep -x xfdesktop >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-if pgrep -x xfdesktop >/dev/null 2>&1; then
-  logger -t shreeos-session-setup 'Sending SIGKILL to the unresponsive XFCE desktop surface'
-  pkill -KILL -x xfdesktop
-fi
-sleep 1
-if pgrep -x xfdesktop >/dev/null 2>&1; then
-  logger -t shreeos-session-setup 'xfdesktop did not release its desktop window'
-  exit 1
-fi
-feh --no-fehbg --bg-fill "$wallpaper"
+logger -t shreeos-session-setup 'Refreshing the XFCE desktop surface with the ShreeOS wallpaper'
+xfdesktop --reload
 
 if [ -r /run/live/medium/live/filesystem.squashfs ]; then
   logger -t shreeos-session-setup 'Keeping the passwordless live account unlockable'
