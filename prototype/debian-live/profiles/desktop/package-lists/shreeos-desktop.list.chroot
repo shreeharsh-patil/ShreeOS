@@ -17,6 +17,7 @@ fonts-noto-core
 galculator
 libnotify-bin
 lightdm-gtk-greeter
+librsvg2-common
 onboard
 orca
 network-manager-applet

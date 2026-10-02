@@ -1,6 +1,6 @@
 # ShreeOS Desktop Distribution Implementation Plan
 
-**Status:** The Debian Live base and desktop image have built and passed BIOS/UEFI QEMU boot checks. The prior desktop capture showed the panel but a black wallpaper area and hidden dock. Commit `61982a9` adds wallpaper reload, visible dock configuration, and checks for wallpaper and dock pixels; its stricter CI run is still building. Interactive visual acceptance, installation, installed-system updates/recovery, and production release remain open.
+**Status:** The Debian Live base and desktop image build and pass BIOS/UEFI boot checks. The latest strict visual gate failed because the wallpaper and dock were absent from the captured desktop. A follow-up fixes the Plank dconf load root and explicitly includes Debian's SVG image loader; BIOS/UEFI visual validation is pending. Interactive visual acceptance, installation, installed-system updates/recovery, and production release remain open.
 **Audit baseline:** repository commit `44677fdeb4e1` (2026-09-30).
 
 This plan turns the desktop-distribution request into reviewable milestones. It
@@ -99,9 +99,11 @@ autostart hook had also raced XFCE startup and has been removed. Commit
 `61982a9` adds a desktop reload after applying wallpaper settings, keeps the
 Plank dock visible, and checks the wallpaper and dock regions in the QEMU
 screenshot. That commit also adds the ShreeOS-branded Calamares configuration
-and scoped live-media launcher. Its CI run `36961861311` is still building the
-desktop profile; the base profile has passed. This is not yet visual
-acceptance, an install test, or physical-hardware coverage. The
+and scoped live-media launcher. Its CI run `36961861311` built both profiles
+and passed base BIOS/UEFI boot, but failed the desktop wallpaper screenshot
+check. The follow-up corrects the dconf root used by the dock launcher and
+selects `librsvg2-common` explicitly; this has not yet been rebuilt. This is
+not yet visual acceptance, an install test, or physical-hardware coverage. The
 desktop profile selects
 Debian's XFCE task and ShreeOS artwork, while excluding Debian's
 `non-free-firmware` archive. A boot-time hook locks the temporary live user's

@@ -6,7 +6,7 @@ marker="$config_home/shreeos/desktop-profile-v1"
 
 if [ ! -e "$marker" ]; then
   mkdir -p "$(dirname "$marker")"
-  dconf load /net/launchpad/plank/docks/dock1/ \
+  dconf load / \
     < /usr/share/shreeos/defaults/plank.dconf
   : > "$marker"
 fi

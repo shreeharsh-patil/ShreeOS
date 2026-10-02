@@ -115,6 +115,9 @@ def main() -> int:
     require(dock_autostart.get("Desktop Entry", "Exec", fallback="")
             == "/usr/local/bin/shreeos-dock-session",
             "XFCE does not start the ShreeOS dock with its ShreeOS configuration")
+    dock_session_source = (INCLUDES / "usr/local/bin/shreeos-dock-session").read_text(encoding="utf-8")
+    require("dconf load / " in dock_session_source,
+            "Plank defaults use absolute dconf groups and must be loaded from the root")
     dock_items = ast.literal_eval(dock["dock-items"])
     launcher_dir = SKEL / ".config/plank/launchers"
     require(set(dock_items) == {path.name for path in launcher_dir.glob("*.dockitem")},
@@ -290,6 +293,8 @@ def main() -> int:
             and "\nspeech-dispatcher-espeak-ng\n" in package_list
             and '"Accessibility", ["xfce4-accessibility-settings"]' in controls_source,
             "desktop image is missing screen reader, on-screen keyboard, or accessibility settings")
+    require("\nlibrsvg2-common\n" in package_list,
+            "desktop wallpaper SVG support must be explicitly installed")
     lock_entry = configparser.ConfigParser(interpolation=None)
     lock_entry.read(INCLUDES / "usr/share/applications/shreeos-lock-screen.desktop", encoding="utf-8")
     require(lock_entry.get("Desktop Entry", "Exec", fallback="") == "/usr/local/bin/shreeos-lock-screen",

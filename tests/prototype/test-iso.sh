@@ -43,7 +43,7 @@ if [ "$PROFILE" = desktop ]; then
     xfce4-screensaver libnotify-bin \
     libreoffice-writer atril ristretto galculator xarchiver xdg-user-dirs \
     calamares calamares-settings-debian pkexec onboard orca \
-    speech-dispatcher-espeak-ng; do
+    speech-dispatcher-espeak-ng librsvg2-common; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Desktop ISO package manifest is missing: $package" >&2
       exit 1

@@ -15,8 +15,9 @@ It also configures an XFCE top panel, four workspaces, left-aligned window
 controls, a centered translucent Plank dock with magnification, original dark
 and light wallpapers, and Arc/Papirus/Inter appearance defaults. Linux CI
 boots the desktop in BIOS and UEFI and captures the top panel, but the latest
-reviewed screenshots still have a black wallpaper area and no visible dock.
-A wallpaper reload and dock startup fix are being validated in CI now. Its
+strict screenshot check found the wallpaper and dock missing. The current
+follow-up fixes the Plank dconf import path and explicitly includes the SVG
+image loader; it still needs an image build and boot check. Its
 XFCE session is a staged desktop composition, not yet a custom shell with a
 full notification center. Accessibility settings, Orca screen reader,
 speech-dispatcher with eSpeak NG, and Onboard on-screen keyboard are available
