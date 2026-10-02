@@ -14,10 +14,11 @@ branding, and the DFSG-compliant `firmware-linux-free` package from `main`.
 It also configures an XFCE top panel, four workspaces, left-aligned window
 controls, a centered translucent Plank dock with magnification, original dark
 and light wallpapers, and Arc/Papirus/Inter appearance defaults. Linux CI
-builds the desktop image and reaches its XFCE session marker, but the post-boot
-QEMU screenshot remains nearly blank and is rejected, so the desktop is not
-visually verified. Its XFCE session is a staged desktop composition, not yet a
-custom shell with a full notification center or installer. The GTK Control
+boots the desktop in BIOS and UEFI and captures the top panel, but the latest
+reviewed screenshots still have a black wallpaper area and no visible dock.
+A wallpaper reload and dock startup fix are being validated in CI now. Its
+XFCE session is a staged desktop composition, not yet a custom shell with a
+full notification center. The GTK Control
 Center offers Wi-Fi, Bluetooth and airplane-mode controls, audio and dark/light
 appearance switches, a hardware backlight slider and battery indicator when
 supported, notification focus mode, and links to existing XFCE tools. ShreeOS
@@ -36,8 +37,13 @@ quick controls, and the top panel has a recent-notifications dropdown.
 Ctrl+Alt+Left/Right switches workspaces; Ctrl+Alt+Shift+Left/Right moves the
 focused window, and Super+1–4 selects a workspace directly.
 Super+Shift+S opens XFCE Screenshooter in region-selection mode.
-The image identifies itself as a Debian-derived ShreeOS prototype and uses
-Debian's signed repositories for installed-system updates.
+The desktop image also includes a ShreeOS-branded Calamares configuration for
+installing from its live SquashFS. Its helper is restricted to the live-media
+installer and restores the temporary `/etc/fstab` change on exit. An
+end-to-end disk install, reboot, login, and update test is still required
+before this can be described as installable. The image identifies itself as a
+Debian-derived ShreeOS prototype and uses Debian's signed repositories for
+installed-system updates.
 
 ## Build host
 

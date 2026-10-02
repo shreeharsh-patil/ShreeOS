@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install ShreeOS
+Comment=Install ShreeOS on this computer
+Exec=/usr/local/bin/shreeos-installer
+Icon=shreeos-installer
+Categories=System;
+Terminal=false
+StartupNotify=true

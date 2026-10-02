@@ -1,0 +1,34 @@
+---
+componentName: shreeos
+welcomeStyleCalamares: true
+welcomeExpandingLogo: false
+windowExpanding: normal
+windowSize: 960px,680px
+windowPlacement: center
+
+strings:
+    productName: ShreeOS
+    shortProductName: ShreeOS
+    version: 1.0
+    shortVersion: 1.0
+    versionedName: ShreeOS 1.0
+    shortVersionedName: ShreeOS 1.0
+    bootloaderEntryName: ShreeOS
+    productUrl: https://github.com/shreeharsh-patil/ShreeOS
+    supportUrl: https://github.com/shreeharsh-patil/ShreeOS/issues
+    knownIssuesUrl: https://github.com/shreeharsh-patil/ShreeOS/issues
+    releaseNotesUrl: https://github.com/shreeharsh-patil/ShreeOS/releases
+    donateUrl: https://github.com/shreeharsh-patil/ShreeOS
+
+sidebar: widget
+navigation: widget
+
+images:
+    productLogo: shreeos-logo.svg
+    productIcon: shreeos-logo.svg
+
+style:
+    SidebarBackground: "#17202d"
+    SidebarText: "#d8e2f0"
+    SidebarTextCurrent: "#ffffff"
+    SidebarBackgroundCurrent: "#2878ff"

@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 0 ]; then
+  echo 'The ShreeOS installer does not accept command-line arguments.' >&2
+  exit 2
+fi
+if [ -z "${DISPLAY:-}" ]; then
+  echo 'The ShreeOS installer requires an active desktop session.' >&2
+  exit 1
+fi
+if [ ! -r /run/live/medium/live/filesystem.squashfs ]; then
+  echo 'The ShreeOS installer can only run from ShreeOS live media.' >&2
+  exit 1
+fi
+
+fstab_backup="/run/shreeos-installer-fstab.$$.bak"
+restore_live_fstab() {
+  if [ -e "$fstab_backup" ]; then
+    mv -- "$fstab_backup" /etc/fstab
+  fi
+  xhost -si:localuser:root >/dev/null 2>&1 || true
+}
+trap restore_live_fstab EXIT HUP INT TERM
+
+if [ -e /etc/fstab ] || [ -L /etc/fstab ]; then
+  mv -- /etc/fstab "$fstab_backup"
+fi
+xhost +si:localuser:root
+/usr/bin/calamares

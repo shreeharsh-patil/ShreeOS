@@ -172,6 +172,42 @@ def main() -> int:
     require("/home/shree/.config/shreeos/xfce-session-ready" in boot_check,
             "desktop boot acceptance does not wait for first-login ShreeOS setup")
 
+    package_list = (PROFILE / "package-lists/shreeos-desktop.list.chroot").read_text(encoding="utf-8")
+    require("\ncalamares\n" in package_list and "\ncalamares-settings-debian\n" in package_list,
+            "desktop profile is missing the Debian-maintained Calamares installer")
+    installer = INCLUDES / "usr/local/bin/shreeos-installer"
+    root_installer = INCLUDES / "usr/local/libexec/shreeos-installer-privileged"
+    require(installer.is_file() and 'pkexec /usr/local/libexec/shreeos-installer-privileged' in installer.read_text(encoding="utf-8"),
+            "ShreeOS installer does not use the scoped PolicyKit entry point")
+    root_installer_source = root_installer.read_text(encoding="utf-8")
+    require("[ \"$#\" -ne 0 ]" in root_installer_source
+            and "/usr/bin/calamares" in root_installer_source
+            and "/run/live/medium/live/filesystem.squashfs" in root_installer_source
+            and "fstab_backup" in root_installer_source,
+            "privileged installer entry point is not argument-safe or does not restore the live fstab")
+    installer_policy = parse_xml(INCLUDES / "usr/share/polkit-1/actions/org.shreeos.installer.policy")
+    installer_action = installer_policy.find("action[@id='org.shreeos.installer']")
+    require(installer_action is not None
+            and installer_action.find("annotate[@key='org.freedesktop.policykit.exec.path']") is not None
+            and installer_action.find("annotate[@key='org.freedesktop.policykit.exec.path']").text
+            == "/usr/local/libexec/shreeos-installer-privileged"
+            and installer_action.find("defaults/allow_inactive").text == "no"
+            and installer_action.find("defaults/allow_any").text == "no",
+            "installer authorization is not limited to its exact local executable")
+    installer_settings = (INCLUDES / "etc/calamares/settings.conf").read_text(encoding="utf-8")
+    unpackfs = (INCLUDES / "etc/calamares/modules/unpackfs.conf").read_text(encoding="utf-8")
+    branding = (INCLUDES / "etc/calamares/branding/shreeos/branding.desc").read_text(encoding="utf-8")
+    require("prompt-install: true" in installer_settings
+            and "/run/live/medium/live/filesystem.squashfs" in unpackfs
+            and "branding: shreeos" in installer_settings
+            and "componentName: shreeos" in branding
+            and "sudo" in (INCLUDES / "etc/calamares/modules/users.conf").read_text(encoding="utf-8"),
+            "Calamares is not branded or configured to install ShreeOS from live media")
+    installer_icon = ROOT / "branding/icons/installer.svg"
+    parse_xml(installer_icon)
+    require((INCLUDES / "usr/share/applications/shreeos-installer.desktop").is_file(),
+            "ShreeOS installer is missing its application menu entry")
+
     app_icon = INCLUDES / "usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
     parse_xml(app_icon)
     require((INCLUDES / "usr/share/applications/shreeos-control-center.desktop").is_file(),

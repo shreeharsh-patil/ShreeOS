@@ -53,7 +53,8 @@ if [ "$LIVE_PROFILE" = desktop ]; then
   mkdir -p \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps" \
-    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps"
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps" \
+    "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos"
   cp "$REPO_ROOT"/branding/wallpapers/*.svg \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
@@ -62,6 +63,10 @@ if [ "$LIVE_PROFILE" = desktop ]; then
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos.svg"
   cp "$PROFILE_SOURCE/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/"
+  cp "$REPO_ROOT/branding/icons/installer.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg"
+  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+    "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/"
 fi
 
 if [ "$LIVE_PROFILE" = desktop ]; then

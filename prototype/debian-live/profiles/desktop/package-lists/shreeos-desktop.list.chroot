@@ -6,6 +6,8 @@ blueman
 arc-theme
 brightness-udev
 brightnessctl
+calamares
+calamares-settings-debian
 dconf-cli
 firefox-esr
 fonts-inter
