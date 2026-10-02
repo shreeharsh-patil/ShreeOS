@@ -41,6 +41,11 @@ make -j"${LUMEN_MAKE_JOBS}"
 # the same contract every other unprivileged recipe relies on.
 make DESTDIR="${LUMEN_STAGE_ROOT}" install install_uid=0 install_gid=0 INSTALL_OWNER=
 
+# sudo's example install can create /etc/sudoers from sudoers.dist when the
+# stage is populated by a previous build. Reassert the ShreeOS policy mode
+# after package installation so every build path leaves the same safe mode.
+chmod 0440 "${LUMEN_STAGE_ROOT}/etc/sudoers"
+
 base_sync_sysroot
 
 [ -e "${LUMEN_STAGE_ROOT}/usr/bin/sudo" ] || \

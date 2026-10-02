@@ -131,10 +131,10 @@ check "every /etc/passwd user has a shadow entry (missing: '${missing_shadow:-no
 
 # Every passwd primary GID must be defined in /etc/group, otherwise a login
 # fails with "setgid: invalid argument".
-group_names="$(awk -F: 'NF>=3 && $1 !~ /^#/ {print $1}' "$STAGE/etc/group" | sort -u)"
+group_ids="$(awk -F: 'NF>=3 && $1 !~ /^#/ {print $3}' "$STAGE/etc/group" | sort -u)"
 missing_group="$(awk -F: 'NF>=7 && $1 !~ /^#/ {print $4}' "$STAGE/etc/passwd" | sort -u \
   | while read -r gid; do
-      if ! printf '%s\n' "$group_names" | awk -F: -v g="$gid" '$3 == g {found=1} END {exit !found}'; then
+      if ! printf '%s\n' "$group_ids" | grep -Fxq -- "$gid"; then
         printf '%s ' "$gid"
       fi
     done)"
@@ -170,7 +170,7 @@ check "default desktop user '${DESKTOP_USER}' exists in /etc/passwd" \
   "$([ -n "$user_line" ] && echo 0 || echo 1)"
 
 if [ -n "$user_line" ]; then
-  IFS=: read -r _ uid gid _ home shell <<<"$user_line"
+  IFS=: read -r _ uid gid _ _ home shell <<<"$user_line"
   check "desktop user is non-root (uid $uid)" \
     "$([ "$uid" != "0" ] && echo 0 || echo 1)"
   check "desktop user home is ${home} and exists" \
@@ -237,7 +237,7 @@ check "setup-rootfs.sh issues no privileged ownership commands" \
   "$(grep -Eq '^[[:space:]]*(chown|chgrp|mknod)[[:space:]]' \
       "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" && echo 1 || echo 0)"
 check "setup-rootfs.sh sets the security modes those commands implied" \
-  "$(for m in 'chmod 0600 .*/etc/shadow' 'chmod 0440 .*/etc/sudoers"'; do
+  "$(for m in 'chmod 0600 .*/etc/shadow' 'chmod 0440 .*/etc/sudoers'; do
        grep -Eq "$m" "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" || exit 1
      done && echo 0 || echo 1)"
 
@@ -276,7 +276,7 @@ check_setup_rootfs_reruns() {
   return "$status"
 }
 check "setup-rootfs.sh is re-runnable and leaves no temp files" \
-  "$(setup_rootfs_reruns && echo 0 || echo 1)"
+  "$(check_setup_rootfs_reruns && echo 0 || echo 1)"
 
 # --------------------------------------------------------------------------
 section "Privilege escalation (sudo)"
@@ -352,13 +352,25 @@ for util in bash ls cat cp mv rm mkdir ln chmod chown mount umount ps kill \
 done
 
 # Networking and hardware utilities the Phase 2 specification requires.
-for util in ip ping dhclient udhcpc wpa_supplicant lspci lsusb dmidecode; do
+for util in ip ping udhcpc wpa_supplicant lspci dmidecode; do
   found=1
   for dir in /bin /usr/bin /sbin /usr/sbin /usr/local/bin; do
     if [ -x "$STAGE$dir/$util" ]; then found=0; break; fi
   done
   check "utility '${util}' is installed and executable" "$found"
 done
+
+# usbutils is intentionally deferred until its target libusb/libudev
+# dependencies are available. Never count a deferred build as installed, but
+# also do not require lsusb in the core profile that has no USB query backend.
+usbutils_status="$STAGE/etc/shreeos/features/usbutils.status"
+if [ -x "$STAGE/usr/bin/lsusb" ] || [ -x "$STAGE/usr/sbin/lsusb" ]; then
+  check "usbutils status is ready when lsusb is installed" \
+    "$(grep -Fxq ready "$usbutils_status" 2>/dev/null && echo 0 || echo 1)"
+else
+  check "usbutils explicitly reports its deferred target dependencies" \
+    "$(grep -Eq '^deferred:.*libusb.*libudev' "$usbutils_status" 2>/dev/null && echo 0 || echo 1)"
+fi
 
 # The dynamic loader must exist at the path ld.so.cache/interp expects.
 check "dynamic loader ld-linux-x86-64.so.2 is present" \
