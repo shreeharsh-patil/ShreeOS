@@ -55,6 +55,15 @@ redistribution. Debian package records: [Arc](https://packages.debian.org/trixie
 [Papirus](https://packages.debian.org/trixie/papirus-icon-theme), and
 [Inter](https://packages.debian.org/trixie/fonts-inter).
 
+The experimental Plasma profile adds KDE Plasma, KWin, SDDM, Dolphin, Konsole,
+Ark, KDE Spectacle, plasma-nm, plasma-pa, PowerDevil and BlueDevil from
+Debian's signed Trixie package repositories. No KDE source tree is included in
+ShreeOS.
+The image's `/live/filesystem.packages` manifest identifies exact binary
+packages and versions; retain each package's installed
+`/usr/share/doc/<package>/copyright` record when redistributing. A component
+overview is in [`docs/OPEN_SOURCE_COMPONENTS.md`](docs/OPEN_SOURCE_COMPONENTS.md).
+
 ## Redistribution checklist
 
 Before publishing an image:

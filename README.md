@@ -3,8 +3,8 @@
 ShreeOS is an independent Linux distribution project. Its current product path
 is a small x86-64 image assembled from pinned upstream source packages. A
 separate Debian 13 (Trixie) Live prototype is being evaluated as the future
-desktop base. Its default profile targets a text console; an optional XFCE
-profile is early integration work, not a daily-use desktop release.
+desktop base. Its default profile targets a text console; optional XFCE and KDE
+Plasma profiles are early integration work, not daily-use desktop releases.
 
 ShreeOS has its own name and artwork. It is not an Ubuntu image, and it does
 not include Ubuntu or Canonical branding. The prototype uses Debian's signed
@@ -18,10 +18,10 @@ The repository contains two distinct build paths:
 | Path | What it currently provides | Status |
 |---|---|---|
 | Existing source-built image | Custom cross-build pipeline, Linux kernel, BusyBox-oriented early userspace, custom ShreeOS init and package tooling, and a small X11/dwm graphical stack | Existing experimental path; its README-era claims are not a substitute for testing the generated image |
-| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console BIOS/UEFI boot passes in CI; desktop session reaches its boot marker, but the QEMU screenshot is black |
+| Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console BIOS/UEFI boot passes in CI; XFCE screenshot gate is failing; Plasma package/session profile is newly added and awaits Linux CI |
 
 There is no supported ShreeOS desktop release or public download at this time.
-CI has built the optional desktop profile and started its XFCE session, but the
+CI has built the optional XFCE profile and started its session, but the
 QEMU screenshot is still black after first-login setup completes; the screenshot
 gate and visual acceptance remain open. The desktop includes a ShreeOS XFCE
 appearance configuration: original
@@ -101,6 +101,11 @@ make test-prototype ISO=out/shreeos-0.3.0-prototype-amd64.iso
 make prototype-debian SHREEOS_LIVE_PROFILE=desktop
 make test-prototype SHREEOS_LIVE_PROFILE=desktop \
   ISO=out/shreeos-0.3.0-prototype-desktop-amd64.iso
+
+# Experimental KDE Plasma profile (SDDM and Plasma X11 session).
+make prototype-debian SHREEOS_LIVE_PROFILE=plasma
+make test-prototype SHREEOS_LIVE_PROFILE=plasma \
+  ISO=out/shreeos-0.3.0-prototype-plasma-amd64.iso
 ```
 
 The build target refuses to run without root and removes only its dedicated
@@ -119,11 +124,14 @@ desktop distribution.
 ## Live media and installation
 
 The base profile is a Live ISO with a compressed SquashFS root that boots to a
-console. The optional desktop profile adds XFCE, LightDM, ShreeOS wallpapers
+console. The optional XFCE profile adds XFCE, LightDM, ShreeOS wallpapers
 and greeter branding, a configured top panel and dock, and coordinated GTK,
 icon, and font defaults. CI confirms the desktop session, panel, and dock
 processes start and the boot marker passes, but its QEMU screen capture is black.
-Neither profile has a graphical installer or supported disk
+The new Plasma profile installs Debian's KDE packages, SDDM, and ShreeOS-owned
+session defaults. It has a QEMU check for the SDDM/Plasma session and visible
+screen output, but has not yet run in Linux CI. Custom panel/dock layout and
+visual acceptance remain open. Neither desktop profile has a supported disk
 installation procedure. Do not use it to install on a physical computer.
 
 ## Downloads and checksums
@@ -161,9 +169,9 @@ workflow is restricted to `master` pushes, pull requests targeting `master`,
 and manual dispatch. It builds in Debian Trixie, checks the SquashFS and
 manifest, then runs BIOS and UEFI QEMU boot checks with virtual block storage
 and Ethernet devices and timeouts. The boot marker checks the package database,
-storage detection, and NetworkManager DHCP route; the desktop profile also
+storage detection, and NetworkManager DHCP route; the XFCE profile also
 requires LightDM, an XFCE session, the panel and dock, and a nonblank screenshot.
-The desktop run currently fails at the nonblank screenshot gate. A green
+The XFCE run currently fails at the nonblank screenshot gate. A green
 prototype workflow would validate
 only those checks; it would not certify physical hardware, an installer, or a
 release.
@@ -183,15 +191,15 @@ publishing remains gated on those phases being implemented and validated.
 
 ## Security and firmware
 
-Both profiles use Debian's `main` component only. The desktop profile includes
+All profiles use Debian's `main` component only. The desktop profiles include
 `firmware-linux-free`, whose firmware is DFSG-compliant; it does not enable
 Debian's `non-free-firmware` archive. That limited firmware set does not cover
 many common Wi-Fi devices. Do not assume all Wi-Fi, Bluetooth, graphics, or
 laptop devices are supported. The prototype includes `openssh-client`, not an SSH server.
 The temporary account's Debian Live default password is locked at boot and
 neither prototype profile grants it sudo access. It is not an installed user
-account. The base profile has no interactive login; the desktop profile
-attempts local display-manager autologin but remains unverified.
+account. The base profile has no interactive login; the XFCE and Plasma profiles
+attempt local display-manager autologin but remain unverified.
 
 ## Branding
 

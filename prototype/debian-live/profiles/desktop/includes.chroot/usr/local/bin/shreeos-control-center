@@ -109,7 +109,7 @@ def appearance_css(dark: bool) -> str:
 def apply_appearance(dark: bool) -> None:
     theme = "Arc-Dark" if dark else "Arc"
     icons = "Papirus-Dark" if dark else "Papirus"
-    wallpaper = "shreeos-calm-dark.svg" if dark else "shreeos-calm-light.svg"
+    wallpaper = "shreeos-calm-dark.png" if dark else "shreeos-calm-light.png"
     dock = "ShreeOS" if dark else "ShreeOS-Light"
     run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName", "-s", theme])
     run_command(["xfconf-query", "-c", "xsettings", "-p", "/Net/IconThemeName", "-s", icons])

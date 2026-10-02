@@ -304,7 +304,7 @@ def main() -> int:
             and '"Accessibility", ["xfce4-accessibility-settings"]' in controls_source,
             "desktop image is missing screen reader, on-screen keyboard, or accessibility settings")
     require("\nlibrsvg2-common\n" in package_list,
-            "desktop wallpaper SVG support must be explicitly installed")
+            "desktop image integration must include the SVG icon loader")
     require("\nplymouth\n" in package_list and "\nplymouth-themes\n" in package_list,
             "desktop image is missing Plymouth and its script theme support")
     splash_dir = INCLUDES / "usr/share/plymouth/themes/shreeos"
@@ -368,11 +368,11 @@ def main() -> int:
     lightdm = (INCLUDES / "etc/lightdm/lightdm-gtk-greeter.conf.d/50-shreeos.conf").read_text()
     require("theme-name=Arc-Dark" in lightdm and "logo=/usr/share/pixmaps/shreeos-logo.svg" in lightdm,
             "login screen does not use ShreeOS theme and logo")
-    require("/usr/share/backgrounds/shreeos/shreeos-calm-dark.svg" in lightdm,
-            "login screen does not use original ShreeOS wallpaper")
+    require("/usr/share/backgrounds/shreeos/shreeos-calm-dark.png" in lightdm,
+            "login screen does not use the rendered ShreeOS wallpaper")
     builder = (ROOT / "scripts/build-debian-prototype.sh").read_text()
-    require('branding/wallpapers/*.svg' in builder,
-            "build must package the original dark and light wallpaper set")
+    require('branding/wallpapers/*.svg' in builder and 'rsvg-convert --width=1920' in builder,
+            "build must package original artwork and render backgrounds for desktop sessions")
     print("ShreeOS desktop configuration contract passed.")
     return 0
 

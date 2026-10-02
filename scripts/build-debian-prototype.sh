@@ -8,8 +8,8 @@ source "$CONFIG_SOURCE/versions.conf"
 LIVE_PROFILE="${SHREEOS_LIVE_PROFILE:-base}"
 
 case "$LIVE_PROFILE" in
-  base|desktop) ;;
-  *) echo "Unsupported live profile '$LIVE_PROFILE' (expected base or desktop)." >&2; exit 2 ;;
+  base|desktop|plasma) ;;
+  *) echo "Unsupported live profile '$LIVE_PROFILE' (expected base, desktop, or plasma)." >&2; exit 2 ;;
 esac
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -22,7 +22,7 @@ for tool in lb debootstrap xorriso unsquashfs grub-mkrescue sha256sum dpkg-query
     exit 2
   }
 done
-if [ "$LIVE_PROFILE" = desktop ]; then
+if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then
   command -v rsvg-convert >/dev/null 2>&1 || {
     echo "Missing desktop image asset tool: rsvg-convert (install librsvg2-bin)." >&2
     exit 2
@@ -73,6 +73,11 @@ if [ "$LIVE_PROFILE" = desktop ]; then
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
     "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/"
+  for wallpaper in "$REPO_ROOT"/branding/wallpapers/*.svg; do
+    rsvg-convert --width=1920 \
+      --output="$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/$(basename "${wallpaper%.svg}").png" \
+      "$wallpaper"
+  done
   rsvg-convert --width=256 \
     --output="$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos/logo.png" \
     "$REPO_ROOT/branding/logo/shreeos-logo.svg"
@@ -85,9 +90,48 @@ if [ "$LIVE_PROFILE" = desktop ]; then
   chmod 0755 "$BUILD_DIR/config/hooks/live/9000-shreeos-plymouth.hook.chroot"
 fi
 
+if [ "$LIVE_PROFILE" = plasma ]; then
+  PROFILE_SOURCE="$CONFIG_SOURCE/profiles/plasma"
+  cp "$PROFILE_SOURCE/package-lists/shreeos-plasma.list.chroot" \
+    "$BUILD_DIR/config/package-lists/"
+  cp -a "$PROFILE_SOURCE/includes.chroot/." \
+    "$BUILD_DIR/config/includes.chroot/"
+  mkdir -p \
+    "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps"
+  cp "$REPO_ROOT"/branding/wallpapers/*.svg \
+    "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"
+  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/"
+  for wallpaper in "$REPO_ROOT"/branding/wallpapers/*.svg; do
+    rsvg-convert --width=1920 \
+      --output="$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/$(basename "${wallpaper%.svg}").png" \
+      "$wallpaper"
+  done
+  mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos"
+  cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/plymouth/themes/shreeos/"{shreeos.plymouth,shreeos.script,dot.svg} \
+    "$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos/"
+  rsvg-convert --width=256 \
+    --output="$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos/logo.png" \
+    "$REPO_ROOT/branding/logo/shreeos-logo.svg"
+  rsvg-convert \
+    --output="$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos/dot.png" \
+    "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/plymouth/themes/shreeos/dot.svg"
+  mkdir -p "$BUILD_DIR/config/hooks/live"
+  cp "$CONFIG_SOURCE/profiles/desktop/hooks/9000-shreeos-plymouth.hook.chroot" \
+    "$BUILD_DIR/config/hooks/live/"
+  chmod 0755 "$BUILD_DIR/config/hooks/live/9000-shreeos-plymouth.hook.chroot"
+  cp "$PROFILE_SOURCE/hooks/9001-shreeos-sddm.hook.chroot" \
+    "$BUILD_DIR/config/hooks/live/"
+  chmod 0755 "$BUILD_DIR/config/hooks/live/9001-shreeos-sddm.hook.chroot"
+fi
+
 if [ "$LIVE_PROFILE" = desktop ]; then
   LIVE_TARGET=graphical
   LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,lightdm,hooks
+elif [ "$LIVE_PROFILE" = plasma ]; then
+  LIVE_TARGET=graphical
+  LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,hooks
 else
   LIVE_TARGET=multi-user
   LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,hooks
@@ -100,7 +144,7 @@ ln -sfn ../shreeos-boot-check.service \
 SNAPSHOT="https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/"
 SECURITY_SNAPSHOT="https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/"
 LIVE_APPEND="boot=live components live-config.components=${LIVE_APPEND_COMPONENTS} live-config.hooks=filesystem live-config.hostname=shreeos live-config.username=shree live-config.user-fullname=ShreeOS-Live-User live-config.locales=en_US.UTF-8 console=tty0 console=ttyS0,115200n8"
-if [ "$LIVE_PROFILE" = desktop ]; then LIVE_APPEND="$LIVE_APPEND quiet splash"; fi
+if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then LIVE_APPEND="$LIVE_APPEND quiet splash"; fi
 
 (
   cd "$BUILD_DIR"
@@ -146,9 +190,19 @@ for package in apt live-boot live-config-systemd network-manager systemd-sysv; d
     exit 1
   }
 done
+if [ "$LIVE_PROFILE" = plasma ]; then
+  for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
+    dolphin konsole ark kde-spectacle plasma-nm plasma-pa powerdevil bluedevil; do
+    grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$PACKAGES_SOURCE" || {
+      echo "Plasma package manifest is missing required package: $package" >&2
+      exit 1
+    }
+  done
+fi
 
 OUTPUT_SUFFIX=""
 if [ "$LIVE_PROFILE" = desktop ]; then OUTPUT_SUFFIX="-desktop"; fi
+if [ "$LIVE_PROFILE" = plasma ]; then OUTPUT_SUFFIX="-plasma"; fi
 OUTPUT_PREFIX="$OUT_DIR/shreeos-${PROTOTYPE_VERSION}${OUTPUT_SUFFIX}"
 ISO_OUT="${OUTPUT_PREFIX}-amd64.iso"
 cp -- "$ISO_SOURCE" "$ISO_OUT"

@@ -81,12 +81,30 @@ for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli 
     exit 1
   }
 done
-grep -Fq 'shreeos-calm-dark.svg' \
+grep -Fq 'shreeos-calm-dark.png' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'shreeos-logo.svg' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/lightdm/lightdm-gtk-greeter.conf.d/50-shreeos.conf"
 grep -Fxq desktop \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/shreeos/image-profile"
+plasma_packages="$CONFIG_DIR/profiles/plasma/package-lists/shreeos-plasma.list.chroot"
+plasma_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$plasma_packages" | sort)"
+plasma_unique="$(printf '%s\n' "$plasma_actual" | uniq)"
+test "$plasma_actual" = "$plasma_unique"
+for required in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm sddm-theme-breeze dolphin konsole ark kde-spectacle plasma-nm \
+  plasma-pa powerdevil bluedevil pipewire-audio network-manager; do
+  grep -Fxq "$required" "$plasma_packages" || {
+    echo "Plasma profile is missing: $required" >&2
+    exit 1
+  }
+done
+plasma_includes="$CONFIG_DIR/profiles/plasma/includes.chroot"
+grep -Fq 'Session=plasmax11.desktop' "$plasma_includes/etc/sddm.conf.d/10-shreeos.conf"
+grep -Fq 'User=shree' "$plasma_includes/etc/sddm.conf.d/10-shreeos.conf"
+grep -Fq 'Meta+Space' "$plasma_includes/etc/skel/.config/kglobalshortcutsrc"
+grep -Fq 'plasma-apply-wallpaperimage' \
+  "$plasma_includes/etc/skel/.config/autostart/shreeos-plasma-defaults.desktop"
+grep -Fxq plasma "$plasma_includes/etc/shreeos/image-profile"
 desktop_includes="$CONFIG_DIR/profiles/desktop/includes.chroot"
 test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
 test -s "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
@@ -114,6 +132,9 @@ test -s "$desktop_includes/etc/skel/.config/gtk-3.0/bookmarks"
 test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-dock.desktop"
 test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-first-run.desktop"
 test ! -e "$desktop_includes/etc/skel/.config/autostart/plank.desktop"
-grep -Fq 'shreeos-calm-dark.svg' \
+grep -Fq 'shreeos-calm-dark.png' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+grep -Fq 'rsvg-convert --width=1920' "$REPO_ROOT/scripts/build-debian-prototype.sh"
+grep -Fq 'shreeos-calm-dark.png' \
+  "$CONFIG_DIR/profiles/plasma/includes.chroot/etc/skel/.config/autostart/shreeos-plasma-defaults.desktop"
 printf 'Debian prototype configuration contract passed.\n'

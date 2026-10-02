@@ -58,7 +58,7 @@ help:
 	@echo "  make all                  Build everything end-to-end"
 	@echo "  make distro               Run the legacy source-build desktop certification target"
 	@echo "  make security-distro      Build and certify the security workstation ISO"
-	@echo "  make prototype-debian     Build Debian Live base/desktop prototype"
+	@echo "  make prototype-debian     Build Debian Live base/desktop/Plasma prototype"
 	@echo "  make test-prototype       Check profile ISO and BIOS/UEFI QEMU boot"
 	@echo ""
 	@echo "Diagnostic & Verification Targets:"
@@ -96,7 +96,7 @@ help:
 	@echo "Options:"
 	@echo "  PROFILE=desktop|security|minimal|server  (default: desktop)"
 	@echo "  FORCE=1                                  (rebuild all stages)"
-	@echo "  SHREEOS_LIVE_PROFILE=base|desktop        (Debian Live prototype profile)"
+	@echo "  SHREEOS_LIVE_PROFILE=base|desktop|plasma (Debian Live prototype profile)"
 
 # Diagnostic & source verification
 .PHONY: bootstrap-wsl
@@ -129,7 +129,7 @@ audit-iso:
 audit-test:
 	python3 tests/audit/test-shreeos-audit.py
 
-# Separate Debian Live base/desktop prototypes. They do not replace the
+# Separate Debian Live base/desktop/Plasma prototypes. They do not replace the
 # existing source-built ISO target; build explicitly on Debian Linux as root.
 .PHONY: prototype-debian test-prototype test-prototype-config
 prototype-debian:

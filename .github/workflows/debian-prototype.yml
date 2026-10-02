@@ -75,7 +75,8 @@ jobs:
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-first-run \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-installer \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged \
-            prototype/debian-live/profiles/desktop/hooks/9000-shreeos-plymouth.hook.chroot
+            prototype/debian-live/profiles/desktop/hooks/9000-shreeos-plymouth.hook.chroot \
+            prototype/debian-live/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot
 
       - name: Validate prototype configuration
         run: |
@@ -111,6 +112,16 @@ jobs:
           mkdir -p build-logs/prototype-qemu
           QEMU_LOG_DIR=build-logs/prototype-qemu bash tests/prototype/test-iso.sh \
             out/shreeos-0.3.0-prototype-desktop-amd64.iso desktop
+
+      - name: Build the optional ShreeOS Plasma profile
+        run: SHREEOS_LIVE_PROFILE=plasma bash scripts/build-debian-prototype.sh
+
+      - name: Validate Plasma package set and boot its SDDM session in BIOS and UEFI QEMU
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build-logs/prototype-qemu
+          QEMU_LOG_DIR=build-logs/prototype-qemu bash tests/prototype/test-iso.sh \
+            out/shreeos-0.3.0-prototype-plasma-amd64.iso plasma
 
       - name: Upload base and desktop prototype ISOs, manifests, checksums, and build metadata
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

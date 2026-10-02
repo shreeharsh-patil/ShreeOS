@@ -49,6 +49,22 @@ fi
 log 'live account has no sudo access'
 
 if [ -f /etc/shreeos/image-profile ] &&
+  [ "$(cat /etc/shreeos/image-profile)" = plasma ]; then
+  log 'Plasma profile detected; checking SDDM and Plasma session'
+  elapsed=0
+  until systemctl is-active --quiet sddm.service &&
+    pgrep -u shree -x plasmashell >/dev/null &&
+    pgrep -u shree -x kwin_x11 >/dev/null; do
+    if [ "$elapsed" -ge 90 ]; then
+      ps -eo user,pid,args | grep -E '[s]ddm|[p]lasmashell|[k]win_x11' \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+      fail 'SDDM did not start a Plasma session within 90 seconds'
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  log 'SDDM and Plasma desktop session are active'
+elif [ -f /etc/shreeos/image-profile ] &&
   [ "$(cat /etc/shreeos/image-profile)" = desktop ]; then
   log 'desktop profile detected; checking GTK runtime'
   python3 -c 'import gi; gi.require_version("Gtk", "3.0")' || {

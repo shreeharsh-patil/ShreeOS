@@ -1,0 +1,33 @@
+# ShreeOS Plasma profile: official Debian/KDE binaries plus ShreeOS-owned defaults.
+# Debian's metapackage pulls its maintained Plasma dependencies and recommends.
+kde-plasma-desktop
+kwin-x11
+plasma-desktop
+plasma-workspace
+sddm
+sddm-theme-breeze
+dolphin
+konsole
+kde-spectacle
+ark
+plasma-nm
+plasma-pa
+powerdevil
+bluedevil
+bluez
+pipewire-audio
+wireplumber
+network-manager
+firmware-linux-free
+firefox-esr
+fonts-inter
+fonts-noto-core
+fonts-noto-color-emoji
+papirus-icon-theme
+plymouth
+plymouth-themes
+librsvg2-common
+xdg-user-dirs
+calamares
+calamares-settings-debian
+pkexec

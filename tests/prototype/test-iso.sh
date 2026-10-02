@@ -2,13 +2,13 @@
 set -Eeuo pipefail
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ] || [ ! -s "$1" ]; then
-  echo "Usage: test-iso.sh PATH_TO_PROTOTYPE_ISO [base|desktop]" >&2
+  echo "Usage: test-iso.sh PATH_TO_PROTOTYPE_ISO [base|desktop|plasma]" >&2
   exit 2
 fi
 ISO="$(realpath "$1")"
 PROFILE="${2:-base}"
 case "$PROFILE" in
-  base|desktop) ;;
+  base|desktop|plasma) ;;
   *) echo "Unknown profile: $PROFILE" >&2; exit 2 ;;
 esac
 for tool in xorriso unsquashfs qemu-system-x86_64 qemu-img timeout sha256sum xvfb-run; do
@@ -50,6 +50,15 @@ if [ "$PROFILE" = desktop ]; then
     }
   done
 fi
+if [ "$PROFILE" = plasma ]; then
+  for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
+    sddm-theme-breeze dolphin konsole ark kde-spectacle plasma-nm plasma-pa powerdevil bluedevil; do
+    grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
+      echo "Plasma ISO package manifest is missing: $package" >&2
+      exit 1
+    }
+  done
+fi
 
 run_boot_test() {
   local mode="$1"
@@ -60,6 +69,8 @@ run_boot_test() {
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
   local deadline=$((SECONDS + 300))
+  local memory=2048
+  if [ "$PROFILE" = plasma ]; then memory=4096; fi
   if [ "$mode" = uefi ]; then
     local firmware="${OVMF_CODE:-}" firmware_vars="${OVMF_VARS:-}"
     if [ -z "$firmware" ]; then
@@ -93,7 +104,7 @@ run_boot_test() {
   fi
 
   xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 300s qemu-system-x86_64 \
-    -machine q35 -m 2048 -smp 2 -vga virtio -nic user,model=virtio-net-pci \
+    -machine q35 -m "$memory" -smp 2 -vga virtio -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
     -display gtk -monitor "unix:$monitor_socket,server,nowait" \
@@ -195,22 +206,23 @@ PY
     [ ! -s "$emulator_log" ] || cat "$emulator_log" >&2
     return 1
   fi
-  if [ "$PROFILE" = desktop ]; then
-    python3 - "$screen_dump" <<'PY'
+  if [ "$PROFILE" = desktop ] || [ "$PROFILE" = plasma ]; then
+    python3 - "$screen_dump" "$PROFILE" <<'PY'
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
+profile = sys.argv[2]
 data = path.read_bytes()
 if not data.startswith(b"P6"):
-    raise SystemExit(f"Desktop screenshot is not a binary PPM: {path}")
+    raise SystemExit(f"{profile} screenshot is not a binary PPM: {path}")
 parts = data.split(maxsplit=4)
 if len(parts) != 5:
-    raise SystemExit(f"Desktop screenshot has an invalid PPM header: {path}")
+    raise SystemExit(f"{profile} screenshot has an invalid PPM header: {path}")
 width, height, maximum = map(int, parts[1:4])
 pixels = parts[4]
 if maximum != 255 or len(pixels) != width * height * 3:
-    raise SystemExit(f"Desktop screenshot has invalid pixel data: {path}")
+    raise SystemExit(f"{profile} screenshot has invalid pixel data: {path}")
 lit_pixels = sum(1 for i in range(0, len(pixels), 3)
                  if max(pixels[i:i + 3]) > 24)
 if lit_pixels < width * height // 20:
@@ -220,14 +232,14 @@ desktop_bottom = height - 64
 desktop_pixels = pixels[desktop_top * width * 3:desktop_bottom * width * 3]
 wallpaper_pixels = sum(1 for i in range(0, len(desktop_pixels), 3)
                        if max(desktop_pixels[i:i + 3]) > 8)
-if wallpaper_pixels < width * (desktop_bottom - desktop_top) // 2:
+if profile == "desktop" and wallpaper_pixels < width * (desktop_bottom - desktop_top) // 2:
     raise SystemExit(f"ShreeOS wallpaper is missing from the desktop area: {path}")
 dock_pixels = pixels[(height - 64) * width * 3:]
 visible_dock_pixels = sum(1 for i in range(0, len(dock_pixels), 3)
                           if max(dock_pixels[i:i + 3]) > 50)
-if visible_dock_pixels < max(24, width * 64 // 300):
+if profile == "desktop" and visible_dock_pixels < max(24, width * 64 // 300):
     raise SystemExit(f"ShreeOS dock is missing from the bottom of the desktop: {path}")
-print(f"Desktop screenshot contains visible content ({width}x{height}).")
+print(f"{profile} screenshot contains visible content ({width}x{height}).")
 PY
   fi
   echo "${mode} live boot reached multi-user.target."
