@@ -118,8 +118,8 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/local/libexec/"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/applications/shreeos-installer.desktop" \
     "$BUILD_DIR/config/includes.chroot/usr/share/applications/"
-  cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg" \
-    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/"
+  cp "$REPO_ROOT/branding/icons/installer.svg" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/polkit-1/actions/org.shreeos.installer.policy" \
     "$BUILD_DIR/config/includes.chroot/usr/share/polkit-1/actions/"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
