@@ -55,17 +55,11 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
 done
 logger -t shreeos-session-setup 'Refreshing the XFCE desktop surface with the ShreeOS wallpaper'
 # xfdesktop can still be registering its D-Bus name when this autostart hook
-# runs. Retry briefly, but do not discard the working xfconf settings or block
-# the rest of the session when the refresh helper reports a transient timeout.
-desktop_refresh_status=1
-for attempt in 1 2 3 4 5; do
-  if xfdesktop --reload; then
-    desktop_refresh_status=0
-    break
-  fi
-  sleep 1
-done
-if [ "$desktop_refresh_status" -ne 0 ]; then
+# runs. The reload is only a visual refresh; bound it so a stuck D-Bus call
+# cannot prevent the first-login marker from being created.
+if timeout 2s xfdesktop --reload; then
+  logger -t shreeos-session-setup 'XFCE desktop surface refreshed'
+else
   logger -t shreeos-session-setup 'XFCE desktop refresh timed out; retaining applied wallpaper settings'
 fi
 
