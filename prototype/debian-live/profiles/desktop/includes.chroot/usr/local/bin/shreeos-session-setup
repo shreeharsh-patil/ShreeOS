@@ -56,8 +56,8 @@ done
 logger -t shreeos-session-setup 'Refreshing the XFCE desktop surface with the ShreeOS wallpaper'
 # xfdesktop may have created its root window before xrandr selected the live
 # display mode. Restart it after applying the wallpaper so the root window is
-# sized to the current 1280x768 canvas. Do not use the D-Bus reload command
-# here: it can block indefinitely while the session bus is still settling.
+# sized to the current 1280x768 canvas. Do not use the D-Bus xfdesktop --reload
+# command here: it can block indefinitely while the session bus is still settling.
 pkill -x xfdesktop >/dev/null 2>&1 || true
 xfdesktop >/dev/null 2>&1 &
 desktop_pid=$!
