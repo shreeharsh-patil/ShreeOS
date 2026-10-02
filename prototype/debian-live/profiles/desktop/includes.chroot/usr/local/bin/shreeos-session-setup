@@ -54,13 +54,18 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
   done
 done
 logger -t shreeos-session-setup 'Refreshing the XFCE desktop surface with the ShreeOS wallpaper'
-# xfdesktop can still be registering its D-Bus name when this autostart hook
-# runs. The reload is only a visual refresh; bound it so a stuck D-Bus call
-# cannot prevent the first-login marker from being created.
-if timeout 2s xfdesktop --reload; then
-  logger -t shreeos-session-setup 'XFCE desktop surface refreshed'
+# xfdesktop may have created its root window before xrandr selected the live
+# display mode. Restart it after applying the wallpaper so the root window is
+# sized to the current 1280x768 canvas. Do not use the D-Bus reload command
+# here: it can block indefinitely while the session bus is still settling.
+pkill -x xfdesktop >/dev/null 2>&1 || true
+xfdesktop >/dev/null 2>&1 &
+desktop_pid=$!
+sleep 2
+if kill -0 "$desktop_pid" >/dev/null 2>&1; then
+  logger -t shreeos-session-setup 'XFCE desktop surface restarted at the selected display size'
 else
-  logger -t shreeos-session-setup 'XFCE desktop refresh timed out; retaining applied wallpaper settings'
+  logger -t shreeos-session-setup 'XFCE desktop restart exited; retaining applied wallpaper settings'
 fi
 
 if [ -r /run/live/medium/live/filesystem.squashfs ]; then
