@@ -40,7 +40,7 @@ if [ "$PROFILE" = desktop ]; then
     python3-gi wmctrl lightdm-gtk-greeter network-manager-applet task-xfce-desktop \
     xfce4-appfinder xfce4-notifyd xfce4-power-manager \
     xfce4-pulseaudio-plugin xfce4-screenshooter mousepad synaptic parole \
-    xfce4-screensaver libnotify-bin \
+    xfce4-screensaver libnotify-bin plank \
     libreoffice-writer atril ristretto galculator xarchiver xdg-user-dirs \
     calamares calamares-settings-debian pkexec onboard orca \
     speech-dispatcher-espeak-ng librsvg2-common plymouth plymouth-themes; do
@@ -48,6 +48,17 @@ if [ "$PROFILE" = desktop ]; then
       echo "Desktop ISO package manifest is missing: $package" >&2
       exit 1
     }
+  done
+  image_contents="$(unsquashfs -ll "$SQUASHFS")"
+  for desktop_asset in \
+    etc/xdg/autostart/shreeos-dock.desktop \
+    etc/xdg/autostart/shreeos-session-setup.desktop \
+    usr/local/bin/shreeos-dock-session \
+    usr/share/backgrounds/shreeos/shreeos-calm-dark.png; do
+    if ! grep -Fq "squashfs-root/$desktop_asset" <<<"$image_contents"; then
+      echo "Desktop ISO is missing ShreeOS desktop asset: $desktop_asset" >&2
+      exit 1
+    fi
   done
 fi
 if [ "$PROFILE" = plasma ]; then

@@ -21,6 +21,19 @@ xfconf-query -c xfce4-panel -p /panels/panel-1/size -s 34
 
 wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-dark.png
 logger -t shreeos-session-setup 'Applying ShreeOS wallpaper to available workspaces'
+# The session can launch this hook just before xfdesktop is ready. Let the
+# desktop manager finish binding its monitor/workspace backdrop settings first.
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  if pgrep -x xfdesktop >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+sleep 3
+if [ ! -r "$wallpaper" ]; then
+  logger -t shreeos-session-setup "ShreeOS wallpaper is unavailable: $wallpaper"
+  exit 1
+fi
 for monitor in monitor0 monitor1 monitorVirtual-1; do
   for workspace in workspace0 workspace1 workspace2 workspace3; do
     image_property="/backdrop/screen0/$monitor/$workspace/last-image"
