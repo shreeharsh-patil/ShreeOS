@@ -86,6 +86,9 @@ fi
 lumen_step "Setting up rootfs skeleton"
 mkdir -p "${LUMEN_STAGE_ROOT}"
 "${LUMEN_ROOT_DIR}/base-system/scripts/setup-rootfs.sh"
+# Package installers may replace the policy with their upstream default mode.
+# Reassert sudo's required non-writable policy after the final stage setup.
+chmod 0440 "${LUMEN_STAGE_ROOT}/etc/sudoers"
 
 PROFILE_MARKER="${LUMEN_STAGE_ROOT}/etc/shreeos/profile"
 mkdir -p "$(dirname "$PROFILE_MARKER")"

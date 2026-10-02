@@ -104,6 +104,16 @@ elif [ -f /etc/shreeos/image-profile ] &&
         tail -n 40 /home/shree/.xsession-errors \
           | while IFS= read -r diagnostic; do log "$diagnostic"; done
       fi
+      for session_log in \
+        /home/shree/.cache/shreeos-session-setup.log \
+        /home/shree/.cache/shreeos-dock-session.log
+      do
+        if [ -r "$session_log" ]; then
+          log "desktop session output from $session_log:"
+          tail -n 60 "$session_log" \
+            | while IFS= read -r diagnostic; do log "$diagnostic"; done
+        fi
+      done
       if [ -e /home/shree/.config/shreeos/xfce-session-ready ]; then
         log 'ShreeOS first-login setup marker exists'
       else

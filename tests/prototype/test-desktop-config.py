@@ -66,7 +66,7 @@ def main() -> int:
     }
     require(plugin_ids == set(plugins), "panel plugin IDs do not match configured plugins")
     expected_plugins = {
-        "applicationsmenu", "tasklist", "pager", "systray", "pulseaudio",
+        "applicationsmenu", "tasklist", "systray", "pulseaudio",
         "power-manager-plugin", "clock", "actions", "launcher", "notification-plugin",
     }
     configured_plugins = {prop.get("value") for prop in plugins.values()}
@@ -74,7 +74,7 @@ def main() -> int:
             "top panel is missing an app menu, workspace, status, or power control")
     require(plugins[1].find("property[@name='button-title']").get("value") == "ShreeOS",
             "top panel menu is not branded ShreeOS")
-    panel_items = plugins[12].find("property[@name='items']")
+    panel_items = plugins[11].find("property[@name='items']")
     require(panel_items is not None and panel_items.find("value").get("value") == "shreeos-control-center.desktop",
             "top panel is missing the ShreeOS Control Center launcher")
 
@@ -87,22 +87,22 @@ def main() -> int:
 
     appearance = configparser.ConfigParser()
     appearance.read(SKEL / ".config/gtk-3.0/settings.ini", encoding="utf-8")
-    require(appearance.get("Settings", "gtk-theme-name") == "Arc-Dark",
-            "dark ShreeOS GTK theme is not the default")
-    require(appearance.get("Settings", "gtk-icon-theme-name") == "Papirus-Dark",
+    require(appearance.get("Settings", "gtk-theme-name") == "Arc",
+            "light ShreeOS GTK theme is not the default")
+    require(appearance.get("Settings", "gtk-icon-theme-name") == "Papirus",
             "desktop icon theme is not configured")
     require(appearance.get("Settings", "gtk-font-name").startswith("Inter"),
             "Inter UI font is not configured")
     xsettings = parse_xml(SKEL / ".config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml")
-    require(xsettings.find("./property[@name='Net']/property[@name='ThemeName']").get("value") == "Arc-Dark",
-            "XFCE theme service will not apply Arc-Dark")
-    require(xsettings.find("./property[@name='Net']/property[@name='IconThemeName']").get("value") == "Papirus-Dark",
-            "XFCE theme service will not apply Papirus-Dark")
+    require(xsettings.find("./property[@name='Net']/property[@name='ThemeName']").get("value") == "Arc",
+            "XFCE theme service will not apply Arc")
+    require(xsettings.find("./property[@name='Net']/property[@name='IconThemeName']").get("value") == "Papirus",
+            "XFCE theme service will not apply Papirus")
 
     dconf = configparser.ConfigParser()
     dconf.read(INCLUDES / "usr/share/shreeos/defaults/plank.dconf", encoding="utf-8")
     dock = dconf["net/launchpad/plank/docks/dock1"]
-    require(dock.get("theme") == "'ShreeOS'", "ShreeOS dock theme is not selected")
+    require(dock.get("theme") == "'ShreeOS-Light'", "ShreeOS light dock theme is not selected")
     require((INCLUDES / "usr/share/plank/themes/ShreeOS-Light/dock.theme").is_file(),
             "light appearance does not have a matching ShreeOS dock palette")
     require(dock.getboolean("zoom-enabled"), "dock hover magnification is not enabled")
@@ -170,7 +170,7 @@ def main() -> int:
             "live image does not install ShreeOS XFCE defaults system-wide")
     require('usr/share/images/desktop-base' in builder
             and 'usr/share/images/desktop-base/default' in builder
-            and 'shreeos-calm-dark.png' in builder,
+            and 'shreeos-calm-light.png' in builder,
             "live image does not provide the ShreeOS wallpaper at xfdesktop's Debian fallback path")
     session_setup = INCLUDES / "usr/local/bin/shreeos-session-setup"
     session_setup_source = session_setup.read_text(encoding="utf-8")
@@ -373,9 +373,9 @@ def main() -> int:
     require((ROOT / "branding/wallpapers/shreeos-calm-light.svg").is_file(),
             "light wallpaper is missing from the source artwork")
     lightdm = (INCLUDES / "etc/lightdm/lightdm-gtk-greeter.conf.d/50-shreeos.conf").read_text()
-    require("theme-name=Arc-Dark" in lightdm and "logo=/usr/share/pixmaps/shreeos-logo.svg" in lightdm,
+    require("theme-name=Arc" in lightdm and "logo=/usr/share/pixmaps/shreeos-logo.svg" in lightdm,
             "login screen does not use ShreeOS theme and logo")
-    require("/usr/share/backgrounds/shreeos/shreeos-calm-dark.png" in lightdm,
+    require("/usr/share/backgrounds/shreeos/shreeos-calm-light.png" in lightdm,
             "login screen does not use the rendered ShreeOS wallpaper")
     builder = (ROOT / "scripts/build-debian-prototype.sh").read_text()
     require('branding/wallpapers/*.svg' in builder and 'rsvg-convert --width=1920' in builder,

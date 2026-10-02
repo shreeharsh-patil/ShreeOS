@@ -82,7 +82,7 @@ for required in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli 
     exit 1
   }
 done
-grep -Fq 'shreeos-calm-dark.png' \
+grep -Fq 'shreeos-calm-light.png' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'image-show" type="bool" value="true"' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
@@ -199,8 +199,8 @@ test -x "$desktop_includes/usr/local/bin/shreeos-overview"
 test -s "$desktop_includes/usr/share/applications/shreeos-control-center.desktop"
 test -s "$desktop_includes/usr/share/applications/shreeos-search.desktop"
 test -s "$desktop_includes/usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg"
-grep -Fq "theme='ShreeOS'" "$desktop_includes/usr/share/shreeos/defaults/plank.dconf"
-grep -Fq 'gtk-theme-name=Arc-Dark' \
+grep -Fq "theme='ShreeOS-Light'" "$desktop_includes/usr/share/shreeos/defaults/plank.dconf"
+grep -Fq 'gtk-theme-name=Arc' \
   "$desktop_includes/etc/skel/.config/gtk-3.0/settings.ini"
 grep -Fq 'button_layout' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
@@ -213,7 +213,7 @@ test -s "$desktop_includes/etc/skel/.config/gtk-3.0/bookmarks"
 test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-dock.desktop"
 test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-first-run.desktop"
 test ! -e "$desktop_includes/etc/skel/.config/autostart/plank.desktop"
-grep -Fq 'shreeos-calm-dark.png' \
+grep -Fq 'shreeos-calm-light.png' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'rsvg-convert --width=1920' "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'shreeos-calm-dark.png' \

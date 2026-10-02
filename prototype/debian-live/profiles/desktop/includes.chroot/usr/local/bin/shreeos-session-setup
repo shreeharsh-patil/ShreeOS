@@ -17,9 +17,15 @@ xfconf-query -c xfce4-panel -p /panels/panel-1/length -s 100
 xfconf-query -c xfce4-panel -p /panels/panel-1/length-adjust -s false
 xfconf-query -c xfce4-panel -p /panels/panel-1/position -s 'p=6;x=0;y=0'
 xfconf-query -c xfce4-panel -p /panels/panel-1/position-locked -s true
-xfconf-query -c xfce4-panel -p /panels/panel-1/size -s 34
+xfconf-query -c xfce4-panel -p /panels/panel-1/size -s 30
 
-wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-dark.png
+# The live QEMU display exposes a small initial mode. Select its widescreen
+# mode so the dock and panel use a desktop-like canvas during boot validation.
+if xrandr --query 2>/dev/null | grep -q '^Virtual-1 connected'; then
+  xrandr --output Virtual-1 --mode 1280x768
+fi
+
+wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-light.png
 logger -t shreeos-session-setup 'Applying ShreeOS wallpaper to available workspaces'
 # The session can launch this hook just before xfdesktop is ready. Let the
 # desktop manager finish binding its monitor/workspace backdrop settings first.
@@ -49,6 +55,9 @@ for monitor in monitor0 monitor1 monitorVirtual-1; do
 done
 logger -t shreeos-session-setup 'Releasing the XFCE desktop surface and drawing the ShreeOS wallpaper on the X root window'
 xfdesktop --quit
+if pgrep -x xfdesktop >/dev/null 2>&1; then
+  pkill -TERM -x xfdesktop
+fi
 for attempt in 1 2 3 4 5; do
   if ! pgrep -x xfdesktop >/dev/null 2>&1; then
     break

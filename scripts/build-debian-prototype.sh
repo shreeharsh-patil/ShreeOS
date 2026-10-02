@@ -82,7 +82,7 @@ if [ "$LIVE_PROFILE" = desktop ]; then
   # when desktop-base is not installed. Provide ShreeOS artwork at that path
   # so xfdesktop never starts with a missing-image backdrop.
   mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/images/desktop-base"
-  cp "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/shreeos-calm-dark.png" \
+  cp "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/shreeos-calm-light.png" \
     "$BUILD_DIR/config/includes.chroot/usr/share/images/desktop-base/default"
   rsvg-convert --width=256 \
     --output="$BUILD_DIR/config/includes.chroot/usr/share/plymouth/themes/shreeos/logo.png" \

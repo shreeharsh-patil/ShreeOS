@@ -237,9 +237,9 @@ check "setup-rootfs.sh issues no privileged ownership commands" \
   "$(grep -Eq '^[[:space:]]*(chown|chgrp|mknod)[[:space:]]' \
       "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" && echo 1 || echo 0)"
 check "setup-rootfs.sh sets the security modes those commands implied" \
-  "$(for m in 'chmod 0600 .*/etc/shadow' 'chmod 0440 .*/etc/sudoers'; do
-       grep -Eq "$m" "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" || exit 1
-     done && echo 0 || echo 1)"
+  "$(grep -Fq 'chmod 0600 "$shadow_tmp"' "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" && \
+     grep -Fq 'chmod 0440 "$sudoers_tmp"' "$REPO_ROOT/base-system/scripts/setup-rootfs.sh" && \
+     echo 0 || echo 1)"
 
 # Re-runnability guard. make-rootfs.sh invokes setup-rootfs.sh against a stage
 # directory that already holds the previous run's output, so a second pass is
