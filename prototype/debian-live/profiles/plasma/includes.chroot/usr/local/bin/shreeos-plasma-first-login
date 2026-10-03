@@ -4,6 +4,17 @@ set -eu
 marker="$HOME/.config/shreeos/plasma-defaults-applied"
 [ -e "$marker" ] && exit 0
 
+# Applying a look-and-feel resets plasmashell.  Run the hook outside the
+# Plasma autostart process so that reset cannot terminate the hook itself.
+if [ "${SHREEOS_PLASMA_FIRST_LOGIN_SERVICE:-0}" != 1 ]; then
+  exec systemd-run --user --quiet --no-block --collect \
+    --unit=shreeos-plasma-defaults \
+    --setenv=DISPLAY="${DISPLAY:-:0}" \
+    --setenv=XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}" \
+    /usr/bin/env SHREEOS_PLASMA_FIRST_LOGIN_SERVICE=1 \
+    /usr/local/bin/shreeos-plasma-first-login
+fi
+
 mkdir -p "${marker%/*}"
 # Wait for plasmashell to finish registering its session services before
 # applying the layout. Resetting the layout during Plasma startup can terminate
