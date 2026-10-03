@@ -44,7 +44,9 @@ dock.lengthMode = "fit";
 dock.alignment = "center";
 dock.height = 62;
 dock.hiding = "autohide";
-dock.floating = true;
+// Keep the dock anchored; floating panels can make KWin crash while the
+// layout script is applied during the first Plasma session.
+dock.floating = false;
 var tasks = dock.addWidget("org.kde.plasma.icontasks");
 tasks.writeConfig(
     "launchers",
