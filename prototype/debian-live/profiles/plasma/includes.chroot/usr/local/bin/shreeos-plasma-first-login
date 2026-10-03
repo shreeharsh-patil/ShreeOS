@@ -22,8 +22,7 @@ mkdir -p "${marker%/*}"
 sleep 10
 apply_attempt=0
 while [ "$apply_attempt" -lt 30 ]; do
-  if plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout &&
-    plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-calm-dark.png; then
+  if plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout; then
     break
   fi
   apply_attempt=$((apply_attempt + 1))
@@ -33,6 +32,34 @@ if [ "$apply_attempt" -ge 30 ]; then
   logger -t shreeos-plasma-first-login 'Plasma session did not accept ShreeOS desktop defaults'
   exit 1
 fi
+
+# Plasma's resetLayout operation can stop the shell it was called from. Bring
+# the user service back before applying the remaining session settings rather
+# than repeating resetLayout and terminating the session again.
+shell_attempt=0
+while [ "$shell_attempt" -lt 30 ] && ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; do
+  systemctl --user restart plasma-plasmashell.service >/dev/null 2>&1 || true
+  shell_attempt=$((shell_attempt + 1))
+  sleep 1
+done
+if ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; then
+  logger -t shreeos-plasma-first-login 'Plasma shell did not restart after applying ShreeOS desktop defaults'
+  exit 1
+fi
+
+wallpaper_attempt=0
+while [ "$wallpaper_attempt" -lt 30 ]; do
+  if plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-calm-dark.png; then
+    break
+  fi
+  wallpaper_attempt=$((wallpaper_attempt + 1))
+  sleep 1
+done
+if [ "$wallpaper_attempt" -ge 30 ]; then
+  logger -t shreeos-plasma-first-login 'Plasma session did not accept the ShreeOS wallpaper'
+  exit 1
+fi
+
 config="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
 attempt=0
 while [ "$attempt" -lt 30 ]; do
