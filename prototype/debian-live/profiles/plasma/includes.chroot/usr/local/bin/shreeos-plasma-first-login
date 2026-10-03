@@ -33,12 +33,11 @@ if [ "$apply_attempt" -ge 30 ]; then
   exit 1
 fi
 
-# Plasma's resetLayout operation can stop the shell it was called from. Bring
-# the user service back before applying the remaining session settings rather
-# than repeating resetLayout and terminating the session again.
+# Plasma's resetLayout operation can stop the shell it was called from. The
+# user-service drop-in restarts it; wait for that managed restart before
+# applying the remaining session settings.
 shell_attempt=0
 while [ "$shell_attempt" -lt 30 ] && ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; do
-  systemctl --user restart plasma-plasmashell.service >/dev/null 2>&1 || true
   shell_attempt=$((shell_attempt + 1))
   sleep 1
 done
