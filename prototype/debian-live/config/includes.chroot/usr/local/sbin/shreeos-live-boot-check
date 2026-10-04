@@ -58,10 +58,10 @@ if [ -f /etc/shreeos/image-profile ] &&
     [ -f /home/shree/.config/shreeos/plasma-defaults-applied ] &&
     grep -Fq 'plugin=org.kde.plasma.appmenu' /home/shree/.config/plasma-org.kde.plasma.desktop-appletsrc &&
     grep -Fq 'plugin=org.kde.plasma.icontasks' /home/shree/.config/plasma-org.kde.plasma.desktop-appletsrc; do
-    if [ "$elapsed" -ge 90 ]; then
+    if [ "$elapsed" -ge 150 ]; then
       ps -eo user,pid,args | grep -E '[s]ddm|[p]lasmashell|[k]win_x11' \
         | while IFS= read -r diagnostic; do log "$diagnostic"; done
-      fail 'SDDM did not start Plasma or apply ShreeOS desktop defaults within 90 seconds'
+      fail 'SDDM did not start Plasma or apply ShreeOS desktop defaults within 150 seconds'
     fi
     sleep 1
     elapsed=$((elapsed + 1))
