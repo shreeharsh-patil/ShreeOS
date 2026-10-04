@@ -281,12 +281,12 @@ desktop_bottom = height - 64
 desktop_pixels = pixels[desktop_top * width * 3:desktop_bottom * width * 3]
 wallpaper_pixels = sum(1 for i in range(0, len(desktop_pixels), 3)
                        if max(desktop_pixels[i:i + 3]) > 8)
-if profile == "desktop" and wallpaper_pixels < width * (desktop_bottom - desktop_top) // 2:
+if profile in ("desktop", "plasma") and wallpaper_pixels < width * (desktop_bottom - desktop_top) // 2:
     raise SystemExit(f"ShreeOS wallpaper is missing from the desktop area: {path}")
 dock_pixels = pixels[(height - 64) * width * 3:]
 visible_dock_pixels = sum(1 for i in range(0, len(dock_pixels), 3)
                           if max(dock_pixels[i:i + 3]) > 50)
-if profile == "desktop" and visible_dock_pixels < max(24, width * 64 // 300):
+if profile in ("desktop", "plasma") and visible_dock_pixels < max(24, width * 64 // 300):
     raise SystemExit(f"ShreeOS dock is missing from the bottom of the desktop: {path}")
 print(f"{profile} screenshot contains visible content ({width}x{height}).")
 PY
