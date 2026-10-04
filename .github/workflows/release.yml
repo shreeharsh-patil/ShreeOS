@@ -2,8 +2,6 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
     branches:
       - master
 
@@ -19,21 +17,24 @@ defaults:
     shell: bash --noprofile --norc -euo pipefail {0}
 
 env:
-  RELEASE_PROFILE: desktop
+  RELEASE_VERSION: 0.3.0-prototype
+  RELEASE_TAG: v0.3.0-prototype
+  RELEASE_PROFILE: plasma
+  RELEASE_ISO: shreeos-0.3.0-prototype-plasma-amd64.iso
 
 jobs:
   build:
-    if: ${{ github.ref_type == 'tag' || (github.ref == 'refs/heads/master' && contains(github.event.head_commit.message, '[release]')) }}
-    name: Build and certify desktop ISO
+    if: ${{ github.ref == 'refs/heads/master' && contains(github.event.head_commit.message, '[release]') }}
+    name: Build and certify current Plasma prototype
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    container:
+      image: debian:trixie-slim
+      options: --privileged
+    timeout-minutes: 240
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
-      artifact_name: ${{ steps.version.outputs.artifact_name }}
+      artifact_name: ${{ steps.meta.outputs.artifact_name }}
     steps:
       - name: Check out release source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -41,172 +42,94 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Validate release version
-        id: version
+      - name: Install pinned live-build and image test tools
         run: |
-          source build.conf
-          expected_tag="v${DISTRO_VERSION}"
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            if [[ "${GITHUB_REF_NAME:-}" != "$expected_tag" ]]; then
-              echo "Tag ${GITHUB_REF_NAME:-<none>} does not match build.conf ($expected_tag)" >&2
-              exit 1
-            fi
-          elif [[ "${GITHUB_REF:-}" != "refs/heads/master" ]]; then
-            echo "Release builds must come from the matching tag or master" >&2
-            exit 1
-          fi
-          prerelease=false
-          [[ "$DISTRO_VERSION" == *-dev ]] && prerelease=true
-          {
-            echo "version=$DISTRO_VERSION"
-            echo "tag=$expected_tag"
-            echo "prerelease=$prerelease"
-            echo "artifact_name=shreeos-desktop-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          } >> "$GITHUB_OUTPUT"
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            live-build=1:20250505+deb13u1 \
+            debootstrap xorriso squashfs-tools \
+            grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
+            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync ca-certificates \
+            debian-archive-keyring shellcheck python3 librsvg2-bin
 
-      - name: Install build dependencies
-        run: bash scripts/install-build-deps-apt.sh
-
-      - name: Bootstrap pinned host tools
+      - name: Validate prototype scripts and configuration
         run: |
-          bash scripts/bootstrap-host-tools.sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.local/bin:$PATH"
-          meson --version
-          test "$(meson --version)" = "1.6.1"
+          bash -n scripts/build-debian-prototype.sh
+          bash -n tests/prototype/test-config.sh
+          bash -n tests/prototype/test-iso.sh
+          shellcheck --severity=error \
+            scripts/build-debian-prototype.sh \
+            tests/prototype/test-config.sh \
+            tests/prototype/test-iso.sh \
+            prototype/debian-live/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user \
+            prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check \
+            prototype/debian-live/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-plasma-first-login \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-open-downloads \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-open-trash \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/bin/shreeos-theme \
+            prototype/debian-live/profiles/plasma/includes.chroot/usr/local/sbin/shreeos-sddm-live-autologin
+          bash tests/prototype/test-config.sh
+          python3 tests/prototype/test-desktop-config.py
+          python3 tests/prototype/test-search-calculator.py
+          python3 tests/prototype/test-workspace-overview.py
 
-      - name: Restore exact toolchain cache
-        id: cache-toolchain
-        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
-        with:
-          path: |
-            build/tools
-            build/sysroot
-          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
-
-      - name: Build or validate toolchain
-        env:
-          CACHE_HIT: ${{ steps.cache-toolchain.outputs.cache-hit }}
+      - name: Build ShreeOS Plasma ISO
         run: |
-          if [[ "$CACHE_HIT" == "true" ]]; then
-            bash scripts/verify-stage.sh toolchain
-          else
-            make PROFILE="$RELEASE_PROFILE" toolchain
-          fi
-          bash scripts/verify-stage.sh toolchain
-          mkdir -p build/.markers
-          touch build/.markers/.toolchain
+          mkdir -p build-logs/prototype-qemu
+          SHREEOS_LIVE_PROFILE="$RELEASE_PROFILE" bash scripts/build-debian-prototype.sh
+          test -s "out/$RELEASE_ISO"
 
-      - name: Save validated toolchain cache
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
-        with:
-          path: |
-            build/tools
-            build/sysroot
-          key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
-
-      - name: Build desktop ISO
-        env:
-          PROFILE: desktop
-          ALLOW_DEFERRED_GRAPHICS: '0'
-          BIOS_TIMEOUT: '240'
-          UEFI_TIMEOUT: '300'
-          MEMORY: 4096M
+      - name: Certify BIOS and UEFI boot plus desktop visuals
         run: |
-          mkdir -p build-logs
-          bash scripts/build.sh desktop 2>&1 | tee build-logs/build-desktop.log
+          QEMU_LOG_DIR=build-logs/prototype-qemu \
+            bash tests/prototype/test-iso.sh "out/$RELEASE_ISO" "$RELEASE_PROFILE"
 
-      - name: Require real desktop graphics stack
-        env:
-          PROFILE: desktop
+      - name: Validate release assets
+        id: meta
         run: |
-          bash scripts/verify-stage.sh desktop
-          bash scripts/verify-stage.sh rootfs
-          bash scripts/verify-stage.sh iso
-          bash scripts/graphics-readiness.sh --strict
-          status_file="build/rootfs/etc/shreeos/desktop-native.status"
-          test -f "$status_file"
-          test "$(tr -d '\r\n' < "$status_file")" = ready
-
-      - name: Run desktop-aware tests
-        env:
-          PROFILE: desktop
-          BIOS_TIMEOUT: '240'
-          UEFI_TIMEOUT: '300'
-          MEMORY: 4096M
-        run: make test-all
-
-      - name: Validate and stage release assets
-        run: |
-          source build.conf
-          mapfile -t iso_paths < <(find out -maxdepth 1 -type f -name '*.iso' -print | sort)
-          [[ "${#iso_paths[@]}" -eq 1 ]]
-          iso_path="${iso_paths[0]}"
-          iso_name="$(basename "$iso_path")"
-          manifest="out/${iso_name%.iso}-manifest.json"
-          checksum="${iso_path}.sha256"
-          test -s "$iso_path"
-          test -s "$manifest"
-          test -s "$checksum"
-          EXPECTED_NAME="$DISTRO_NAME" EXPECTED_VERSION="$DISTRO_VERSION" EXPECTED_COMMIT="$GITHUB_SHA" python3 - "$iso_path" "$manifest" <<'PY'
-          import hashlib, json, os, pathlib, sys
-          iso = pathlib.Path(sys.argv[1])
-          manifest = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'))
-          checks = {
-              'name': os.environ['EXPECTED_NAME'],
-              'version': os.environ['EXPECTED_VERSION'],
-              'profile': 'desktop',
-              'commit': os.environ['EXPECTED_COMMIT'],
-              'iso': iso.name,
-          }
-          for key, expected in checks.items():
-              if manifest.get(key) != expected:
-                  raise SystemExit(f'manifest {key} mismatch: {manifest.get(key)!r} != {expected!r}')
-          if manifest.get('size_bytes') != iso.stat().st_size:
-              raise SystemExit('manifest size mismatch')
-          digest = hashlib.sha256(iso.read_bytes()).hexdigest()
-          if manifest.get('sha256') != digest:
-              raise SystemExit('manifest checksum mismatch')
-          print(f'Desktop release manifest certified: {iso.name} ({iso.stat().st_size} bytes)')
-          PY
+          checksum="out/$RELEASE_ISO.sha256"
+          packages="out/${RELEASE_ISO%.iso}-packages.txt"
+          build_info="out/${RELEASE_ISO%.iso}-build-info.txt"
+          for required in "out/$RELEASE_ISO" "$checksum" "$packages" "$build_info"; do
+            test -s "$required"
+          done
           (
             cd out
-            sha256sum "$iso_name" > SHA256SUMS
+            sha256sum -c "$RELEASE_ISO.sha256"
+            sha256sum "$RELEASE_ISO" > SHA256SUMS
             sha256sum -c SHA256SUMS
-            sha256sum -c "$iso_name.sha256"
           )
           rm -rf release-assets
           mkdir release-assets
-          cp "$iso_path" "$checksum" "$manifest" out/SHA256SUMS release-assets/
+          cp "out/$RELEASE_ISO" "$checksum" "$packages" "$build_info" out/SHA256SUMS release-assets/
+          echo "artifact_name=shreeos-plasma-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload certified desktop bundle
+      - name: Upload certified release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ steps.version.outputs.artifact_name }}
+          name: ${{ steps.meta.outputs.artifact_name }}
           path: release-assets/
           if-no-files-found: error
           overwrite: true
-          retention-days: 7
+          retention-days: 14
 
-      - name: Upload build logs on failure
+      - name: Upload QEMU logs on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-desktop-release-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            build-logs/
-            build/logs/
+          name: shreeos-plasma-release-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-logs/prototype-qemu/
           if-no-files-found: warn
           overwrite: true
-          retention-days: 7
+          retention-days: 14
 
   publish:
     if: ${{ needs.build.result == 'success' }}
-    name: Publish certified desktop release
+    name: Publish ShreeOS Plasma prerelease
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: write
@@ -221,28 +144,27 @@ jobs:
         run: |
           cd release-assets
           sha256sum -c SHA256SUMS
-          mapfile -t checksums < <(find . -maxdepth 1 -type f -name '*.iso.sha256' -print)
-          [[ "${#checksums[@]}" -eq 1 ]]
-          sha256sum -c "${checksums[0]}"
+          sha256sum -c "$RELEASE_ISO.sha256"
 
-      - name: Publish GitHub release
+      - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.build.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.build.outputs.version }}
-          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
           cat > release-notes.md <<EOF
-          ShreeOS ${RELEASE_VERSION} desktop-certified release.
+          ShreeOS ${RELEASE_VERSION} Plasma preview.
 
-          This release is built with PROFILE=desktop and is published only after the native target graphics stack, root filesystem, ISO structure, checksums, BIOS boot, UEFI boot, and automated tests pass. Minimal/headless images are not published as the primary ShreeOS release.
+          This prerelease is published only after the current Debian Live Plasma image passes configuration checks, package/asset validation, checksum validation, BIOS boot, UEFI boot, and automated desktop screenshot gates.
+
+          It is a prototype prerelease, not the final stable ShreeOS release. Installer-to-disk, installed-system update/recovery, broader hardware coverage, and interactive acceptance remain release blockers for a stable version.
           EOF
-          prerelease_arg=()
-          [[ "$PRERELEASE" == true ]] && prerelease_arg+=(--prerelease)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release-assets/* --clobber
-            gh release edit "$RELEASE_TAG" --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md "${prerelease_arg[@]}"
+            gh release edit "$RELEASE_TAG" --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md --prerelease
           else
-            gh release create "$RELEASE_TAG" release-assets/* --target "$GITHUB_SHA" --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md "${prerelease_arg[@]}"
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --target "$GITHUB_SHA" \
+              --title "ShreeOS ${RELEASE_VERSION}" \
+              --notes-file release-notes.md \
+              --prerelease
           fi
