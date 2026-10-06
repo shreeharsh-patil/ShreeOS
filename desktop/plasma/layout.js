@@ -42,7 +42,7 @@ var dock = new Panel();
 dock.location = "bottom";
 dock.lengthMode = "fit";
 dock.alignment = "center";
-dock.height = 62;
+dock.height = 58;
 dock.hiding = "autohide";
 // Keep the dock anchored; floating panels can make KWin crash while the
 // layout script is applied during the first Plasma session.

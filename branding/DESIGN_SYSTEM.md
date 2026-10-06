@@ -71,11 +71,18 @@ Shadows:          Soft realistic ambient falloff (e.g. 0 8px 24px rgba(0,0,0,0.2
 ## 4. Window System & Controls
 
 - **Titlebar Height:** Compact 28–32px with unified toolbar styling.
-- **Window Controls (Left-Aligned Original ShreeOS Monograms):**
+- **Window Controls (Left-Aligned):**
   - Close: Subtle Crimson `#E54D2E` on hover
   - Minimize: Subtle Amber `#F7B955` on hover
   - Maximize: Subtle Teal/Green `#30A46C` on hover
 - **Inactive State:** Unfocused windows subtly dim titlebar contrast and soften border prominence.
+
+### Desktop Composition
+
+- A 38px top panel keeps the application menu on the left and system status and clock on the right.
+- A centered 58px auto-hiding dock holds the everyday launchers, installer, and Trash.
+- Four workspaces support quick keyboard navigation and a clear sense of separate work areas.
+- Original ShreeOS blue landscape artwork and restrained blue selection accents carry the identity across the desktop and login screen.
 
 ---
 
