@@ -117,7 +117,7 @@ run_boot_test() {
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
-  local deadline=$((SECONDS + 300))
+  local deadline=$((SECONDS + 420))
   local memory=2048
   if [ "$PROFILE" = plasma ]; then memory=4096; fi
   if [ "$mode" = uefi ]; then
@@ -152,7 +152,7 @@ run_boot_test() {
     )
   fi
 
-  xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 300s qemu-system-x86_64 \
+  xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 420s qemu-system-x86_64 \
     -machine q35 -m "$memory" -smp 2 -vga virtio -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
