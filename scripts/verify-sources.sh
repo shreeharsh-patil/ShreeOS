@@ -65,7 +65,7 @@ verify_entry() {
   fi
   VALID_DEFINITIONS=$((VALID_DEFINITIONS + 1))
 
-  local filename archive_path tmp_path
+  local filename archive_path
   filename="$(basename "${url%%\?*}")"
   [ -n "$filename" ] || {
     printf "  [INVALID] [%-11s] %-16s URL has no archive filename\n" "$comp" "$name"
@@ -73,7 +73,6 @@ verify_entry() {
     return 0
   }
   archive_path="$SOURCES_DIR/$filename"
-  tmp_path="$archive_path.tmp.${BASHPID}"
 
   local needs_fetch=false
   if [ -L "$archive_path" ]; then
@@ -94,20 +93,12 @@ verify_entry() {
 
   if [ "$needs_fetch" = true ] && [ "$FETCH_MISSING" = true ]; then
     printf "  [FETCH]   [%-11s] %s\n" "$comp" "$filename"
-    rm -f "$tmp_path"
-    if curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 600 --proto '=https' --proto-redir '=https' -o "$tmp_path" "$url"; then
-      local fetched_sha
-      fetched_sha="$(sha256sum "$tmp_path" | awk '{print $1}')"
-      if [ "$fetched_sha" != "$expected_sha" ]; then
-        rm -f "$tmp_path"
-        printf "  [MISMATCH][%-11s] %-16s %-8s %s\n" "$comp" "$name" "$version" "$filename"
-        printf "            expected: %s\n            actual:   %s\n" "$expected_sha" "$fetched_sha"
-        FAILED=$((FAILED + 1))
-        return 0
-      fi
-      mv "$tmp_path" "$archive_path"
-    else
-      rm -f "$tmp_path"
+    # Reuse the canonical fetch helper so verification gets the same
+    # checksum enforcement, retry policy, and upstream mirror fallbacks as
+    # the actual package build. Run it in a subshell because shreeos_fetch
+    # fails closed with exit 1; verification should record the failure and
+    # continue checking the remaining pinned sources.
+    if ! (shreeos_fetch "$url" "$archive_path" "$expected_sha"); then
       printf "  [FAILED]  [%-11s] %-16s download failed\n" "$comp" "$name"
       FAILED=$((FAILED + 1))
       return 0
