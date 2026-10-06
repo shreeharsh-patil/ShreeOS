@@ -112,9 +112,9 @@ shreeos_fetch() {
   tmp="${dest}.part.${BASHPID}"
   rm -f -- "${tmp}"
 
-  for attempt in 1 2; do
+  for attempt in 1 2 3 4; do
     for candidate_url in "${candidate_urls[@]}"; do
-      shreeos_log "Fetching $(basename "${dest}") from ${candidate_url} (attempt ${attempt}/2) ..."
+      shreeos_log "Fetching $(basename "${dest}") from ${candidate_url} (attempt ${attempt}/4) ..."
       local -a curl_args=(--fail --location --retry 3 --retry-all-errors --connect-timeout 20 --max-time 600 --output "${tmp}")
       if [[ "${candidate_url}" == file://* ]]; then
         if [[ "${SHREEOS_ALLOW_FILE_FETCH:-0}" != "1" ]]; then
@@ -145,7 +145,7 @@ shreeos_fetch() {
       shreeos_warn "Download failed from ${candidate_url}; trying next mirror"
     done
 
-    if (( attempt < 2 )); then
+    if (( attempt < 4 )); then
       shreeos_warn "Retrying source fetch for $(basename "${dest}")"
       continue
     fi
