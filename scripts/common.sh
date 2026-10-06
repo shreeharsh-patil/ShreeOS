@@ -54,6 +54,18 @@ shreeos_fetch_candidates() {
     rel="${BASH_REMATCH[1]}"
     candidates+=("https://mirrors.kernel.org/gnu/${rel}")
     candidates+=("https://ftp.gnu.org/gnu/${rel}")
+  elif [[ "$url" =~ ^https://download-mirror\.savannah\.gnu\.org/releases/(.+)$ ]]; then
+    rel="${BASH_REMATCH[1]}"
+    candidates+=("https://download.savannah.gnu.org/releases/${rel}")
+  elif [[ "$url" =~ ^https://download\.savannah\.gnu\.org/releases/(.+)$ ]]; then
+    rel="${BASH_REMATCH[1]}"
+    candidates+=("https://download-mirror.savannah.gnu.org/releases/${rel}")
+  elif [[ "$url" =~ ^https://download-mirror\.savannah\.nongnu\.org/releases/(.+)$ ]]; then
+    rel="${BASH_REMATCH[1]}"
+    candidates+=("https://download.savannah.nongnu.org/releases/${rel}")
+  elif [[ "$url" =~ ^https://download\.savannah\.nongnu\.org/releases/(.+)$ ]]; then
+    rel="${BASH_REMATCH[1]}"
+    candidates+=("https://download-mirror.savannah.nongnu.org/releases/${rel}")
   fi
 
   printf '%s\n' "${candidates[@]}"
