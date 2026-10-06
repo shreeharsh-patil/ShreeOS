@@ -62,9 +62,11 @@ shreeos_fetch_candidates() {
     candidates+=("https://download-mirror.savannah.gnu.org/releases/${rel}")
   elif [[ "$url" =~ ^https://download-mirror\.savannah\.nongnu\.org/releases/(.+)$ ]]; then
     rel="${BASH_REMATCH[1]}"
+    candidates+=("https://mirror.fi.ossplanet.net/nongnu/${rel}")
     candidates+=("https://download.savannah.nongnu.org/releases/${rel}")
   elif [[ "$url" =~ ^https://download\.savannah\.nongnu\.org/releases/(.+)$ ]]; then
     rel="${BASH_REMATCH[1]}"
+    candidates+=("https://mirror.fi.ossplanet.net/nongnu/${rel}")
     candidates+=("https://download-mirror.savannah.nongnu.org/releases/${rel}")
   fi
 
