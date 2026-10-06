@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+# The profile uses Plasma X11; Plank does not provide a Wayland dock.
+[ "${XDG_SESSION_TYPE:-x11}" = x11 ] || exit 0
+
+if [ "${SHREEOS_PLASMA_DOCK_SERVICE:-0}" != 1 ]; then
+  exec systemd-run --user --quiet --no-block --collect \
+    --unit=shreeos-plasma-dock \
+    --property=PartOf=graphical-session.target \
+    --property=Restart=on-failure --property=RestartSec=2 \
+    --setenv=XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
+    --setenv=XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}" \
+    --setenv=DISPLAY="${DISPLAY:-:0}" \
+    --setenv=XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}" \
+    /usr/bin/env SHREEOS_PLASMA_DOCK_SERVICE=1 \
+    /usr/local/bin/shreeos-plasma-dock
+fi
+
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+log_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
+mkdir -p "$log_dir" "$config_home/shreeos"
+exec >>"$log_dir/shreeos-plasma-dock.log" 2>&1
+
+# The initial layout reset restarts plasmashell. Start the dock afterwards so
+# its reserved screen area is not lost during that reset.
+attempt=0
+while [ ! -e "$config_home/shreeos/plasma-defaults-applied" ] ||
+  ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; do
+  if [ "$attempt" -ge 180 ]; then
+    logger -t shreeos-plasma-dock 'Desktop defaults did not finish; dock startup deferred'
+    exit 1
+  fi
+  sleep 1
+  attempt=$((attempt + 1))
+done
+
+marker="$config_home/shreeos/plasma-dock-v1"
+if [ ! -e "$marker" ]; then
+  dconf load / < /usr/share/shreeos/defaults/plasma-plank.dconf
+  touch "$marker"
+fi
+
+# Preferences are written once. Later logins preserve the user's pinned apps,
+# icon size, position and hiding choice.
+exec plank

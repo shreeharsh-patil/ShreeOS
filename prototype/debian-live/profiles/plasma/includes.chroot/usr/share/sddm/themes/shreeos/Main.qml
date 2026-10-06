@@ -18,7 +18,7 @@ Rectangle {
 
     Image {
         anchors.fill: parent
-        source: "file:///usr/share/backgrounds/shreeos/shreeos-calm-dark.png"
+        source: "file:///usr/share/backgrounds/shreeos/shreeos-alpenglow.png"
         fillMode: Image.PreserveAspectCrop
         smooth: true
         asynchronous: true

@@ -1,6 +1,8 @@
 [kwin]
-Overview=Meta+W	Meta+W	Toggle Overview
-Walk Through Windows=Alt+Tab	Alt+Tab	Walk Through Windows
+Overview=Meta+W,Meta+W,Toggle Overview
+Walk Through Windows=Alt+Tab,Alt+Tab,Walk Through Windows
+Switch to Next Desktop=Meta+Ctrl+Right,Meta+Ctrl+Right,Switch to Next Desktop
+Switch to Previous Desktop=Meta+Ctrl+Left,Meta+Ctrl+Left,Switch to Previous Desktop
 
 [org.kde.krunner.desktop]
-_launch=Meta+Space	Meta+Space	Run Command
+_launch=Meta+Space,Meta+Space,Run Command

@@ -1,6 +1,9 @@
 # ShreeOS Desktop Distribution Implementation Plan
 
-**Status:** The Debian Live base and desktop image build and pass BIOS/UEFI boot checks. The latest strict visual gate failed because the wallpaper and dock were absent from the captured desktop. A follow-up fixes the Plank dconf load root and explicitly includes Debian's SVG image loader; BIOS/UEFI visual validation is pending. Interactive visual acceptance, installation, installed-system updates/recovery, and production release remain open.
+**Current follow-up:** See [SYSTEM-READINESS.md](SYSTEM-READINESS.md) for the
+2026-10-06 desktop/system hardening changes and pending release gates.
+
+**Earlier baseline status:** The Debian Live base and desktop image build and pass BIOS/UEFI boot checks. The latest strict visual gate failed because the wallpaper and dock were absent from the captured desktop. A follow-up fixes the Plank dconf load root and explicitly includes Debian's SVG image loader; BIOS/UEFI visual validation is pending. Interactive visual acceptance, installation, installed-system updates/recovery, and production release remain open.
 **Audit baseline:** repository commit `44677fdeb4e1` (2026-09-30).
 
 This plan turns the desktop-distribution request into reviewable milestones. It
@@ -105,8 +108,8 @@ check. The follow-up corrects the dconf root used by the dock launcher and
 selects `librsvg2-common` explicitly; this has not yet been rebuilt. This is
 not yet visual acceptance, an install test, or physical-hardware coverage. The
 desktop profile selects
-Debian's XFCE task and ShreeOS artwork, while excluding Debian's
-`non-free-firmware` archive. A boot-time hook locks the temporary live user's
+Debian's XFCE task and ShreeOS artwork, with common PC firmware from Debian's
+`non-free-firmware` archive by default; a free-only build is still available. A boot-time hook locks the temporary live user's
 default password; the QEMU marker checks that the account has no password
 login or sudo access, an intact apt/dpkg package database, QEMU block-device
 detection, and an Ethernet DHCP route. In desktop mode it also waits for
@@ -134,7 +137,7 @@ sound, display, appearance, power, and notification tools. CPU power-profile
 selection, lid-action customization, and suspend/resume validation remain
 open. The dock's own preferences are linked for size, position, and hide
 behavior. The GRUB splash
-and menu theme are now branded and confirmed in the CI boot image at 800×600.
+and menu theme are now branded and confirmed in the CI boot image at 800Ã—600.
 Workspace Overview remains text based without thumbnails or gestures. A full
 notification center remains future work. A custom Plymouth theme now places
 the ShreeOS logo over a dark gradient with animated blue dots, and the desktop
@@ -202,8 +205,8 @@ the boot and recovery entries from its normal configuration. CI has booted
 both firmware paths, and the QEMU job retains a boot-menu image for review.
 
 Keyboard controls now switch workspaces with Ctrl+Alt+Left/Right, move the
-focused window with Ctrl+Alt+Shift+Left/Right, and select desktops 1–4 with
-Super+1–4. XFWM/XFCE keybinding configuration is checked statically; input
+focused window with Ctrl+Alt+Shift+Left/Right, and select desktops 1â€“4 with
+Super+1â€“4. XFWM/XFCE keybinding configuration is checked statically; input
 behavior still needs interactive VM and hardware validation.
 `Super+Shift+S` now opens Debian's XFCE screenshot tool in region-selection
 mode; its package and key binding are covered by the prototype checks.

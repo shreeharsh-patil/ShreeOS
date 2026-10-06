@@ -1,8 +1,23 @@
 #!/bin/sh
 set -eu
 
+if [ "$#" -ne 0 ]; then
+  echo 'The ShreeOS installer does not accept command-line arguments.' >&2
+  exit 2
+fi
 if [ "$(id -u)" -eq 0 ]; then
   exec /usr/local/libexec/shreeos-installer-privileged "$@"
 fi
 
-exec pkexec /usr/local/libexec/shreeos-installer-privileged "$@"
+[ -n "${DISPLAY:-}" ] && [ -r /run/live/medium/live/filesystem.squashfs ] || {
+  echo 'Start the installer from a ShreeOS live desktop.' >&2
+  exit 1
+}
+# Grant access as the desktop user, before pkexec switches to root. Always
+# revoke it on return, including cancelled authorization and failed installs.
+trap 'xhost -si:localuser:root >/dev/null 2>&1 || true' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+xhost +si:localuser:root
+pkexec /usr/local/libexec/shreeos-installer-privileged

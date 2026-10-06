@@ -31,7 +31,7 @@ release; the XFCE profile's screenshot gate is still under investigation.
 | ISO and boot | GRUB hybrid ISO in legacy; live-build GRUB BIOS/UEFI in prototype | Keep existing prototype boot pipeline and add a `plasma` profile |
 | Existing GUI | X11/dwm and custom scripts; separate XFCE desktop prototype | Preserve both; add a separate SDDM/Plasma profile |
 | Login | No full legacy desktop login; LightDM for XFCE prototype | SDDM with ShreeOS-owned QML greeter and live-only autologin |
-| Panel and dock | dwm bar in legacy; XFCE panel + Plank in prototype | Configure native Plasma panels: Kickoff and app menu at top, system tray and date on right, centered floating auto-hide icon-task dock |
+| Panel and dock | dwm bar in legacy; XFCE panel + Plank in prototype | Native Plasma menu/status bar with a centered date/clock area; rounded Plank dock with hover magnification in the Plasma X11 profile |
 | Networking, audio, Bluetooth, power | Basic custom tools in legacy; NM/PipeWire/BlueZ in prototype | Use plasma-nm, plasma-pa, BlueDevil, PowerDevil and their services |
 | Installer | Shell installer in legacy; Calamares config in prototype | Retain upstream Calamares dependency/config; validate install flow later |
 | CI | Multiple legacy workflows; Debian prototype build/QEMU workflow | Extend prototype validation to package manifest and Plasma session |
@@ -39,15 +39,19 @@ release; the XFCE profile's screenshot gate is still under investigation.
 ## First integration slice
 
 The new `plasma` profile installs Debian's `kde-plasma-desktop`, SDDM, Dolphin,
-Konsole, Ark, Spectacle, Plasma network/audio widgets, PowerDevil and BlueDevil.
-It applies an original ShreeOS top menu/status bar and floating dock through
-Plasma's layout scripting API, with pinned Dolphin, Downloads, Konsole, Firefox,
-System Settings and Trash launchers. An original ShreeOS QML theme styles the
+Konsole, Ark, Spectacle, Plasma network/audio widgets, PowerDevil and BlueDevil,
+plus Plank, Kate, Gwenview, Okular and KCalc. Plasma's layout scripting API
+creates a 28px top menu/status bar with a date and clock between expanding
+spacers. An original Plasma style supplies its translucent surface, while
+Plank supplies the rounded, always-visible dock with 44px icons, 130% hover
+magnification and persistent favorite launchers. An original ShreeOS QML theme styles the
 SDDM greeter with ShreeOS branding. The greeter theme persists into installed
 systems, while a boot-time check removes the live-only autologin override from
 an installed system. ShreeOS dark and light color schemes, matching Konsole
 schemes, GTK theme defaults and an appearance switcher are included with the
-original logo and wallpapers. Four virtual desktops and KRunner's Meta+Space
+original logo and wallpapers. The default is ShreeOS Light with the Alpenglow
+mountain photograph; appearance changes preserve the user's wallpaper and
+pinned applications. Four virtual desktops and KRunner's Meta+Space
 shortcut are configured. Discover uses Debian's PackageKit backend for system
 packages and the Flatpak backend with Flathub preconfigured for user-selected
 applications. No app payloads are bundled from Flathub. No KDE source is
@@ -56,7 +60,7 @@ vendored or forked.
 The configured panel uses upstream Plasma widgets, so the system tray and its
 available network, Bluetooth, audio, and notification controls retain their
 native service integrations. This is not a separate ShreeOS quick-settings
-application. Hover scaling, custom KWin effects, a custom Plasma lock screen,
+application. Custom KWin effects, a custom Plasma lock screen,
 and an installed-system acceptance run remain future work. CI checks
 the image assets, session startup and ShreeOS panel/dock configuration in BIOS
 and UEFI QEMU; visual and physical-hardware acceptance remains required.

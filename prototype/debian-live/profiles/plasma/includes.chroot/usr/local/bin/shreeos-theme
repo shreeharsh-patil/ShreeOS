@@ -12,14 +12,14 @@ case "$choice" in
     scheme='ShreeOS Dark'
     gtk_theme=Breeze-Dark
     icons=Papirus-Dark
-    wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-dark.png
+    dock_theme=ShreeOS-Glass-Dark
     dark=true
     ;;
   light)
     scheme='ShreeOS Light'
     gtk_theme=Breeze
     icons=Papirus
-    wallpaper=/usr/share/backgrounds/shreeos/shreeos-calm-light.png
+    dock_theme=ShreeOS-Glass
     dark=false
     ;;
   *)
@@ -28,8 +28,16 @@ case "$choice" in
     ;;
 esac
 
+kwriteconfig6 --file kdeglobals --group Icons --key Theme "$icons"
+# Debian installs this helper outside PATH. Query the package rather than
+# depending on an architecture-specific libexec path.
+icon_helper="$(dpkg-query -L plasma-workspace | sed -n '\|/plasma-changeicons$|p' | head -n 1)"
+if [ -n "$icon_helper" ] && [ -x "$icon_helper" ]; then
+  "$icon_helper" "$icons"
+fi
 plasma-apply-colorscheme "$scheme"
-plasma-apply-wallpaperimage "$wallpaper"
+# Appearance changes preserve the user's wallpaper and dock launchers.
+dconf write /net/launchpad/plank/docks/dock1/theme "'$dock_theme'"
 for gtk_version in 3.0 4.0; do
   config="$HOME/.config/gtk-$gtk_version/settings.ini"
   kwriteconfig6 --file "$config" --group Settings --key gtk-theme-name "$gtk_theme"

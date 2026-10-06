@@ -1,6 +1,6 @@
 [General]
-ColorScheme=ShreeOS Dark
-Name=ShreeOS Dark
+ColorScheme=ShreeOS Light
+Name=ShreeOS Light
 font=Inter,10,-1,5,50,0,0,0,0,0
 TerminalApplication=konsole
 TerminalService=org.kde.konsole
@@ -8,12 +8,13 @@ TerminalService=org.kde.konsole
 [KDE]
 LookAndFeelPackage=org.shreeos.desktop
 widgetStyle=Breeze
+AnimationDurationFactor=0.8
 
 [Icons]
-Theme=Papirus-Dark
+Theme=Papirus
 
 [WM]
-activeBackground=35,42,56
-activeForeground=245,247,250
-inactiveBackground=28,34,47
-inactiveForeground=190,198,211
+activeBackground=245,245,247
+activeForeground=29,29,31
+inactiveBackground=235,235,239
+inactiveForeground=110,110,115

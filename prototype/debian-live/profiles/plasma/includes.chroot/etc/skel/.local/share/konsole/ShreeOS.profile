@@ -1,6 +1,6 @@
 [Appearance]
-ColorScheme=ShreeOS Dark
-Font=Inter,10,-1,5,50,0,0,0,0,0
+ColorScheme=ShreeOS Light
+Font=Monospace,10,-1,5,50,0,0,0,0,0
 
 [General]
 Name=ShreeOS

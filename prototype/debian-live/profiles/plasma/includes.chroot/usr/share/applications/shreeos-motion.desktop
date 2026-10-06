@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Desktop Motion
+Comment=Choose animations, fewer effects, or reduced motion
+Exec=/usr/local/bin/shreeos-motion
+Icon=preferences-desktop-effects
+Categories=Settings;DesktopSettings;
+OnlyShowIn=KDE;

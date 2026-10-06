@@ -12,6 +12,30 @@ case "$LIVE_PROFILE" in
   *) echo "Unsupported live profile '$LIVE_PROFILE' (expected base, desktop, or plasma)." >&2; exit 2 ;;
 esac
 
+# Select firmware deliberately. Graphical images target ordinary PCs; the
+# console base retains its main-only default. A free-only image remains an
+# explicit choice. All dependencies use the same pinned Debian snapshot.
+if [ "$LIVE_PROFILE" = base ]; then DEFAULT_FIRMWARE=free; else DEFAULT_FIRMWARE=standard; fi
+FIRMWARE="${SHREEOS_FIRMWARE:-$DEFAULT_FIRMWARE}"
+ARCHIVE_AREAS=main
+case "$FIRMWARE" in
+  free) ;;
+  standard) ARCHIVE_AREAS='main non-free-firmware' ;;
+  *) echo 'SHREEOS_FIRMWARE must be free or standard.' >&2; exit 2 ;;
+esac
+TOOLSETS="${SHREEOS_TOOLSETS:-}"
+selected_toolsets=()
+if [ -n "$TOOLSETS" ]; then
+  case "$TOOLSETS" in ,*|*,|*,,*) echo 'SHREEOS_TOOLSETS contains an empty bundle.' >&2; exit 2 ;; esac
+  IFS=, read -r -a selected_toolsets <<< "$TOOLSETS"
+  for bundle in "${selected_toolsets[@]}"; do
+    case "$bundle" in
+      developer|security|creative) ;;
+      *) echo "Unknown software bundle: $bundle" >&2; exit 2 ;;
+    esac
+  done
+fi
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "The Debian Live prototype must be built as root; use Debian 13 or CI." >&2
   exit 2
@@ -42,9 +66,33 @@ case "$BUILD_DIR" in
   *) echo "Unsafe prototype build path: $BUILD_DIR" >&2; exit 2 ;;
 esac
 
+# Reject links before deleting the disposable build tree. Lexical path checks
+# alone cannot protect a build/ symlink that resolves outside this checkout.
+if [ -L "$BUILD_ROOT" ] || [ -L "$BUILD_DIR" ]; then
+  echo 'Refusing to clean a symlinked prototype build directory.' >&2
+  exit 2
+fi
+mkdir -p "$BUILD_ROOT"
+[ "$(realpath "$BUILD_ROOT")" = "$REPO_ROOT/build" ] || {
+  echo 'Prototype build directory resolves outside the checkout.' >&2; exit 2;
+}
 rm -rf -- "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$OUT_DIR"
 cp -a "$CONFIG_SOURCE/config" "$BUILD_DIR/config"
+cp -a "$CONFIG_SOURCE/features/includes.chroot/." "$BUILD_DIR/config/includes.chroot/"
+mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/shreeos/toolsets"
+cp "$CONFIG_SOURCE/features/toolsets/"*.list.chroot \
+  "$BUILD_DIR/config/includes.chroot/usr/share/shreeos/toolsets/"
+chmod 0755 "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-software"
+if [ "$FIRMWARE" = standard ]; then
+  cp "$CONFIG_SOURCE/features/package-lists/shreeos-hardware.list.chroot" \
+    "$BUILD_DIR/config/package-lists/"
+fi
+for bundle in "${selected_toolsets[@]}"; do
+  cp "$CONFIG_SOURCE/features/toolsets/$bundle.list.chroot" \
+    "$BUILD_DIR/config/package-lists/shreeos-$bundle.list.chroot"
+done
+printf '%s\n' "$FIRMWARE" > "$BUILD_DIR/config/includes.chroot/etc/shreeos/firmware-policy"
 
 if [ "$LIVE_PROFILE" = desktop ]; then
   PROFILE_SOURCE="$CONFIG_SOURCE/profiles/desktop"
@@ -145,8 +193,15 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/share/color-schemes/ShreeOS Light.colors"
   cp "$REPO_ROOT/desktop/plasma/layout.js" \
     "$BUILD_DIR/config/includes.chroot/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js"
+  mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/plasma/desktoptheme"
+  cp -a "$REPO_ROOT/themes/plasma/shreeos-glass" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/plasma/desktoptheme/"
+  cp "$REPO_ROOT/branding/wallpapers/shreeos-alpenglow.png" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"
   chmod 0755 \
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-plasma-first-login" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-plasma-dock" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-motion" \
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-open-downloads" \
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-open-trash" \
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/shreeos-theme" \
@@ -206,7 +261,7 @@ if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then LIVE_APPE
     --architecture amd64 \
     --binary-image iso-hybrid \
     --bootloaders "grub-pc grub-efi" \
-    --archive-areas main \
+    --archive-areas "$ARCHIVE_AREAS" \
     --debian-installer none \
     --apt-recommends true \
     --apt-secure true \
@@ -259,8 +314,8 @@ ISO_OUT="${OUTPUT_PREFIX}-amd64.iso"
 cp -- "$ISO_SOURCE" "$ISO_OUT"
 cp -- "$PACKAGES_SOURCE" "${OUTPUT_PREFIX}-packages.txt"
 (cd "$OUT_DIR" && sha256sum "$(basename "$ISO_OUT")" > "$(basename "$ISO_OUT").sha256")
-printf 'suite=%s\nsnapshot=%s\nlive_build=%s\nprofile=%s\n' \
-  "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" "$LIVE_PROFILE" \
+printf 'suite=%s\nsnapshot=%s\nlive_build=%s\nprofile=%s\nfirmware=%s\ntoolsets=%s\n' \
+  "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" "$LIVE_PROFILE" "$FIRMWARE" "$TOOLSETS" \
   > "${OUTPUT_PREFIX}-build-info.txt"
 for package in live-build debootstrap xorriso squashfs-tools \
   grub-pc-bin grub-efi-amd64-bin; do

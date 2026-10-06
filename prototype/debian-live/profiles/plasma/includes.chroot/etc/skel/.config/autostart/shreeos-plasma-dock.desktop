@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Dock
+Comment=Start the ShreeOS application dock after the desktop is ready
+Exec=/usr/local/bin/shreeos-plasma-dock
+OnlyShowIn=KDE;
+NoDisplay=true
+Terminal=false

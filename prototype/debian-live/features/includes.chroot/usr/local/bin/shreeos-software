@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  echo 'Usage: shreeos-software list | show BUNDLE | install BUNDLE'
+  echo 'Bundles: developer, security, creative'
+}
+action="${1:-list}"
+case "$action" in
+  list) [ "$#" -le 1 ] || { usage >&2; exit 2; }; usage; exit 0 ;;
+  show|install) [ "$#" -eq 2 ] || { usage >&2; exit 2; } ;;
+  *) usage >&2; exit 2 ;;
+esac
+bundle="$2"
+case "$bundle" in
+  developer|security|creative) ;;
+  *) echo "Unknown software bundle: $bundle" >&2; exit 2 ;;
+esac
+
+# Built-in lists are owned by root and installed with the image. Never read a
+# caller-supplied file or evaluate its contents as a shell command.
+manifest="/usr/share/shreeos/toolsets/$bundle.list.chroot"
+[ -r "$manifest" ] || { echo "Bundle is unavailable: $bundle" >&2; exit 1; }
+set --
+while IFS= read -r package || [ -n "$package" ]; do
+  case "$package" in ''|'#'*) continue ;; esac
+  case "$package" in
+    -*|*[!a-z0-9+.-]*) echo "Invalid package in $manifest" >&2; exit 1 ;;
+  esac
+  set -- "$@" "$package"
+done < "$manifest"
+[ "$#" -gt 0 ] || { echo 'The software bundle is empty.' >&2; exit 1; }
+if [ "$action" = show ]; then
+  printf '%s\n' "$@"
+  exit 0
+fi
+if [ -e /run/live/medium ]; then
+  echo 'Install ShreeOS to disk first, or include toolsets when building the ISO.' >&2
+  exit 1
+fi
+if [ "$(id -u)" -ne 0 ]; then
+  exec pkexec /usr/local/bin/shreeos-software install "$bundle"
+fi
+# Preserve APT's signature checks and confirmation prompt. Failed metadata
+# refresh stops the operation; do not install from stale or unauthenticated data.
+apt-get update
+exec apt-get install -- "$@"

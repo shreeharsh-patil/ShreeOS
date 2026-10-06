@@ -137,6 +137,8 @@ prototype-debian:
 
 test-prototype-config:
 	bash tests/prototype/test-config.sh
+	python3 tests/prototype/test-plasma-config.py
+	python3 tests/prototype/test-system-features.py
 
 test-prototype: test-prototype-config
 	@test -n "$(ISO)" || { echo "Usage: make test-prototype ISO=path/to/prototype.iso" >&2; exit 2; }

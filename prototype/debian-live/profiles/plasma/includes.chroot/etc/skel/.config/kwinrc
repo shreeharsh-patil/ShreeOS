@@ -1,15 +1,27 @@
 [Compositing]
-AnimationSpeed=2
-Backend=OpenGL
 Enabled=true
-GLCore=true
-GLPreferBufferSwap=a
-OpenGLIsUnsafe=false
-WindowsBlockCompositing=false
 
 [Effect-blur]
 BlurStrength=8
 NoiseStrength=2
+
+[Plugins]
+blurEnabled=true
+magiclampEnabled=true
+squashEnabled=false
+scaleEnabled=true
+fadeEnabled=false
+slideEnabled=true
+overviewEnabled=true
+
+[Effect-magiclamp]
+AnimationDuration=250
+
+[org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+ButtonsOnLeft=XIA
+ButtonsOnRight=
 
 [Desktops]
 Number=4

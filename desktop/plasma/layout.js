@@ -6,8 +6,7 @@ var requiredWidgets = [
     "org.kde.plasma.appmenu",
     "org.kde.plasma.systemtray",
     "org.kde.plasma.panelspacer",
-    "org.kde.plasma.digitalclock",
-    "org.kde.plasma.icontasks"
+    "org.kde.plasma.digitalclock"
 ];
 
 for (var requiredIndex = 0; requiredIndex < requiredWidgets.length; requiredIndex++) {
@@ -25,38 +24,30 @@ for (var panelIndex = 0; panelIndex < previousPanels.length; panelIndex++) {
 var menuBar = new Panel();
 menuBar.location = "top";
 menuBar.lengthMode = "fill";
-menuBar.height = 38;
+menuBar.height = 28;
 menuBar.hiding = "none";
 menuBar.floating = false;
 var launcher = menuBar.addWidget("org.kde.plasma.kickoff");
+launcher.currentConfigGroup = ["General"];
 launcher.writeConfig("icon", "shreeos");
+launcher.writeConfig("menuLabel", "Applications");
+launcher.writeConfig("compactMode", true);
 menuBar.addWidget("org.kde.plasma.appmenu");
 menuBar.addWidget("org.kde.plasma.panelspacer");
-menuBar.addWidget("org.kde.plasma.systemtray");
 var clock = menuBar.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];
-clock.writeConfig("showDate", "true");
+clock.writeConfig("showDate", true);
+clock.writeConfig("dateDisplayFormat", 1);
+clock.writeConfig("dateFormat", "custom");
+clock.writeConfig("customDateFormat", "ddd, MMM d");
+clock.writeConfig("autoFontAndSize", false);
+clock.writeConfig("fontFamily", "Inter");
+clock.writeConfig("fontSize", 9);
+clock.writeConfig("boldText", false);
+menuBar.addWidget("org.kde.plasma.panelspacer");
+menuBar.addWidget("org.kde.plasma.systemtray");
 menuBar.locked = true;
 
-var dock = new Panel();
-dock.location = "bottom";
-dock.lengthMode = "fit";
-dock.alignment = "center";
-dock.height = 58;
-dock.hiding = "autohide";
-// Keep the dock anchored; floating panels can make KWin crash while the
-// layout script is applied during the first Plasma session.
-dock.floating = false;
-var tasks = dock.addWidget("org.kde.plasma.icontasks");
-tasks.writeConfig(
-    "launchers",
-    "applications:org.kde.dolphin.desktop," +
-    "applications:shreeos-downloads.desktop," +
-    "applications:org.kde.konsole.desktop," +
-    "applications:firefox-esr.desktop," +
-    "applications:org.kde.discover.desktop," +
-    "applications:systemsettings.desktop," +
-    "applications:shreeos-installer.desktop," +
-    "applications:shreeos-trash.desktop"
-);
-dock.locked = true;
+// Plank owns the dock in this X11 profile. Keeping one Plasma panel prevents
+// a second taskbar and avoids resetting KWin's floating panel geometry during
+// the first-login look-and-feel reset.

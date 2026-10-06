@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Security Tools
+Comment=Install network analysis and security auditing applications
+Exec=/usr/local/bin/shreeos-software install security
+Icon=security-high
+Terminal=true
+Categories=System;PackageManager;

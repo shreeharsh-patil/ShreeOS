@@ -57,16 +57,16 @@ if [ -f /etc/shreeos/image-profile ] &&
     pgrep -u shree -x kwin_x11 >/dev/null &&
     [ -f /home/shree/.config/shreeos/plasma-defaults-applied ] &&
     grep -Fq 'plugin=org.kde.plasma.appmenu' /home/shree/.config/plasma-org.kde.plasma.desktop-appletsrc &&
-    grep -Fq 'plugin=org.kde.plasma.icontasks' /home/shree/.config/plasma-org.kde.plasma.desktop-appletsrc; do
+    pgrep -u shree -x plank >/dev/null; do
     if [ "$elapsed" -ge 150 ]; then
-      ps -eo user,pid,args | grep -E '[s]ddm|[p]lasmashell|[k]win_x11' \
+      ps -eo user,pid,args | grep -E '[s]ddm|[p]lasmashell|[k]win_x11|[p]lank' \
         | while IFS= read -r diagnostic; do log "$diagnostic"; done
-      fail 'SDDM did not start Plasma or apply ShreeOS desktop defaults within 150 seconds'
+      fail 'SDDM did not start Plasma, the ShreeOS menu bar, and Plank dock within 150 seconds'
     fi
     sleep 1
     elapsed=$((elapsed + 1))
   done
-  log 'SDDM and Plasma desktop session are active'
+  log 'SDDM, Plasma menu bar, and Plank dock are active'
 elif [ -f /etc/shreeos/image-profile ] &&
   [ "$(cat /etc/shreeos/image-profile)" = desktop ]; then
   log 'desktop profile detected; checking GTK runtime'

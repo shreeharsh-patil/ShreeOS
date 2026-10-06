@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Creative Tools
+Comment=Install graphics, video, audio and 3D applications
+Exec=/usr/local/bin/shreeos-software install creative
+Icon=applications-multimedia
+Terminal=true
+Categories=System;PackageManager;

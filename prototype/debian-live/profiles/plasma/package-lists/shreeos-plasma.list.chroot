@@ -10,6 +10,12 @@ breeze-gtk-theme
 breeze-cursor-theme
 dolphin
 konsole
+kate
+gwenview
+okular
+kcalc
+plank
+dconf-cli
 kde-spectacle
 plasma-discover
 plasma-discover-backend-flatpak
@@ -40,3 +46,19 @@ pkexec
 x11-xserver-utils
 kdialog
 libnotify-bin
+# Everyday desktop capabilities, all resolved from the pinned Debian snapshot.
+libreoffice-writer
+libreoffice-calc
+libreoffice-impress
+libreoffice-kf6
+vlc
+cups
+print-manager
+simple-scan
+orca
+speech-dispatcher-espeak-ng
+onboard
+power-profiles-daemon
+systemd-zram-generator
+fwupd
+plasma-discover-backend-fwupd
