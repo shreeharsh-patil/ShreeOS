@@ -89,8 +89,9 @@ jobs:
         id: meta
         run: |
           checksum="out/$RELEASE_ISO.sha256"
-          packages="out/${RELEASE_ISO%.iso}-packages.txt"
-          build_info="out/${RELEASE_ISO%.iso}-build-info.txt"
+          asset_prefix="${RELEASE_ISO%-amd64.iso}"
+          packages="out/${asset_prefix}-packages.txt"
+          build_info="out/${asset_prefix}-build-info.txt"
           for required in "out/$RELEASE_ISO" "$checksum" "$packages" "$build_info"; do
             test -s "$required"
           done
