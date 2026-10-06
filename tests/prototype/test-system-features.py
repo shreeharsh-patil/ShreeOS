@@ -25,7 +25,7 @@ spec.loader.exec_module(sources)
 def shell():
     if os.name == "nt":
         return str(Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/bin/bash.exe")
-    return shutil.which("sh")
+    return shutil.which("bash")
 
 
 class RepositoryTests(unittest.TestCase):
