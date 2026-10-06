@@ -92,6 +92,7 @@ for bundle in "${selected_toolsets[@]}"; do
   cp "$CONFIG_SOURCE/features/toolsets/$bundle.list.chroot" \
     "$BUILD_DIR/config/package-lists/shreeos-$bundle.list.chroot"
 done
+mkdir -p "$BUILD_DIR/config/includes.chroot/etc/shreeos"
 printf '%s\n' "$FIRMWARE" > "$BUILD_DIR/config/includes.chroot/etc/shreeos/firmware-policy"
 
 if [ "$LIVE_PROFILE" = desktop ]; then
