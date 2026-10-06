@@ -1,0 +1,6 @@
+// Snapshot expiry is bypassed only by the image builder's command line.
+// Running and installed systems must verify repository freshness and signatures.
+Acquire::Check-Valid-Until "true";
+Acquire::AllowInsecureRepositories "false";
+Acquire::AllowDowngradeToInsecureRepositories "false";
+APT::Get::AllowUnauthenticated "false";

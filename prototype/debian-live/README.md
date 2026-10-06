@@ -11,6 +11,8 @@ The default `base` profile is deliberately console-only. An optional
 `desktop` profile adds Debian's XFCE task, LightDM autologin, PipeWire,
 BlueZ/Blueman, common desktop applications, ShreeOS wallpaper and greeter
 branding, and the DFSG-compliant `firmware-linux-free` package from `main`.
+Graphical profiles now also select common PC firmware from
+`non-free-firmware`; set `SHREEOS_FIRMWARE=free` for a main-only image.
 It also configures an XFCE top panel, four workspaces, left-aligned window
 controls, a centered translucent Plank dock with magnification, original dark
 and light wallpapers, and Arc/Papirus/Inter appearance defaults. Linux CI
@@ -38,7 +40,7 @@ support yet. Thunar's sidebar includes common personal folders, Computer,
 Network, and Trash; the dock includes ShreeOS search, overview, Software, and
 quick controls, and the top panel has a recent-notifications dropdown.
 Ctrl+Alt+Left/Right switches workspaces; Ctrl+Alt+Shift+Left/Right moves the
-focused window, and Super+1–4 selects a workspace directly.
+focused window, and Super+1â€“4 selects a workspace directly.
 Super+L locks a password-protected installed account. The temporary live
 session shows a notification instead of locking itself without an unlock
 password.
@@ -101,7 +103,13 @@ ShreeOS logo and animated blue loading dots; BIOS/UEFI splash appearance still
 needs verification.
 
 An additional experimental `plasma` profile installs Debian's official KDE
-Plasma packages with SDDM and ShreeOS-owned session defaults. Build it with
+Plasma packages with SDDM and ShreeOS-owned session defaults. The desktop starts
+in ShreeOS Light with a photographic mountain sunrise wallpaper, a 28px
+translucent top menu bar, a date/clock between expanding spacers, and a centered
+Plank dock. The dock has 44px icons, 130% hover magnification, running-app
+indicators and persistent pinned applications. It uses the X11 session; Plank
+is not a Wayland dock. Appearance switching also updates the dock and icon
+theme while preserving the wallpaper and pinned apps. Build it with
 `SHREEOS_LIVE_PROFILE=plasma bash scripts/build-debian-prototype.sh` and
 validate with `bash tests/prototype/test-iso.sh out/shreeos-0.3.0-prototype-plasma-amd64.iso plasma`.
 This is a separate profile; it does not replace the existing XFCE desktop.
@@ -113,3 +121,15 @@ privilege policy. The Plasma profile's package/session integration still
 requires Linux CI and QEMU review.
 See [`docs/KDE-PLASMA-INTEGRATION.md`](../../docs/KDE-PLASMA-INTEGRATION.md)
 for the repository audit, component matrix, and current scope.
+
+## Everyday desktop and system features
+
+Plasma now selects an office suite, media player, printing/scanning,
+accessibility tools, firmware updates in Discover, power profiles and capped
+compressed swap. Desktop Motion offers balanced, performance and reduced
+animation preferences. Developer, security and creative software sets can be
+selected for an ISO or installed later through signed APT.
+
+See [features and commands](features/README.md) and the current
+[readiness audit](../../docs/SYSTEM-READINESS.md) for implemented fixes,
+validation evidence and the remaining installation/hardware release gates.

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Developer Tools
+Comment=Install compilers, Git, Python environments and debugging tools
+Exec=/usr/local/bin/shreeos-software install developer
+Icon=applications-development
+Terminal=true
+Categories=System;PackageManager;

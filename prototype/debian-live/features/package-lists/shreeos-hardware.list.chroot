@@ -1,0 +1,10 @@
+# Redistributable Debian packages from non-free-firmware, with their licenses.
+firmware-amd-graphics
+firmware-intel-graphics
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-sof-signed
+intel-microcode
+amd64-microcode

@@ -14,17 +14,28 @@ if [ ! -r /run/live/medium/live/filesystem.squashfs ]; then
   exit 1
 fi
 
-fstab_backup="/run/shreeos-installer-fstab.$$.bak"
+if [ "$(id -u)" -ne 0 ]; then
+  echo 'Installer authorization is required.' >&2
+  exit 1
+fi
+# The lock remains held by this process and its Calamares child. A second
+# instance must not move fstab or start a competing disk transaction.
+exec 9>/run/shreeos-installer.lock
+flock -n 9 || { echo 'The ShreeOS installer is already running.' >&2; exit 1; }
+backup_dir="$(mktemp -d /run/shreeos-installer.XXXXXX)"
+fstab_backup="$backup_dir/fstab"
 restore_live_fstab() {
-  if [ -e "$fstab_backup" ]; then
+  if [ -e "$fstab_backup" ] || [ -L "$fstab_backup" ]; then
     mv -- "$fstab_backup" /etc/fstab
   fi
-  xhost -si:localuser:root >/dev/null 2>&1 || true
+  rmdir -- "$backup_dir"
 }
-trap restore_live_fstab EXIT HUP INT TERM
+trap restore_live_fstab EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [ -e /etc/fstab ] || [ -L /etc/fstab ]; then
   mv -- /etc/fstab "$fstab_backup"
 fi
-xhost +si:localuser:root
 /usr/bin/calamares

@@ -1,0 +1,11 @@
+# Optional analysis tools from Debian; no Kali repositories are added.
+nmap
+wireshark
+tcpdump
+tshark
+aircrack-ng
+john
+hydra
+sqlmap
+yara
+lynis

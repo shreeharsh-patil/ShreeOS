@@ -34,6 +34,24 @@ for package in apt live-boot live-config-systemd network-manager systemd-sysv; d
     exit 1
   }
 done
+shared_contents="$(unsquashfs -ll "$SQUASHFS")"
+for asset in etc/apt/apt.conf.d/99-shreeos-security etc/shreeos/firmware-policy \
+  usr/local/bin/shreeos-software usr/share/shreeos/toolsets/security.list.chroot \
+  usr/share/shreeos/toolsets/developer.list.chroot usr/share/shreeos/toolsets/creative.list.chroot; do
+  grep -Fq "squashfs-root/$asset" <<<"$shared_contents" || {
+    echo "ISO is missing system feature: $asset" >&2; exit 1;
+  }
+done
+firmware_policy="$(unsquashfs -cat "$SQUASHFS" etc/shreeos/firmware-policy)"
+if [ "$firmware_policy" = standard ]; then
+  for package in firmware-iwlwifi firmware-realtek firmware-amd-graphics intel-microcode amd64-microcode; do
+    grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
+      echo "Standard firmware ISO is missing: $package" >&2; exit 1;
+    }
+  done
+elif [ "$firmware_policy" != free ]; then
+  echo "Unknown ISO firmware policy: $firmware_policy" >&2; exit 1
+fi
 if [ "$PROFILE" = desktop ]; then
   for package in arc-theme bluez blueman brightness-udev brightnessctl dconf-cli firefox-esr fonts-inter lightdm \
     papirus-icon-theme pipewire-audio \
@@ -66,7 +84,11 @@ if [ "$PROFILE" = plasma ]; then
     sddm-theme-breeze breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
     plasma-discover plasma-discover-backend-flatpak flatpak packagekit \
     plasma-nm plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
-    fonts-inter x11-xserver-utils kdialog libnotify-bin plymouth plymouth-themes calamares calamares-settings-debian; do
+    fonts-inter x11-xserver-utils kdialog libnotify-bin plymouth plymouth-themes calamares calamares-settings-debian \
+    plank dconf-cli kate gwenview okular kcalc \
+    libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-kf6 vlc \
+    cups print-manager simple-scan orca speech-dispatcher-espeak-ng onboard \
+    power-profiles-daemon systemd-zram-generator fwupd plasma-discover-backend-fwupd; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
       echo "Plasma ISO package manifest is missing: $package" >&2
       exit 1
@@ -79,14 +101,42 @@ if [ "$PROFILE" = plasma ]; then
     etc/sddm.conf.d/20-shreeos-live-autologin.conf \
     etc/systemd/system/shreeos-sddm-live-autologin.service \
     etc/skel/.config/autostart/shreeos-plasma-defaults.desktop \
+    etc/skel/.config/autostart/shreeos-plasma-dock.desktop \
+    etc/skel/.config/plank/dock1/launchers/files.dockitem \
     usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js \
     usr/local/bin/shreeos-plasma-first-login \
+    usr/local/bin/shreeos-plasma-dock \
+    usr/share/shreeos/defaults/plasma-plank.dconf \
+    usr/share/plank/themes/ShreeOS-Glass/dock.theme \
+    usr/share/plank/themes/ShreeOS-Glass-Dark/dock.theme \
+    usr/share/plasma/desktoptheme/shreeos-glass/metadata.json \
+    usr/share/plasma/desktoptheme/shreeos-glass/widgets/panel-background.svg \
+    usr/share/plasma/desktoptheme/shreeos-glass/opaque/widgets/panel-background.svg \
+    usr/share/backgrounds/shreeos/shreeos-alpenglow.png \
     usr/local/bin/shreeos-open-downloads \
     usr/local/bin/shreeos-open-trash \
     usr/local/bin/shreeos-theme \
+    usr/local/bin/shreeos-motion \
+    usr/share/applications/shreeos-motion.desktop \
+    usr/lib/systemd/zram-generator.conf.d/50-shreeos.conf \
+    usr/lib/calamares/modules/shreeos-sources/module.desc \
+    usr/lib/calamares/modules/shreeos-sources/main.py \
     usr/local/bin/shreeos-installer \
     usr/local/libexec/shreeos-installer-privileged \
     usr/share/applications/shreeos-installer.desktop \
+    usr/share/applications/shreeos-search.desktop \
+    usr/share/applications/shreeos-appearance.desktop \
+    usr/share/applications/shreeos-downloads.desktop \
+    usr/share/applications/shreeos-trash.desktop \
+    usr/share/applications/org.kde.dolphin.desktop \
+    usr/share/applications/firefox-esr.desktop \
+    usr/share/applications/org.kde.kate.desktop \
+    usr/share/applications/org.kde.gwenview.desktop \
+    usr/share/applications/org.kde.okular.desktop \
+    usr/share/applications/org.kde.kcalc.desktop \
+    usr/share/applications/org.kde.konsole.desktop \
+    usr/share/applications/org.kde.discover.desktop \
+    usr/share/applications/systemsettings.desktop \
     usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg \
     usr/share/polkit-1/actions/org.shreeos.installer.policy \
     etc/calamares/settings.conf \

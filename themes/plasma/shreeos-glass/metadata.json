@@ -1,0 +1,12 @@
+{
+    "KPlugin": {
+        "Authors": [{ "Name": "ShreeOS Project" }],
+        "Name": "ShreeOS Glass",
+        "Description": "A slim translucent menu bar with native Plasma controls",
+        "Id": "shreeos-glass",
+        "Version": "1.0",
+        "License": "MIT",
+        "Website": "https://github.com/shreeharsh-patil/ShreeOS"
+    },
+    "X-Plasma-API": "5.0"
+}

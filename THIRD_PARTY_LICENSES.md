@@ -58,6 +58,9 @@ redistribution. Debian package records: [Arc](https://packages.debian.org/trixie
 The experimental Plasma profile adds KDE Plasma, KWin, SDDM, Dolphin, Konsole,
 Ark, KDE Spectacle, Discover, its Flatpak backend, Flatpak, plasma-nm, plasma-pa,
 PowerDevil and BlueDevil from Debian's signed Trixie package repositories.
+It also installs Plank for the X11 dock and Kate, Gwenview, Okular and KCalc
+for the corresponding application launchers. Their installed Debian copyright
+and license records remain part of the image.
 The Flathub remote definition and signing key are included so Discover can
 offer Flatpak apps; application payloads are fetched only when selected by the
 user. No KDE source tree is included in ShreeOS.
@@ -83,3 +86,15 @@ Before publishing an image:
 No image is declared license-complete solely because it uses open-source
 software. Firmware, codecs, fonts, wallpapers, icons, trademarks and other
 assets require their own redistribution review.
+
+## Standard PC firmware and desktop additions
+
+Graphical prototypes now default to selected Debian `non-free-firmware`
+packages: GPU/Wi-Fi/audio firmware and CPU microcode. These contain proprietary
+blobs under package-specific redistribution terms; preserve each installed
+Debian copyright notice and review the exact versions before release.
+`SHREEOS_FIRMWARE=free` excludes these selections and the repository component.
+LibreOffice, VLC, CUPS, Simple Scan, Orca, fwupd, power-profiles-daemon and
+zram-generator are also selected from Debian packages, with their license
+records retained. Optional software bundles are documented in
+[system features](prototype/debian-live/features/README.md).

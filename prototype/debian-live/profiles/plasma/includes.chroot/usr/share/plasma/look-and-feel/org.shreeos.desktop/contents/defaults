@@ -1,13 +1,29 @@
 [kdeglobals][General]
-ColorScheme=ShreeOS Dark
-Name=ShreeOS Dark
+ColorScheme=ShreeOS Light
+Name=ShreeOS Light
 font=Inter,10,-1,5,50,0,0,0,0,0
 
 [kdeglobals][KDE]
 widgetStyle=Breeze
+AnimationDurationFactor=0.8
+
+[kwinrc][Plugins]
+blurEnabled=true
+magiclampEnabled=true
+squashEnabled=false
+scaleEnabled=true
+fadeEnabled=false
+slideEnabled=true
+overviewEnabled=true
+
+[kwinrc][Effect-magiclamp]
+AnimationDuration=250
 
 [kdeglobals][Icons]
-Theme=Papirus-Dark
+Theme=Papirus
+
+[plasmarc][Theme]
+name=shreeos-glass
 
 [kwinrc][Desktops]
 Number=4

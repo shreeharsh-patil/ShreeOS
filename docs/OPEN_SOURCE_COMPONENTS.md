@@ -15,6 +15,8 @@ retains its Debian copyright and license record under `/usr/share/doc/`.
 | Dolphin | [KDE Dolphin](https://invent.kde.org/system/dolphin) | GPL-2.0-or-later; package record governs | Official file manager |
 | Konsole | [KDE Konsole](https://invent.kde.org/utilities/konsole) | GPL-2.0-or-later; package record governs | Official terminal |
 | Ark | [KDE Ark](https://invent.kde.org/utilities/ark) | GPL-2.0-or-later; package record governs | Official archive manager |
+| Plank | [Plank](https://github.com/ricotz/plank) | GPL-3.0-or-later; package record governs | X11 dock with original ShreeOS light/dark themes, favorite launchers and hover magnification |
+| Kate, Gwenview, Okular, KCalc | [KDE](https://invent.kde.org/) | Package and file-specific license records govern | Native editor, image viewer, document viewer and calculator |
 | KDE Spectacle (`kde-spectacle`) | [KDE Spectacle](https://invent.kde.org/graphics/spectacle) | GPL-2.0-or-later; package record governs | Official screenshot tool |
 | Plasma NetworkManager | [KDE plasma-nm](https://invent.kde.org/plasma/plasma-nm) | GPL-2.0-or-later; package record governs | NetworkManager UI and tray integration |
 | Plasma Audio | [KDE plasma-pa](https://invent.kde.org/plasma/plasma-pa) | GPL-2.0-or-later; package record governs | Audio controls |

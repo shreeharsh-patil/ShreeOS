@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Search
+GenericName=Application and action search
+Comment=Find applications, files, and desktop actions
+Exec=krunner
+Icon=system-search
+Terminal=false
+Categories=Utility;
+StartupNotify=false

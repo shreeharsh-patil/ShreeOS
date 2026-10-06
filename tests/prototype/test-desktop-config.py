@@ -119,7 +119,7 @@ def main() -> int:
     require("dconf load / " in dock_session_source,
             "Plank defaults use absolute dconf groups and must be loaded from the root")
     dock_items = ast.literal_eval(dock["dock-items"])
-    launcher_dir = SKEL / ".config/plank/launchers"
+    launcher_dir = SKEL / ".config/plank/dock1/launchers"
     require(set(dock_items) == {path.name for path in launcher_dir.glob("*.dockitem")},
             "Plank launchers do not match the configured dock items")
     require({"shreeos-search.dockitem", "shreeos-overview.dockitem",

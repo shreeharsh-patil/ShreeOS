@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-marker="$HOME/.config/shreeos/plasma-defaults-applied"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+marker="$config_home/shreeos/plasma-defaults-applied"
 [ -e "$marker" ] && exit 0
 
 # Applying a look-and-feel resets plasmashell.  Run the hook outside the
@@ -9,6 +10,8 @@ marker="$HOME/.config/shreeos/plasma-defaults-applied"
 if [ "${SHREEOS_PLASMA_FIRST_LOGIN_SERVICE:-0}" != 1 ]; then
   exec systemd-run --user --quiet --no-block --collect \
     --unit=shreeos-plasma-defaults \
+    --property=PartOf=graphical-session.target \
+    --setenv=XDG_CONFIG_HOME="$config_home" \
     --setenv=DISPLAY="${DISPLAY:-:0}" \
     --setenv=XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}" \
     /usr/bin/env SHREEOS_PLASMA_FIRST_LOGIN_SERVICE=1 \
@@ -46,9 +49,12 @@ if ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; then
   exit 1
 fi
 
+plasma-apply-desktoptheme shreeos-glass
+/usr/local/bin/shreeos-theme light
+
 wallpaper_attempt=0
 while [ "$wallpaper_attempt" -lt 30 ]; do
-  if plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-calm-dark.png; then
+  if plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-alpenglow.png; then
     break
   fi
   wallpaper_attempt=$((wallpaper_attempt + 1))
@@ -59,11 +65,10 @@ if [ "$wallpaper_attempt" -ge 30 ]; then
   exit 1
 fi
 
-config="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+config="$config_home/plasma-org.kde.plasma.desktop-appletsrc"
 attempt=0
 while [ "$attempt" -lt 30 ]; do
-  if grep -Fq 'plugin=org.kde.plasma.icontasks' "$config" &&
-    grep -Fq 'plugin=org.kde.plasma.systemtray' "$config" &&
+  if grep -Fq 'plugin=org.kde.plasma.systemtray' "$config" &&
     grep -Fq 'plugin=org.kde.plasma.kickoff' "$config" &&
     grep -Fq 'plugin=org.kde.plasma.appmenu' "$config" &&
     grep -Fq 'plugin=org.kde.plasma.digitalclock' "$config"; then
@@ -73,7 +78,7 @@ while [ "$attempt" -lt 30 ]; do
   sleep 1
 done
 if [ "$attempt" -ge 30 ]; then
-  logger -t shreeos-plasma-first-login 'Plasma did not write the ShreeOS menu bar, system tray, clock, and dock configuration'
+  logger -t shreeos-plasma-first-login 'Plasma did not write the ShreeOS menu bar, system tray, and clock configuration'
   exit 1
 fi
 touch "$marker"

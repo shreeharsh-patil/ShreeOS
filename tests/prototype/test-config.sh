@@ -108,7 +108,7 @@ for required in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm
   breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
   plasma-discover plasma-discover-backend-flatpak flatpak packagekit plasma-nm \
   plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
-  fonts-inter x11-xserver-utils kdialog libnotify-bin; do
+  fonts-inter x11-xserver-utils kdialog libnotify-bin plank dconf-cli kate gwenview okular kcalc; do
   grep -Fxq "$required" "$plasma_packages" || {
     echo "Plasma profile is missing: $required" >&2
     exit 1
@@ -141,12 +141,12 @@ test -f "$REPO_ROOT/desktop/plasma/layout.js"
 test -s "$REPO_ROOT/themes/plasma/colors/ShreeOS-Light.colors"
 test -s "$REPO_ROOT/themes/plasma/colors/ShreeOS-Dark.colors"
 grep -Fq 'plasma-apply-wallpaperimage' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
-grep -Fq 'ShreeOS Dark' "$plasma_includes/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/defaults"
-grep -Fq 'shreeos-trash.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
-grep -Fq 'shreeos-installer.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
+grep -Fq 'ShreeOS Light' "$plasma_includes/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/defaults"
+grep -Fq 'shreeos-trash.desktop' "$plasma_includes/etc/skel/.config/plank/dock1/launchers/trash.dockitem"
+grep -Fq 'shreeos-installer.desktop' "$plasma_includes/etc/skel/.config/plank/dock1/launchers/installer.dockitem"
 grep -Fq 'org.kde.plasma.appmenu' "$REPO_ROOT/desktop/plasma/layout.js"
-grep -Fq 'org.kde.plasma.icontasks' "$REPO_ROOT/desktop/plasma/layout.js"
-grep -Fq 'org.kde.discover.desktop' "$REPO_ROOT/desktop/plasma/layout.js"
+test -s "$plasma_includes/usr/local/bin/shreeos-plasma-dock"
+grep -Fq 'org.kde.discover.desktop' "$plasma_includes/etc/skel/.config/plank/dock1/launchers/software.dockitem"
 grep -Fq 'org.kde.plasma.kickoff' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
 grep -Fq 'org.kde.plasma.digitalclock' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
 test -s "$plasma_includes/usr/share/applications/shreeos-appearance.desktop"
@@ -167,7 +167,7 @@ grep -Fq '/run/live/medium' \
   "$plasma_includes/usr/local/sbin/shreeos-sddm-live-autologin"
 grep -Fq 'systemctl enable shreeos-sddm-live-autologin.service' \
   "$CONFIG_DIR/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot"
-grep -Fq 'file:///usr/share/backgrounds/shreeos/shreeos-calm-dark.png' \
+grep -Fq 'file:///usr/share/backgrounds/shreeos/shreeos-alpenglow.png' \
   "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
 test -s "$plasma_includes/etc/skel/.local/share/konsole/ShreeOS.profile"
 grep -Fq 'DefaultProfile=ShreeOS.profile' "$plasma_includes/etc/skel/.config/konsolerc"
@@ -202,11 +202,11 @@ grep -Fq 'gtk-theme-name=Arc' \
   "$desktop_includes/etc/skel/.config/gtk-3.0/settings.ini"
 grep -Fq 'button_layout' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
-test -f "$desktop_includes/etc/skel/.config/plank/launchers/thunar.dockitem"
-test -f "$desktop_includes/etc/skel/.config/plank/launchers/downloads.dockitem"
-test -f "$desktop_includes/etc/skel/.config/plank/launchers/trash.dockitem"
-test -f "$desktop_includes/etc/skel/.config/plank/launchers/shreeos-search.dockitem"
-test -f "$desktop_includes/etc/skel/.config/plank/launchers/shreeos-overview.dockitem"
+test -f "$desktop_includes/etc/skel/.config/plank/dock1/launchers/thunar.dockitem"
+test -f "$desktop_includes/etc/skel/.config/plank/dock1/launchers/downloads.dockitem"
+test -f "$desktop_includes/etc/skel/.config/plank/dock1/launchers/trash.dockitem"
+test -f "$desktop_includes/etc/skel/.config/plank/dock1/launchers/shreeos-search.dockitem"
+test -f "$desktop_includes/etc/skel/.config/plank/dock1/launchers/shreeos-overview.dockitem"
 test -s "$desktop_includes/etc/skel/.config/gtk-3.0/bookmarks"
 test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-dock.desktop"
 test -f "$desktop_includes/etc/skel/.config/autostart/shreeos-first-run.desktop"
@@ -214,6 +214,6 @@ test ! -e "$desktop_includes/etc/skel/.config/autostart/plank.desktop"
 grep -Fq 'shreeos-calm-light.png' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'rsvg-convert --width=1920' "$REPO_ROOT/scripts/build-debian-prototype.sh"
-grep -Fq 'shreeos-calm-dark.png' \
+grep -Fq 'shreeos-alpenglow.png' \
   "$CONFIG_DIR/profiles/plasma/includes.chroot/usr/local/bin/shreeos-plasma-first-login"
 printf 'Debian prototype configuration contract passed.\n'

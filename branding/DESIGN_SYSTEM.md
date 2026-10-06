@@ -79,10 +79,10 @@ Shadows:          Soft realistic ambient falloff (e.g. 0 8px 24px rgba(0,0,0,0.2
 
 ### Desktop Composition
 
-- A 38px top panel keeps the application menu on the left and system status and clock on the right.
-- A centered 58px auto-hiding dock holds the everyday launchers, installer, and Trash.
+- A 28px translucent top panel keeps Applications and the global app menu on the left, the date and clock between two expanding spacers, and system status on the right.
+- A centered rounded Plank dock stays visible at the bottom, with 44px icons, 130% hover magnification, tooltips, and running-app indicators. Users can pin, reorder, and change hiding behavior from the dock preferences.
 - Four workspaces support quick keyboard navigation and a clear sense of separate work areas.
-- Original ShreeOS blue landscape artwork and restrained blue selection accents carry the identity across the desktop and login screen.
+- The Plasma desktop starts in ShreeOS Light with an original photographic mountain sunrise wallpaper. Switching to dark appearance updates native and GTK surfaces, icons, terminal colors, and the dock while preserving the wallpaper and pinned apps.
 
 ---
 

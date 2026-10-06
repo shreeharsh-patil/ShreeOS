@@ -46,9 +46,20 @@ The dock includes ShreeOS search, overview, and quick controls, while Thunar's
 sidebar starts with standard personal folders and system locations.
 The top panel also includes XFCE's notification history dropdown.
 Keyboard navigation supports Ctrl+Alt+Left/Right to switch workspaces,
-Ctrl+Alt+Shift+Left/Right to move windows, and Super+1–4 to select a workspace.
+Ctrl+Alt+Shift+Left/Right to move windows, and Super+1â€“4 to select a workspace.
 The target direction and exit criteria are in
 [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
+
+## Current desktop hardening pass
+
+The Plasma profile now selects office/media applications, printing/scanning,
+accessibility, common PC firmware, power profiles and compressed swap. Native
+KDE effects provide Mac-style motion, with performance and reduced-motion
+choices. Optional developer, security and creative toolsets use Debian APT.
+The installer launch, dock paths, shortcuts and repository provisioning have
+received fixes; Linux installation and hardware acceptance remain open.
+See [system readiness](docs/SYSTEM-READINESS.md) and
+[feature commands](prototype/debian-live/features/README.md).
 
 ## Architecture direction
 
@@ -129,8 +140,11 @@ and greeter branding, a configured top panel and dock, and coordinated GTK,
 icon, and font defaults. CI confirms the desktop session, panel, and dock
 processes start and the boot marker passes, but its QEMU screen capture is black.
 The new Plasma profile installs Debian's KDE packages, SDDM, and ShreeOS-owned
-session defaults. It has a QEMU check for the SDDM/Plasma session and visible
-screen output, but has not yet run in Linux CI. Custom panel/dock layout and
+session defaults. Its current source layout uses a slim translucent menu bar,
+an original mountain sunrise wallpaper, ShreeOS Light surfaces, and a centered
+Plank dock with hover magnification and real application launchers. It has a
+QEMU check for the SDDM/Plasma session, Plank process, and visible
+screen output, but this layout has not yet run in Linux CI. Live rendering and
 visual acceptance remain open. Neither desktop profile has a supported disk
 installation procedure. Do not use it to install on a physical computer.
 

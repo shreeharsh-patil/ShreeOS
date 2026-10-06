@@ -11,7 +11,8 @@ branding/
 ├── wallpapers/
 │   ├── shreeos-wallpaper.svg   # Default desktop wallpaper
 │   ├── shreeos-calm-dark.svg   # Dark appearance wallpaper
-│   └── shreeos-calm-light.svg  # Light appearance wallpaper
+│   ├── shreeos-calm-light.svg  # Light appearance wallpaper
+│   └── shreeos-alpenglow.png   # Plasma photographic wallpaper
 ├── theme/
 └── README.md
 ```

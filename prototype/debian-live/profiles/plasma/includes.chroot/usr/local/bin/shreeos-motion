@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -gt 1 ]; then
+  echo 'Usage: shreeos-motion [balanced|performance|reduced]' >&2
+  exit 2
+fi
+mode="${1:-}"
+if [ -z "$mode" ]; then
+  mode="$(kdialog --title 'Desktop Motion' --radiolist 'Choose desktop motion:' \
+    balanced 'Smooth animations and translucent surfaces' on \
+    performance 'Fewer effects for slower graphics' off \
+    reduced 'Reduced motion and no dock magnification' off)" || exit 0
+fi
+case "$mode" in
+  balanced) factor=0.8; blur=true; lamp=true; animated=true; zoom=true ;;
+  performance) factor=0.5; blur=false; lamp=false; animated=true; zoom=false ;;
+  reduced) factor=0; blur=false; lamp=false; animated=false; zoom=false ;;
+  *) echo 'Usage: shreeos-motion [balanced|performance|reduced]' >&2; exit 2 ;;
+esac
+
+# Change only effect preferences. Let KWin select its renderer and retain its
+# driver safety checks; these choices do not force CPU/GPU power profiles.
+kwriteconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor "$factor"
+for effect in scale slide; do
+  kwriteconfig6 --file kwinrc --group Plugins --key "${effect}Enabled" "$animated"
+done
+kwriteconfig6 --file kwinrc --group Plugins --key blurEnabled "$blur"
+kwriteconfig6 --file kwinrc --group Plugins --key magiclampEnabled "$lamp"
+kwriteconfig6 --file kwinrc --group Plugins --key squashEnabled false
+kwriteconfig6 --file kwinrc --group Plugins --key fadeEnabled false
+kwriteconfig6 --file kwinrc --group Plugins --key overviewEnabled true
+kwriteconfig6 --file kwinrc --group Effect-magiclamp --key AnimationDuration 250
+dconf write /net/launchpad/plank/docks/dock1/zoom-enabled "$zoom"
+kwriteconfig6 --file shreeosrc --group Desktop --key Motion "$mode"
+if ! dbus-send --session --type=method_call --print-reply \
+  --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1; then
+  echo 'Motion preferences saved; sign out and back in to activate them.' >&2
+fi
+# Qt applications may retain their global animation factor until restarted.
+notify-send 'Desktop Motion' 'Preferences saved. Reopen applications to apply their animation speed.' || true

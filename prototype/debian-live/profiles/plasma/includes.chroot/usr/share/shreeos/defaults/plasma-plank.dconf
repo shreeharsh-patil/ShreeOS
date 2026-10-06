@@ -1,0 +1,16 @@
+[net/launchpad/plank/docks/dock1]
+alignment='center'
+auto-pinning=true
+current-workspace-only=false
+dock-items=['search.dockitem', 'files.dockitem', 'browser.dockitem', 'editor.dockitem', 'photos.dockitem', 'documents.dockitem', 'calculator.dockitem', 'terminal.dockitem', 'software.dockitem', 'settings.dockitem', 'appearance.dockitem', 'installer.dockitem', 'downloads.dockitem', 'trash.dockitem']
+hide-mode='none'
+icon-size=44
+items-alignment='center'
+lock-items=false
+offset=0
+position='bottom'
+show-dock-item=false
+theme='ShreeOS-Glass'
+tooltips-enabled=true
+zoom-enabled=true
+zoom-percent=130
