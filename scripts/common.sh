@@ -56,9 +56,15 @@ shreeos_fetch_candidates() {
     candidates+=("https://ftp.gnu.org/gnu/${rel}")
   elif [[ "$url" =~ ^https://download-mirror\.savannah\.gnu\.org/releases/(.+)$ ]]; then
     rel="${BASH_REMATCH[1]}"
+    if [[ "$rel" == attr/* ]]; then
+      candidates+=("https://mirror.fi.ossplanet.net/nongnu/${rel}")
+    fi
     candidates+=("https://download.savannah.gnu.org/releases/${rel}")
   elif [[ "$url" =~ ^https://download\.savannah\.gnu\.org/releases/(.+)$ ]]; then
     rel="${BASH_REMATCH[1]}"
+    if [[ "$rel" == attr/* ]]; then
+      candidates+=("https://mirror.fi.ossplanet.net/nongnu/${rel}")
+    fi
     candidates+=("https://download-mirror.savannah.gnu.org/releases/${rel}")
   elif [[ "$url" =~ ^https://download-mirror\.savannah\.nongnu\.org/releases/(.+)$ ]]; then
     rel="${BASH_REMATCH[1]}"
