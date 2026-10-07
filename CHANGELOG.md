@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.0-dev] - 2026-10-07
+
+### Changed
+- Start the requested v4 native desktop release series. The ISO, os-release,
+  installer, boot menus, login screens, and system information identify the
+  rebuilt image as `4.0.0-dev`.
+- Native release staging accepts version tags as well as build-specific tags,
+  and still requires passing native CI, matching provenance and verified assets.
+- This version change does not certify production readiness or add the separate
+  Debian Live Plasma desktop to the native image. Hardware acceptance,
+  installed-system updates/recovery and performance validation remain open.
+
 ## [Unreleased]
 
 ### Added

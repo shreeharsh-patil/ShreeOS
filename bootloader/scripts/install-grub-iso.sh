@@ -121,7 +121,7 @@ TEMPLATE="$SHREEOS_ROOT_DIR/bootloader/grub/grub.cfg.template"
 if command -v envsubst >/dev/null 2>&1; then
   ENVSUBST_VARS="\${DISTRO_NAME} \${DISTRO_VERSION} \${CMDLINE_EXTRA}"
   DISTRO_NAME="${DISTRO_NAME:-ShreeOS}" \
-  DISTRO_VERSION="${DISTRO_VERSION:-0.2.2-dev}" \
+  DISTRO_VERSION="${DISTRO_VERSION:-4.0.0-dev}" \
   CMDLINE_EXTRA="$CMDLINE_EXTRA" \
     envsubst "$ENVSUBST_VARS" \
       < "$TEMPLATE" > "${STAGING}/boot/grub/grub.cfg"

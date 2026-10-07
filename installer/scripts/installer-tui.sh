@@ -33,7 +33,7 @@ clear
 echo "┌──────────────────────────────────────────────────────────────────────────┐"
 echo "│                                                                          │"
 echo "│                                ShreeOS                                   │"
-printf "│                         Version %-12.12s (x86_64)                │\n" "${DISTRO_VERSION:-0.2.2-dev}"
+printf "│                         Version %-12.12s (x86_64)                │\n" "${DISTRO_VERSION:-4.0.0-dev}"
 echo "│                                                                          │"
 echo "│            Designed for Performance, Safety, and Restraint               │"
 echo "│                                                                          │"

@@ -6,12 +6,11 @@ on:
       source_run:
         description: Successful native ISO workflow run ID
         required: true
-        default: '37500009267'
         type: string
       release_tag:
-        description: Tag matching the image version and build ID
+        description: Tag matching the image version (optional build ID suffix)
         required: true
-        default: v0.2.2-dev-build.37500009267
+        default: v4.0.0-dev
         type: string
 
 permissions:
@@ -71,7 +70,9 @@ jobs:
           assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-dev', version)
           assert manifest['name'] == 'ShreeOS' and manifest['profile'] == 'desktop'
           assert manifest['commit'] == os.environ['SOURCE_SHA']
-          assert os.environ['RELEASE_TAG'] == f"v{version}-build.{os.environ['SOURCE_RUN']}"
+          assert os.environ['RELEASE_TAG'] in {
+              f'v{version}', f"v{version}-build.{os.environ['SOURCE_RUN']}"
+          }
           name = f'shreeos-{version}-desktop.iso'
           assert manifest['iso'] == name
           expected = {name, name + '.sha256', f'shreeos-{version}-desktop-manifest.json', 'SHA256SUMS'}

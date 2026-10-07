@@ -20,7 +20,10 @@ The repository contains two distinct build paths:
 | Existing source-built image | Custom cross-build pipeline, Linux kernel, BusyBox-oriented early userspace, custom ShreeOS init and package tooling, and a small X11/dwm graphical stack | Existing experimental path; its README-era claims are not a substitute for testing the generated image |
 | Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console BIOS/UEFI boot passes in CI; XFCE screenshot gate is failing; Plasma package/session profile is newly added and awaits Linux CI |
 
-There is no supported ShreeOS desktop release or public download at this time.
+Native desktop development ISOs are available from
+[GitHub Releases](https://github.com/shreeharsh-patil/ShreeOS/releases).
+The current native version is `4.0.0-dev`; these are development prereleases,
+and a supported production desktop release has not been certified.
 CI has built the optional XFCE profile and started its session, but the
 QEMU screenshot is still black after first-login setup completes; the screenshot
 gate and visual acceptance remain open. The desktop includes a ShreeOS XFCE
