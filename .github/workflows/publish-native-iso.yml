@@ -1,0 +1,141 @@
+name: Stage native ISO release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Successful native ISO workflow run ID
+        required: true
+        default: '37500009267'
+        type: string
+      release_tag:
+        description: Tag matching the image version and build ID
+        required: true
+        default: v0.2.2-dev-build.37500009267
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-release-${{ inputs.source_run }}
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    name: Verify and stage native ISO assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: write
+    defaults:
+      run:
+        shell: bash --noprofile --norc -euo pipefail {0}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN: ${{ inputs.source_run }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - name: Require a successful native master build
+        run: |
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" > source-run.json
+          python3 - <<'PY'
+          import json, os, re
+          run = json.load(open('source-run.json'))
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['path'] == '.github/workflows/iso.yml'
+          assert run['head_branch'] == 'master'
+          assert re.fullmatch(r'[0-9a-f]{40}', run['head_sha'])
+          assert run['repository']['full_name'] == os.environ['GH_REPO']
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f"SOURCE_SHA={run['head_sha']}\n")
+              env.write(f"ARTIFACT_NAME=shreeos-desktop-iso-{run['id']}-{run['run_attempt']}\n")
+          PY
+
+      - name: Download the tested image bundle
+        run: gh run download "$SOURCE_RUN" --name "$ARTIFACT_NAME" --dir assets
+
+      - name: Verify image provenance and checksums
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re
+          from pathlib import Path
+          root = Path('assets')
+          manifests = list(root.glob('*-manifest.json'))
+          assert len(manifests) == 1
+          manifest = json.loads(manifests[0].read_text())
+          version = manifest['version']
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-dev', version)
+          assert manifest['name'] == 'ShreeOS' and manifest['profile'] == 'desktop'
+          assert manifest['commit'] == os.environ['SOURCE_SHA']
+          assert os.environ['RELEASE_TAG'] == f"v{version}-build.{os.environ['SOURCE_RUN']}"
+          name = f'shreeos-{version}-desktop.iso'
+          assert manifest['iso'] == name
+          expected = {name, name + '.sha256', f'shreeos-{version}-desktop-manifest.json', 'SHA256SUMS'}
+          assert {p.name for p in root.iterdir()} == expected
+          assert all(p.is_file() and not p.is_symlink() for p in root.iterdir())
+          iso = root / name
+          with iso.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          assert digest == manifest['sha256'] and iso.stat().st_size == manifest['size_bytes']
+          for checksum in ('SHA256SUMS', name + '.sha256'):
+              assert (root / checksum).read_text().strip() == f'{digest}  {name}'
+          notes = '\n'.join([
+              'Native, source-built ShreeOS desktop ISO from the selected passing master build.',
+              '',
+              f'Image version: {version}',
+              f"Source commit: {manifest['commit']}",
+              f"Build: https://github.com/{os.environ['GH_REPO']}/actions/runs/{os.environ['SOURCE_RUN']}",
+              'Target: x86_64 desktop',
+              f'ISO SHA-256: {digest}',
+              '',
+              f'Download {name} and verify it using SHA256SUMS or the accompanying .iso.sha256 file. The JSON manifest records the source commit, image size, and checksum.',
+              '',
+              'CI passed native desktop readiness, BIOS/UEFI image boot verification, profile-aware automated tests including installation to a VM disk, and bundle verification.',
+              '',
+              'This is a development prerelease. Physical hardware acceptance, installed-system update/recovery validation, and performance measurements remain open before a stable production release. The macOS-style Plasma desktop changes belong to the separate Debian Live profile; this native image uses the source-built desktop pipeline.',
+          ])
+          Path('release-notes.md').write_text(notes + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'IMAGE_VERSION={version}\n')
+          PY
+
+      - name: Upload verified assets to a draft release
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,targetCommitish > existing-release.json; then
+            python3 - <<'PY'
+          import json, os
+          release = json.load(open('existing-release.json'))
+          assert release['isDraft'], 'Refusing to overwrite a published release'
+          assert release['isPrerelease'] and release['targetCommitish'] == os.environ['SOURCE_SHA']
+          PY
+            gh release edit "$RELEASE_TAG" --title "ShreeOS $IMAGE_VERSION (native desktop, build $SOURCE_RUN)" --notes-file release-notes.md --prerelease
+          else
+            gh release create "$RELEASE_TAG" --target "$SOURCE_SHA" --title "ShreeOS $IMAGE_VERSION (native desktop, build $SOURCE_RUN)" --notes-file release-notes.md --prerelease --draft
+          fi
+          gh release upload "$RELEASE_TAG" assets/* --clobber
+
+      - name: Verify stored release assets
+        run: |
+          release_api="$(gh release view "$RELEASE_TAG" --json apiUrl --jq .apiUrl)"
+          gh api "$release_api" > staged-release.json
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          release = json.load(open('staged-release.json'))
+          assert release['draft'] and release['prerelease']
+          assert release['target_commitish'] == os.environ['SOURCE_SHA']
+          local = {p.name: p for p in Path('assets').iterdir()}
+          assert {a['name'] for a in release['assets']} == set(local)
+          for asset in release['assets']:
+              path = local[asset['name']]
+              with path.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert asset['state'] == 'uploaded' and asset['size'] == path.stat().st_size
+              assert asset['digest'] == f'sha256:{digest}'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"Verified draft {release['tag_name']} with {len(local)} native ISO assets.\n")
+          PY
