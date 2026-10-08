@@ -42,6 +42,7 @@ LOG_FILE=""
 CREDS_FILE=""
 QEMU_PID=""
 TEST_SUCCEEDED=false
+DISK_CREATED=false
 
 cleanup() {
   if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
@@ -53,7 +54,8 @@ cleanup() {
     if [ "$TEST_SUCCEEDED" = true ]; then
       [ -n "$LOG_FILE" ] && rm -f "$LOG_FILE"
     fi
-    rm -f "$DISK_IMAGE"
+    # A failure during preflight must not delete an existing user-supplied image.
+    [ "$DISK_CREATED" = true ] && rm -f -- "$DISK_IMAGE"
   fi
 }
 trap cleanup EXIT
@@ -68,6 +70,7 @@ if [ -e "$DISK_IMAGE" ] || [ -L "$DISK_IMAGE" ]; then
   lumen_die "Refusing to overwrite existing installer test image: $DISK_IMAGE"
 fi
 qemu-img create -f raw "$DISK_IMAGE" "$DISK_SIZE" >/dev/null
+DISK_CREATED=true
 lumen_ok "Disk image created: ${DISK_IMAGE}"
 
 CREDS_FILE=$(mktemp /tmp/shreeos-install-creds-XXXXXX)
