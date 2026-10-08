@@ -272,7 +272,8 @@ else:
 client.recv(4096)
 client.sendall(b"sendkey shift\n")
 client.recv(4096)
-time.sleep(10)
+# Give LightDM/XFCE time to finish rendering after the live-boot marker.
+time.sleep(30)
 client.sendall(f"screendump {output}\n".encode())
 client.recv(4096)
 client.sendall(b"quit\n")
