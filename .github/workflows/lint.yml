@@ -89,6 +89,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends libx11-dev
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only desktop/wm/shree-dock.c
 
+      - name: Exercise destructive installer preflight without touching real disks
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y --no-install-recommends fdisk
+          bash tests/installer/test-installer-validation.sh
+
       - name: Parse every workflow YAML file
         run: |
           set -Eeuo pipefail
