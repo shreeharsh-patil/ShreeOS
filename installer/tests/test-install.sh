@@ -55,7 +55,9 @@ cleanup() {
       [ -n "$LOG_FILE" ] && rm -f "$LOG_FILE"
     fi
     # A failure during preflight must not delete an existing user-supplied image.
-    [ "$DISK_CREATED" = true ] && rm -f -- "$DISK_IMAGE"
+    if [ "$DISK_CREATED" = true ]; then
+      rm -f -- "$DISK_IMAGE"
+    fi
   fi
 }
 trap cleanup EXIT
