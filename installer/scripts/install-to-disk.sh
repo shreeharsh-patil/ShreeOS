@@ -88,7 +88,11 @@ cleanup() {
     rm -f "${CREDS_FILE}"
   fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+# A terminating signal must stop the installer. Running cleanup alone and then
+# resuming could continue a destructive installation with unmounted filesystems.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Validate hostname strictly: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$
 if ! [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
@@ -346,11 +350,6 @@ verify_child_partition() {
     shreeos_die "Partition ${partition} is not a child of ${WORKING_DISK}."
   fi
 }
-verify_child_partition "$PART_ROOT"
-if [ "$BOOT_MODE" != "bios" ]; then
-  verify_child_partition "$PART_ESP"
-fi
-
 # Partition nodes can appear asynchronously after sfdisk/loop partition scans.
 # Ask the kernel/udev to settle, then fail explicitly instead of racing mkfs.
 if command -v partprobe >/dev/null 2>&1; then
@@ -369,6 +368,12 @@ done
 [ -b "$PART_ROOT" ] || shreeos_die "Root partition device did not appear: ${PART_ROOT}"
 if [ "$BOOT_MODE" != "bios" ]; then
   [ -b "$PART_ESP" ] || shreeos_die "EFI partition device did not appear: ${PART_ESP}"
+fi
+# Now that device nodes are present, validate that both are children of the
+# newly partitioned disk. Do not race udev by querying PKNAME earlier.
+verify_child_partition "$PART_ROOT"
+if [ "$BOOT_MODE" != "bios" ]; then
+  verify_child_partition "$PART_ESP"
 fi
 
 shreeos_log "Detected partition devices (BIOS: ${PART_BIOS}, ESP: ${PART_ESP}, Root: ${PART_ROOT})"
@@ -476,6 +481,9 @@ bash "${SHREEOS_ROOT_DIR}/bootloader/scripts/install-grub-disk.sh" "$TARGET" "$W
 ROOT_UUID=$(blkid -s UUID -o value "$PART_ROOT" 2>/dev/null || echo "")
 ROOT_PARTUUID=$(blkid -s PARTUUID -o value "$PART_ROOT" 2>/dev/null || echo "")
 ESP_UUID=$(blkid -s UUID -o value "$PART_ESP" 2>/dev/null || echo "")
+if [ "$BOOT_MODE" != "bios" ] && [ -z "$ESP_UUID" ]; then
+  shreeos_die "CRITICAL: Unable to identify the EFI system partition UUID; refusing an incomplete UEFI /etc/fstab."
+fi
 
 if [ -z "$ROOT_UUID" ]; then
   shreeos_die "CRITICAL: Could not discover filesystem UUID for root partition (${PART_ROOT})."

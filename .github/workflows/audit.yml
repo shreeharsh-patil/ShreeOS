@@ -151,13 +151,18 @@ jobs:
       - name: Download newest release ISO
         id: fetch
         if: steps.iso.outputs.source == 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p audit/iso
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=20"
           echo "Querying ${api}"
+          # Authentication avoids GitHub's very low unauthenticated API rate
+          # limit on shared Actions runners (HTTP 403).
           json="$(curl --fail --silent --show-error --location \
-            --header 'Accept: application/vnd.github+json' "${api}")"
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" "${api}")"
           url="$(printf '%s' "${json}" | python3 -c '
           import json, sys
           releases = json.load(sys.stdin)
