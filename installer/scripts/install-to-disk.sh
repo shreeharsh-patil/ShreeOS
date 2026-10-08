@@ -206,6 +206,16 @@ STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
 if [ -n "$USERNAME" ] && [ -f "${STAGE_ROOT}/etc/passwd" ] && grep -q "^${USERNAME}:" "${STAGE_ROOT}/etc/passwd"; then
   shreeos_die "Account '${USERNAME}' already exists in the staged root filesystem."
 fi
+# Never allocate a new UID with a primary group name that already belongs to
+# another account or a privileged system group. Check before erasing any disk.
+if [ -n "$USERNAME" ] && [ -f "${STAGE_ROOT}/etc/group" ] &&
+   grep -q "^${USERNAME}:" "${STAGE_ROOT}/etc/group"; then
+  shreeos_die "Group name '${USERNAME}' already exists in the staged root filesystem; choose another username."
+fi
+if [ -f "${STAGE_ROOT}/etc/shadow" ] &&
+   ! grep -q '^root:' "${STAGE_ROOT}/etc/shadow"; then
+  shreeos_die "Staged root filesystem has an invalid shadow database: root entry is missing."
+fi
 ROOTFS_CPIO="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/initramfs.cpio.gz"
 BZIMAGE="${SHREEOS_BUILD_DIR:-${SHREEOS_ROOT_DIR}/build}/build-kernel/arch/x86/boot/bzImage"
 if [ -d "${STAGE_ROOT}" ] && [ "$(ls -A "${STAGE_ROOT}" 2>/dev/null)" ]; then
