@@ -10,6 +10,7 @@ Rectangle {
     color: "#0b111d"
 
     property string errorMessage: ""
+    property date currentDate: new Date()
 
     function submitLogin() {
         errorMessage = ""
@@ -29,12 +30,50 @@ Rectangle {
         color: "#22080e18"
     }
 
+    // The full-screen clock gives the greeter the quiet, focused feel of a
+    // desktop lock screen. Hide it on short displays so it never covers sign-in.
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: root.currentDate = new Date()
+    }
+
+    Column {
+        anchors.top: parent.top
+        anchors.topMargin: Math.max(24, Math.min(48, root.height * 0.05))
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: 0
+        visible: root.height >= 750
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: Qt.formatTime(root.currentDate, "h:mm")
+            font.family: "Inter"
+            font.pixelSize: 54
+            font.weight: Font.Light
+            color: "#ffffff"
+            style: Text.Raised
+            styleColor: "#550a1524"
+        }
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: Qt.formatDate(root.currentDate, "dddd, MMMM d")
+            font.family: "Inter"
+            font.pixelSize: 16
+            color: "#f5f8ff"
+            style: Text.Raised
+            styleColor: "#550a1524"
+        }
+    }
+
     Rectangle {
         id: loginCard
         anchors.centerIn: parent
         width: Math.min(400, root.width - 40)
         height: Math.min(472, root.height - 40)
-        radius: 24
+        radius: 22
         color: "#e6141c2b"
         border.width: 1
         border.color: "#35d7e7ff"
