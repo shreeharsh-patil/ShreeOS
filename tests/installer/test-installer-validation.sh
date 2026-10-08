@@ -240,6 +240,41 @@ if grep -Fq '/proc/sys/kernel/printk' "$SYSINIT_CONF"; then
 fi
 echo "  [OK] Installer safety and bootability checks are present"
 
+# These order and signal-safety regressions previously escaped static validation:
+# slow udev partition discovery must not fail PKNAME checks prematurely;
+# interrupting an installation must stop it rather than merely unmounting it.
+ready_line=$(grep -nF '[ -b "$PART_ROOT" ] || shreeos_die "Root partition device did not appear' "$INSTALLER" | head -n 1 | cut -d: -f1)
+parent_line=$(grep -nF 'verify_child_partition "$PART_ROOT"' "$INSTALLER" | head -n 1 | cut -d: -f1)
+if ! [[ "$ready_line" =~ ^[0-9]+$ && "$parent_line" =~ ^[0-9]+$ ]] ||
+   [ "$parent_line" -le "$ready_line" ]; then
+  echo "  [FAIL] Root partition parent verification must run after node discovery" >&2
+  exit 1
+fi
+for required_text in \
+  'trap cleanup EXIT' \
+  "trap 'exit 130' INT" \
+  "trap 'exit 143' TERM" \
+  'Unable to identify the EFI system partition UUID'; do
+  grep -Fq "$required_text" "$INSTALLER" || {
+    echo "  [FAIL] Installer interruption/ESP validation missing: ${required_text}" >&2
+    exit 1
+  }
+done
+# The standalone integration test must supply the file path (not an already
+# attached /dev/loopN), avoid clobbering pre-existing images, and check that
+# persistent ext4 rather than the live initramfs was booted.
+STANDALONE_TEST="$ROOT_DIR/installer/tests/test-install.sh"
+for required_text in \
+  '"$DISK_IMAGE" --yes' \
+  'Refusing to overwrite existing installer test image' \
+  'ROOT_MARKER_STRING='; do
+  grep -Fq "$required_text" "$STANDALONE_TEST" || {
+    echo "  [FAIL] Standalone installer test contract missing: ${required_text}" >&2
+    exit 1
+  }
+done
+echo "  [OK] Partition udev ordering, termination and standalone test contracts"
+
 PREFLIGHT_DIR=$(mktemp -d /tmp/shreeos-installer-preflight-XXXXXX)
 trap 'rm -rf "$PREFLIGHT_DIR"' EXIT
 PREFLIGHT_STAGE="$PREFLIGHT_DIR/rootfs"
