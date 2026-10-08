@@ -89,8 +89,8 @@ Shadows:          Soft realistic ambient falloff (e.g. 0 8px 24px rgba(0,0,0,0.2
 - ShreeOS-branded application menu and global app menu in the top bar.
 - Centered Plank dock with individual app icons, original light/dark glass skins,
   50px icon defaults, 145% hover magnification, tooltips and editable pinning.
-- Super+Space opens KRunner, Super+Up opens workspace overview, and
-  Ctrl+Left/Right changes virtual desktops. Window controls stay left-aligned.
+- Super+Space opens KRunner, Super+Ctrl+Up opens workspace overview, and
+  Super+Ctrl+Left/Right changes virtual desktops. Window controls stay left-aligned.
 - The branded SDDM greeter shows a large time and date on taller screens.
 - Appearance preferences are applied once for new Plasma accounts; an existing
   user's custom workspace and pinned dock items are never reset. The source-built
