@@ -24,13 +24,13 @@ for (var panelIndex = 0; panelIndex < previousPanels.length; panelIndex++) {
 var menuBar = new Panel();
 menuBar.location = "top";
 menuBar.lengthMode = "fill";
-menuBar.height = 28;
+menuBar.height = 30;
 menuBar.hiding = "none";
 menuBar.floating = false;
 var launcher = menuBar.addWidget("org.kde.plasma.kickoff");
 launcher.currentConfigGroup = ["General"];
 launcher.writeConfig("icon", "shreeos");
-launcher.writeConfig("menuLabel", "Applications");
+launcher.writeConfig("menuLabel", "ShreeOS");
 launcher.writeConfig("compactMode", true);
 menuBar.addWidget("org.kde.plasma.appmenu");
 menuBar.addWidget("org.kde.plasma.panelspacer");
