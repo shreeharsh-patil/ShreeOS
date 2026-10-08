@@ -1,5 +1,6 @@
 [Compositing]
-Enabled=true
+# QEMU's live virtio display does not reliably support Plasma effects.
+Enabled=false
 
 [Effect-blur]
 BlurStrength=8
