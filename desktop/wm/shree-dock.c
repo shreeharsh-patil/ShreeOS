@@ -320,12 +320,27 @@ int main(void) {
     gcv.font = font->fid;
     gc = XCreateGC(dpy, win, GCFont, &gcv);
 
+    /* Root ConfigureNotify events let the dock track display resize and
+     * resolution changes instead of remaining off-center or offscreen. */
+    XSelectInput(dpy, RootWindow(dpy, screen), StructureNotifyMask);
     XMapRaised(dpy, win);
     XFlush(dpy);
 
     for (;;) {
         XNextEvent(dpy, &ev);
         switch (ev.type) {
+            case ConfigureNotify:
+                if (ev.xconfigure.window == RootWindow(dpy, screen) &&
+                    ev.xconfigure.width > 0 && ev.xconfigure.height > 0 &&
+                    (sw != ev.xconfigure.width || sh != ev.xconfigure.height)) {
+                    sw = ev.xconfigure.width;
+                    sh = ev.xconfigure.height;
+                    visible_y = sh - height - BOTTOM_GAP;
+                    hidden_y = sh - HIDDEN_EDGE;
+                    XMoveWindow(dpy, win, (sw - width) / 2,
+                                hidden ? hidden_y : visible_y);
+                }
+                break;
             case Expose:
                 if (ev.xexpose.count == 0)
                     draw_dock(dpy, win, gc, font, &cfg, width, height, hover,

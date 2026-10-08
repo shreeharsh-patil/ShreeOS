@@ -46,6 +46,10 @@ if [ -f "${TARGET}/etc/passwd" ] && grep -q "^${USER}:" "${TARGET}/etc/passwd"; 
   echo "Error: Account '${USER}' already exists; refusing to modify it." >&2
   exit 1
 fi
+if [ -f "${TARGET}/etc/group" ] && grep -q "^${USER}:" "${TARGET}/etc/group"; then
+  echo "Error: Group name '${USER}' already exists; refusing to reuse a system group for a new account." >&2
+  exit 1
+fi
 
 ENCRYPTED_PASS="${SHREEOS_PREHASHED_USER_PASSWORD:-}"
 PASSWORD=""

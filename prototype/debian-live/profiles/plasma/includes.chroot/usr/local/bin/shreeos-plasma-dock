@@ -37,7 +37,12 @@ done
 
 marker="$config_home/shreeos/plasma-dock-v1"
 if [ ! -e "$marker" ]; then
-  dconf load / < /usr/share/shreeos/defaults/plasma-plank.dconf
+  # A migrated account may have customized Plank before the ShreeOS marker
+  # existed. Preserve that dock instead of overwriting its pinned launchers.
+  existing_items="$(dconf read /net/launchpad/plank/docks/dock1/dock-items)"
+  if [ -z "$existing_items" ]; then
+    dconf load / < /usr/share/shreeos/defaults/plasma-plank.dconf
+  fi
   touch "$marker"
 fi
 

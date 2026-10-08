@@ -318,6 +318,17 @@ expect_preflight_failure 'without --username' "$PREFLIGHT_TARGET" --credentials-
 SUDO_UID=999999 expect_preflight_failure 'owned by the invoking user' "$PREFLIGHT_TARGET" --credentials-file="$PREFLIGHT_CREDS"
 unset SUDO_UID
 printf 'rootpassword123\n' > "$PREFLIGHT_CREDS"
+# Refuse name collisions and broken root account metadata before touching disks.
+printf 'rootpassword123\nuserpassword123\n' > "$PREFLIGHT_CREDS"
+mkdir -p "$PREFLIGHT_STAGE/etc"
+printf 'wheel:x:10:\n' > "$PREFLIGHT_STAGE/etc/group"
+expect_preflight_failure "Group name 'wheel' already exists" "$PREFLIGHT_TARGET" --username=wheel --credentials-file="$PREFLIGHT_CREDS"
+printf 'other:x:1000:\n' > "$PREFLIGHT_STAGE/etc/group"
+printf 'bin:*:19000:0:99999:7:::\n' > "$PREFLIGHT_STAGE/etc/shadow"
+printf 'rootpassword123\n' > "$PREFLIGHT_CREDS"
+expect_preflight_failure 'root entry is missing' "$PREFLIGHT_TARGET" --credentials-file="$PREFLIGHT_CREDS"
+rm -f "$PREFLIGHT_STAGE/etc/group" "$PREFLIGHT_STAGE/etc/shadow"
+printf 'rootpassword123\n' > "$PREFLIGHT_CREDS"
 PREFLIGHT_SMALL="$PREFLIGHT_DIR/small.img"
 truncate -s 600M "$PREFLIGHT_SMALL"
 expect_preflight_failure 'Target media is too small' "$PREFLIGHT_SMALL" --credentials-file="$PREFLIGHT_CREDS"

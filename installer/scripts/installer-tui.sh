@@ -28,7 +28,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 shreeos_require_cmd lsblk findmnt realpath stat awk grep env
 
-clear
+clear 2>/dev/null || true
 
 echo "┌──────────────────────────────────────────────────────────────────────────┐"
 echo "│                                                                          │"
@@ -48,7 +48,7 @@ echo "    Kernel: Linux $(uname -r 2>/dev/null || echo '6.18')"
 echo ""
 read -r -p "Press [Enter] to begin installation setup... " _
 
-clear
+clear 2>/dev/null || true
 # Stage 2: Disk Selection
 echo "==> Step 2 of 5: Target Disk Selection"
 echo "Detecting available storage devices (NVMe, SATA, VirtIO, MMC)..."
@@ -158,7 +158,7 @@ while true; do
   break
 done
 
-clear
+clear 2>/dev/null || true
 # Stage 3: User & Hostname Configuration
 echo "==> Step 3 of 5: Identity & Credentials"
 echo ""
@@ -175,11 +175,26 @@ done
 
 while true; do
   read -r -p "Primary User Account Name: " USERNAME
-  if [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
-    break
-  else
+  if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
     echo "Invalid username. Must start with lowercase letter or underscore, 1-32 characters, no colons/slashes/spaces."
+    continue
   fi
+  case "$USERNAME" in
+    root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|_apt|nobody|systemd-*|messagebus|sshd|shree-hardware)
+      echo "That username is reserved for a system account."
+      continue
+      ;;
+  esac
+  STAGE_ROOT="${SHREEOS_STAGE_ROOT:-${SHREEOS_ROOT_DIR}/build/rootfs}"
+  if [ -f "${STAGE_ROOT}/etc/passwd" ] && grep -q "^${USERNAME}:" "${STAGE_ROOT}/etc/passwd"; then
+    echo "Username '${USERNAME}' already exists in the staged system. Choose another."
+    continue
+  fi
+  if [ -f "${STAGE_ROOT}/etc/group" ] && grep -q "^${USERNAME}:" "${STAGE_ROOT}/etc/group"; then
+    echo "Username '${USERNAME}' conflicts with an existing system group. Choose another."
+    continue
+  fi
+  break
 done
 
 echo ""
@@ -216,7 +231,7 @@ while true; do
   fi
 done
 
-clear
+clear 2>/dev/null || true
 # Stage 4: Timezone Setup
 echo "==> Step 4 of 5: System Clock & Timezone"
 echo ""
@@ -235,7 +250,7 @@ while true; do
   break
 done
 
-clear
+clear 2>/dev/null || true
 # Stage 5: Destructive Confirmation & Review
 echo "┌──────────────────────────────────────────────────────────────────────────┐"
 echo "│                   INSTALLATION SUMMARY & REVIEW                          │"

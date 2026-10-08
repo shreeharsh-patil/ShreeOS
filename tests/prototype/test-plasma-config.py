@@ -104,9 +104,9 @@ class PlasmaConfigTests(unittest.TestCase):
             self.assertEqual(theme["PlankTheme"]["BottomRoundness"], "18")
 
         shortcuts = read_ini(INCLUDES / "etc/skel/.config/kglobalshortcutsrc")
-        self.assertEqual(shortcuts["kwin"]["Overview"].split(",")[0], "Meta+Up")
-        self.assertEqual(shortcuts["kwin"]["Switch to Next Desktop"].split(",")[0], "Ctrl+Right")
-        self.assertEqual(shortcuts["kwin"]["Switch to Previous Desktop"].split(",")[0], "Ctrl+Left")
+        self.assertEqual(shortcuts["kwin"]["Overview"].split(",")[0], "Meta+Ctrl+Up")
+        self.assertEqual(shortcuts["kwin"]["Switch to Next Desktop"].split(",")[0], "Meta+Ctrl+Right")
+        self.assertEqual(shortcuts["kwin"]["Switch to Previous Desktop"].split(",")[0], "Meta+Ctrl+Left")
         self.assertEqual(shortcuts["org.kde.krunner.desktop"]["_launch"].split(",")[0], "Meta+Space")
         greeter = (INCLUDES / "usr/share/sddm/themes/shreeos/Main.qml").read_text()
         self.assertIn("Qt.formatTime(root.currentDate", greeter)
@@ -120,6 +120,13 @@ class PlasmaConfigTests(unittest.TestCase):
         width, height = struct.unpack(">II", header[16:24])
         self.assertGreaterEqual(width, 1280)
         self.assertAlmostEqual(width / height, 16 / 9, delta=0.01)
+
+    def test_plasma_dock_keeps_existing_pinned_app_settings(self):
+        dock_script = (INCLUDES / "usr/local/bin/shreeos-plasma-dock").read_text()
+        self.assertIn("existing_items=", dock_script)
+        self.assertIn("if [ -z \"$existing_items\" ]; then", dock_script)
+        self.assertIn("dconf load / <", dock_script)
+        self.assertIn('touch "$marker"', dock_script)
 
     def test_first_login_preserves_an_existing_profile(self):
         shell = shutil.which("sh")
