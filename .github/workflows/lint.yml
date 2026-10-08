@@ -83,6 +83,12 @@ jobs:
           done
           printf 'Linted %s tracked shebang scripts\n' "${#shellcheck_files[@]}"
 
+      - name: Compile-check native floating dock against Xlib
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y --no-install-recommends libx11-dev
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only desktop/wm/shree-dock.c
+
       - name: Parse every workflow YAML file
         run: |
           set -Eeuo pipefail

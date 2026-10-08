@@ -157,33 +157,102 @@ static void launch_app(const char *app) {
     }
 }
 
+
+typedef struct {
+    unsigned long files, terminal, browser, package, settings, other;
+} DockPalette;
+
+/* Xlib-only rounded icon surfaces keep the native ISO dependency-free. */
+static void fill_rounded(Display *dpy, Drawable target, GC gc,
+                         int x, int y, int w, int h, int radius) {
+    int diameter = radius * 2;
+    XFillRectangle(dpy, target, gc, x + radius, y, (unsigned int)(w - diameter), (unsigned int)h);
+    XFillRectangle(dpy, target, gc, x, y + radius, (unsigned int)w, (unsigned int)(h - diameter));
+    XFillArc(dpy, target, gc, x, y, (unsigned int)diameter, (unsigned int)diameter, 90 * 64, 90 * 64);
+    XFillArc(dpy, target, gc, x + w - diameter, y, (unsigned int)diameter, (unsigned int)diameter, 0, 90 * 64);
+    XFillArc(dpy, target, gc, x, y + h - diameter, (unsigned int)diameter, (unsigned int)diameter, 180 * 64, 90 * 64);
+    XFillArc(dpy, target, gc, x + w - diameter, y + h - diameter, (unsigned int)diameter, (unsigned int)diameter, 270 * 64, 90 * 64);
+}
+
+static unsigned long app_color(const char *app, const DockPalette *p) {
+    if (strcmp(app, "shree-files") == 0) return p->files;
+    if (strcmp(app, "st") == 0) return p->terminal;
+    if (strcmp(app, "netsurf") == 0 || strcmp(app, "shree-browser") == 0) return p->browser;
+    if (strcmp(app, "shree-pkgmanager") == 0) return p->package;
+    if (strcmp(app, "shree-settings") == 0) return p->settings;
+    return p->other;
+}
+
+/* Distinct vector icons replace the old two-letter dock placeholders. */
+static void draw_app_icon(Display *dpy, Drawable target, GC gc, XFontStruct *font,
+                          const char *app, int x, int y, int size, unsigned long ink) {
+    int cx = x + size / 2, cy = y + size / 2;
+    int r = size / 4;
+    XSetForeground(dpy, gc, ink);
+    XSetLineAttributes(dpy, gc, 2, LineSolid, CapRound, JoinRound);
+    if (strcmp(app, "shree-files") == 0) {
+        XDrawRectangle(dpy, target, gc, cx - r, cy - r / 2, (unsigned int)(2 * r), (unsigned int)(r + r / 2));
+        XDrawLine(dpy, target, gc, cx - r, cy - r / 2, cx - r + r / 2, cy - r);
+        XDrawLine(dpy, target, gc, cx - r + r / 2, cy - r, cx + r / 2, cy - r);
+        XDrawLine(dpy, target, gc, cx - r + r / 2, cy - r / 2, cx + r / 2, cy - r / 2);
+    } else if (strcmp(app, "st") == 0) {
+        XDrawLine(dpy, target, gc, cx - r, cy - r / 2, cx - 2, cy);
+        XDrawLine(dpy, target, gc, cx - 2, cy, cx - r, cy + r / 2);
+        XDrawLine(dpy, target, gc, cx + 1, cy + r / 2, cx + r, cy + r / 2);
+    } else if (strcmp(app, "netsurf") == 0 || strcmp(app, "shree-browser") == 0) {
+        XDrawArc(dpy, target, gc, cx - r, cy - r, (unsigned int)(2 * r), (unsigned int)(2 * r), 0, 360 * 64);
+        XDrawArc(dpy, target, gc, cx - r / 2, cy - r, (unsigned int)r, (unsigned int)(2 * r), 0, 360 * 64);
+        XDrawLine(dpy, target, gc, cx - r, cy, cx + r, cy);
+    } else if (strcmp(app, "shree-pkgmanager") == 0 || strcmp(app, "shree-apps") == 0) {
+        XDrawRectangle(dpy, target, gc, cx - r, cy - r / 2, (unsigned int)(2 * r), (unsigned int)(r + r / 2));
+        XDrawArc(dpy, target, gc, cx - r / 2, cy - r, (unsigned int)r, (unsigned int)r, 0, 180 * 64);
+    } else if (strcmp(app, "shree-settings") == 0 || strcmp(app, "shree-control-center") == 0) {
+        int k;
+        static const int vx[8] = {0, 7, 10, 7, 0, -7, -10, -7};
+        static const int vy[8] = {-10, -7, 0, 7, 10, 7, 0, -7};
+        XDrawArc(dpy, target, gc, cx - r / 2, cy - r / 2, (unsigned int)r, (unsigned int)r, 0, 360 * 64);
+        for (k = 0; k < 8; ++k)
+            XDrawLine(dpy, target, gc, cx + vx[k] * r / 10, cy + vy[k] * r / 10,
+                      cx + vx[k] * (r + 4) / 10, cy + vy[k] * (r + 4) / 10);
+    } else {
+        const char *label = label_for(app);
+        int tw = XTextWidth(font, label, (int)strlen(label));
+        XDrawString(dpy, target, gc, cx - tw / 2, cy + (font->ascent - font->descent) / 2,
+                    label, (int)strlen(label));
+    }
+    XSetLineAttributes(dpy, gc, 0, LineSolid, CapButt, JoinMiter);
+}
+
 static void draw_dock(Display *dpy, Window win, GC gc, XFontStruct *font,
                       const DockConfig *cfg, int width, int height, int hover,
                       unsigned long surface, unsigned long tile,
                       unsigned long tile_hover, unsigned long text,
-                      unsigned long accent) {
+                      unsigned long accent, const DockPalette *palette) {
     int i;
     XSetForeground(dpy, gc, surface);
     XFillRectangle(dpy, win, gc, 0, 0, (unsigned int)width, (unsigned int)height);
 
     for (i = 0; i < cfg->app_count; ++i) {
-        const char *label = label_for(cfg->apps[i]);
         int x = PAD + i * (cfg->icon_size + GAP);
         int y = PAD - 2;
-        int tw = XTextWidth(font, label, (int)strlen(label));
-        int tx = x + (cfg->icon_size - tw) / 2;
-        int ty = y + (cfg->icon_size + font->ascent - font->descent) / 2;
+        int size = cfg->icon_size;
+        int radius = size / 5;
+        unsigned long base = app_color(cfg->apps[i], palette);
 
-        XSetForeground(dpy, gc, i == hover ? tile_hover : tile);
-        XFillRectangle(dpy, win, gc, x, y, (unsigned int)cfg->icon_size, (unsigned int)cfg->icon_size);
-        XSetForeground(dpy, gc, text);
-        XDrawString(dpy, win, gc, tx, ty, label, (int)strlen(label));
-
+        XSetForeground(dpy, gc, base);
+        fill_rounded(dpy, win, gc, x, y, size, size, radius);
+        if (i == hover) {
+            XSetForeground(dpy, gc, tile_hover);
+            XDrawRectangle(dpy, win, gc, x - 2, y - 2,
+                           (unsigned int)(size + 3), (unsigned int)(size + 3));
+        }
+        draw_app_icon(dpy, win, gc, font, cfg->apps[i], x, y, size, text);
         if (i == hover) {
             XSetForeground(dpy, gc, accent);
-            XFillRectangle(dpy, win, gc, x + cfg->icon_size / 2 - 2, height - 6, 4, 2);
+            XFillArc(dpy, win, gc, x + size / 2 - 2, height - 7, 4, 4, 0, 360 * 64);
         }
     }
+    (void)tile;
 }
 
 int main(void) {
@@ -201,6 +270,7 @@ int main(void) {
     int hover = -1;
     int hidden = 0;
     unsigned long surface, tile, tile_hover, text, accent;
+    DockPalette palette;
 
     if (!dpy) {
         fprintf(stderr, "shree-dock-ui: cannot open X display\n");
@@ -221,6 +291,12 @@ int main(void) {
     tile_hover = named_pixel(dpy, screen, "#48484A", WhitePixel(dpy, screen));
     text = named_pixel(dpy, screen, "#F5F5F7", WhitePixel(dpy, screen));
     accent = named_pixel(dpy, screen, "#2878FF", WhitePixel(dpy, screen));
+    palette.files = named_pixel(dpy, screen, "#3289E8", accent);
+    palette.terminal = named_pixel(dpy, screen, "#4B5567", surface);
+    palette.browser = named_pixel(dpy, screen, "#1797B3", accent);
+    palette.package = named_pixel(dpy, screen, "#8060D9", accent);
+    palette.settings = named_pixel(dpy, screen, "#677589", surface);
+    palette.other = named_pixel(dpy, screen, "#477A9F", accent);
 
     attrs.override_redirect = True;
     attrs.background_pixel = surface;
@@ -253,7 +329,7 @@ int main(void) {
             case Expose:
                 if (ev.xexpose.count == 0)
                     draw_dock(dpy, win, gc, font, &cfg, width, height, hover,
-                              surface, tile, tile_hover, text, accent);
+                              surface, tile, tile_hover, text, accent, &palette);
                 break;
 
             case MotionNotify: {
@@ -268,7 +344,7 @@ int main(void) {
                 if (next != hover) {
                     hover = next;
                     draw_dock(dpy, win, gc, font, &cfg, width, height, hover,
-                              surface, tile, tile_hover, text, accent);
+                              surface, tile, tile_hover, text, accent, &palette);
                 }
                 break;
             }
@@ -292,7 +368,7 @@ int main(void) {
                     hidden = 1;
                 } else {
                     draw_dock(dpy, win, gc, font, &cfg, width, height, hover,
-                              surface, tile, tile_hover, text, accent);
+                              surface, tile, tile_hover, text, accent, &palette);
                 }
                 break;
 

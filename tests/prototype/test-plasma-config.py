@@ -84,6 +84,35 @@ class PlasmaConfigTests(unittest.TestCase):
         surface = next(e for e in opaque.iter() if e.get("class") == "ColorScheme-Background")
         self.assertEqual(surface.get("fill-opacity"), "1")
 
+    def test_macos_inspired_desktop_contract(self):
+        layout = (ROOT / "desktop/plasma/layout.js").read_text()
+        self.assertIn('menuBar.height = 30;', layout)
+        self.assertIn('launcher.writeConfig("menuLabel", "ShreeOS")', layout)
+        self.assertIn('org.kde.plasma.appmenu', layout)
+        self.assertIn('org.kde.plasma.systemtray', layout)
+
+        dock = read_ini(INCLUDES / "usr/share/shreeos/defaults/plasma-plank.dconf")
+        dock = dock["net/launchpad/plank/docks/dock1"]
+        self.assertEqual(dock["alignment"], "'center'")
+        self.assertEqual(dock["position"], "'bottom'")
+        self.assertEqual(dock["icon-size"], "50")
+        self.assertEqual(dock["zoom-percent"], "145")
+        self.assertEqual(dock["theme"], "'ShreeOS-Glass'")
+        for variant in ("ShreeOS-Glass", "ShreeOS-Glass-Dark"):
+            theme = read_ini(INCLUDES / f"usr/share/plank/themes/{variant}/dock.theme")
+            self.assertEqual(theme["PlankTheme"]["TopRoundness"], "18")
+            self.assertEqual(theme["PlankTheme"]["BottomRoundness"], "18")
+
+        shortcuts = read_ini(INCLUDES / "etc/skel/.config/kglobalshortcutsrc")
+        self.assertEqual(shortcuts["kwin"]["Overview"].split(",")[0], "Meta+Up")
+        self.assertEqual(shortcuts["kwin"]["Switch to Next Desktop"].split(",")[0], "Ctrl+Right")
+        self.assertEqual(shortcuts["kwin"]["Switch to Previous Desktop"].split(",")[0], "Ctrl+Left")
+        self.assertEqual(shortcuts["org.kde.krunner.desktop"]["_launch"].split(",")[0], "Meta+Space")
+        greeter = (INCLUDES / "usr/share/sddm/themes/shreeos/Main.qml").read_text()
+        self.assertIn("Qt.formatTime(root.currentDate", greeter)
+        self.assertIn("Qt.formatDate(root.currentDate", greeter)
+        self.assertIn("root.height >= 750", greeter)
+
     def test_wallpaper_is_real_png_with_desktop_proportions(self):
         image = ROOT / "branding/wallpapers/shreeos-alpenglow.png"
         header = image.read_bytes()[:24]

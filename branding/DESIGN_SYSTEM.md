@@ -79,10 +79,26 @@ Shadows:          Soft realistic ambient falloff (e.g. 0 8px 24px rgba(0,0,0,0.2
 
 ### Desktop Composition
 
-- A 28px translucent top panel keeps Applications and the global app menu on the left, the date and clock between two expanding spacers, and system status on the right.
-- A centered rounded Plank dock stays visible at the bottom, with 44px icons, 130% hover magnification, tooltips, and running-app indicators. Users can pin, reorder, and change hiding behavior from the dock preferences.
+- A 30px translucent top panel keeps Applications and the global app menu on the left, the date and clock between two expanding spacers, and system status on the right.
+- A centered rounded Plank dock stays visible at the bottom, with 50px icons, 145% hover magnification, tooltips, and running-app indicators. Users can pin, reorder, and change hiding behavior from the dock preferences.
 - Four workspaces support quick keyboard navigation and a clear sense of separate work areas.
 - The Plasma desktop starts in ShreeOS Light with an original photographic mountain sunrise wallpaper. Switching to dark appearance updates native and GTK surfaces, icons, terminal colors, and the dock while preserving the wallpaper and pinned apps.
+
+### Mac-like interaction defaults (Plasma X11 profile)
+
+- ShreeOS-branded application menu and global app menu in the top bar.
+- Centered Plank dock with individual app icons, original light/dark glass skins,
+  50px icon defaults, 145% hover magnification, tooltips and editable pinning.
+- Super+Space opens KRunner, Super+Up opens workspace overview, and
+  Ctrl+Left/Right changes virtual desktops. Window controls stay left-aligned.
+- The branded SDDM greeter shows a large time and date on taller screens.
+- Appearance preferences are applied once for new Plasma accounts; an existing
+  user's custom workspace and pinned dock items are never reset. The source-built
+  X11 session has its own dependency-light native dock with original vector icons.
+
+These are macOS-inspired interaction patterns, not Apple logos, assets,
+macOS binaries, or a guarantee of native macOS feature compatibility.
+The shipped installer and actual hardware behavior still require boot validation.
 
 ---
 

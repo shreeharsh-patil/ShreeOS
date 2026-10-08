@@ -1,16 +1,16 @@
 [PlankTheme]
-TopRoundness=12
-BottomRoundness=12
+TopRoundness=18
+BottomRoundness=18
 LineWidth=1
-OuterStrokeColor=24;;32;;45;;50
-FillStartColor=255;;255;;255;;185
-FillEndColor=238;;242;;249;;178
+OuterStrokeColor=24;;32;;45;;65
+FillStartColor=255;;255;;255;;208
+FillEndColor=238;;242;;249;;196
 InnerStrokeColor=255;;255;;255;;155
 
 [PlankDockTheme]
 HorizPadding=8
-TopPadding=3
-BottomPadding=4
+TopPadding=6
+BottomPadding=6
 ItemPadding=3
 IndicatorSize=4
 IconShadowSize=1
