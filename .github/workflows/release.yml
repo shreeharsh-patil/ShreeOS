@@ -78,6 +78,7 @@ jobs:
           python3 tests/prototype/test-system-features.py
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
+          python3 tests/prototype/test-branding.py
 
       - name: Build ShreeOS Plasma ISO
         run: |

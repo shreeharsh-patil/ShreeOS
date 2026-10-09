@@ -49,6 +49,10 @@ grep -Fq 'StandardOutput=journal+console' \
   "$CONFIG_DIR/config/includes.chroot/etc/systemd/system/shreeos-boot-check.service"
 grub_config="$CONFIG_DIR/config/bootloaders/grub-pc"
 test -s "$grub_config/splash.svg"
+if grep -Fq 'M 82 88 C 82 72' "$grub_config/splash.svg"; then
+  echo 'GRUB splash still contains the retired S-shaped letterform.' >&2
+  exit 1
+fi
 test -s "$grub_config/live-theme/theme.txt"
 grep -Fq 'title-text: "ShreeOS"' "$grub_config/live-theme/theme.txt"
 grep -Fq 'desktop-image: "../splash.png"' "$grub_config/live-theme/theme.txt"
@@ -98,6 +102,19 @@ grep -Fq 'OnlyShowIn=XFCE;' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/xdg/autostart/shreeos-dock.desktop"
 grep -Fq 'shreeos-logo.svg' \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/lightdm/lightdm-gtk-greeter.conf.d/50-shreeos.conf"
+for logo in shreeos-logo.svg shreeos-logo-black.svg shreeos-logo-white.svg shreeos-logo-adaptive.svg; do
+  test -s "$REPO_ROOT/branding/logo/$logo"
+done
+test -s "$REPO_ROOT/branding/icons/shreeos-app.svg"
+test -s "$REPO_ROOT/branding/scripts/export-logo-pngs.py"
+test -s "$REPO_ROOT/branding/logo/png/shreeos-logo-16.png"
+test -s "$REPO_ROOT/branding/logo/png/shreeos-logo-512.png"
+test -s "$REPO_ROOT/branding/logo/png/shreeos-logo-black-256.png"
+test -s "$REPO_ROOT/branding/logo/png/shreeos-logo-white-256.png"
+test -s "$REPO_ROOT/branding/logo/png/shreeos-app-256.png"
+test -s "$REPO_ROOT/branding/logo/png/shreeos-installer-256.png"
+grep -Fq 'productIcon: shreeos-app.svg' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/calamares/branding/shreeos/branding.desc"
 grep -Fxq desktop \
   "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/shreeos/image-profile"
 plasma_packages="$CONFIG_DIR/profiles/plasma/package-lists/shreeos-plasma.list.chroot"
@@ -146,6 +163,10 @@ grep -Fq 'shreeos-trash.desktop' "$plasma_includes/etc/skel/.config/plank/dock1/
 grep -Fq 'shreeos-installer.desktop' "$plasma_includes/etc/skel/.config/plank/dock1/launchers/installer.dockitem"
 grep -Fq 'org.kde.plasma.appmenu' "$REPO_ROOT/desktop/plasma/layout.js"
 test -s "$plasma_includes/usr/local/bin/shreeos-plasma-dock"
+grep -Fq 'Hidden=true' \
+  "$plasma_includes/etc/skel/.config/autostart/calamares-desktop-icon.desktop"
+grep -Fq 'Disable upstream installer shortcut creation' \
+  "$plasma_includes/etc/skel/.config/autostart/calamares-desktop-icon.desktop"
 grep -Fq 'org.kde.discover.desktop' "$plasma_includes/etc/skel/.config/plank/dock1/launchers/software.dockitem"
 grep -Fq 'org.kde.plasma.kickoff' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
 grep -Fq 'org.kde.plasma.digitalclock' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"

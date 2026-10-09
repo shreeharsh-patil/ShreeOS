@@ -1,11 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="title">
-  <title id="title">ShreeOS installer</title>
+  <title id="title">ShreeOS application icon</title>
   <rect x="4" y="4" width="120" height="120" rx="29" fill="#181c25"/>
   <g transform="scale(.5)" fill="#f5f7fb">
     <path d="M52 144a76 76 0 0 1 152 0z" fill="#4f91ff"/>
     <path d="M28 150c36-13 68-13 100 0s63 13 100-1" fill="none" stroke="#f5f7fb" stroke-width="17" stroke-linecap="round"/>
     <path d="M50 191c28-10 52-10 78-1s50 10 78 1" fill="none" stroke="#f5f7fb" stroke-width="15" stroke-linecap="round"/>
   </g>
-  <circle cx="96" cy="96" r="21" fill="#2878ff" stroke="#181c25" stroke-width="4"/>
-  <path d="M96 83v23m-9-9 9 9 9-9" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Disable upstream installer shortcut creation
+Hidden=true
+X-GNOME-Autostart-enabled=false

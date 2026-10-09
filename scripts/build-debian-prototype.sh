@@ -108,14 +108,19 @@ if [ "$LIVE_PROFILE" = desktop ]; then
   mkdir -p \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/shreeos/branding" \
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps" \
     "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos"
+  cp "$REPO_ROOT"/branding/logo/*.svg \
+    "$BUILD_DIR/config/includes.chroot/usr/share/shreeos/branding/"
   cp "$REPO_ROOT"/branding/wallpapers/*.svg \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/"
-  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+  cp "$REPO_ROOT/branding/icons/shreeos-app.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos.svg"
+  cp "$REPO_ROOT/branding/icons/shreeos-app.svg" \
+    "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/shreeos-app.svg"
   cp "$PROFILE_SOURCE/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-control-center.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/"
   cp "$REPO_ROOT/branding/icons/installer.svg" \
@@ -158,6 +163,7 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/local/bin" \
     "$BUILD_DIR/config/includes.chroot/usr/local/libexec" \
     "$BUILD_DIR/config/includes.chroot/usr/share/applications" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/shreeos/branding" \
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps" \
     "$BUILD_DIR/config/includes.chroot/usr/share/polkit-1/actions" \
     "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos"
@@ -171,8 +177,12 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos-installer.svg"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/polkit-1/actions/org.shreeos.installer.policy" \
     "$BUILD_DIR/config/includes.chroot/usr/share/polkit-1/actions/"
+  cp "$REPO_ROOT"/branding/logo/*.svg \
+    "$BUILD_DIR/config/includes.chroot/usr/share/shreeos/branding/"
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
     "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/"
+  cp "$REPO_ROOT/branding/icons/shreeos-app.svg" \
+    "$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/shreeos-app.svg"
   mkdir -p \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps"
@@ -181,7 +191,7 @@ if [ "$LIVE_PROFILE" = plasma ]; then
   cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/"
   mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps"
-  cp "$REPO_ROOT/branding/logo/shreeos-logo.svg" \
+  cp "$REPO_ROOT/branding/icons/shreeos-app.svg" \
     "$BUILD_DIR/config/includes.chroot/usr/share/icons/hicolor/scalable/apps/shreeos.svg"
   rsvg-convert --width=256 --height=256 \
     --output="$BUILD_DIR/config/includes.chroot/usr/share/pixmaps/shreeos-logo.png" \

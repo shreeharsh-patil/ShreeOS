@@ -98,6 +98,7 @@ jobs:
           python3 tests/prototype/test-system-features.py
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
+          python3 tests/prototype/test-branding.py
           python3 -m py_compile \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-control-center \
             prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-search \

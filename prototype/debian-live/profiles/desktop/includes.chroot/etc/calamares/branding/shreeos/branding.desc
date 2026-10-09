@@ -25,7 +25,7 @@ navigation: widget
 
 images:
     productLogo: shreeos-logo.svg
-    productIcon: shreeos-logo.svg
+    productIcon: shreeos-app.svg
 
 style:
     SidebarBackground: "#17202d"
