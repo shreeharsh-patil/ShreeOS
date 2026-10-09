@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Successful Release workflow run ID with a certified ISO build
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,7 +30,7 @@ env:
 
 jobs:
   build:
-    if: ${{ github.ref == 'refs/heads/master' && contains(github.event.head_commit.message, '[release]') }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && contains(github.event.head_commit.message, '[release]') }}
     name: Build and certify current Plasma prototype
     runs-on: ubuntu-24.04
     container:
@@ -79,6 +85,7 @@ jobs:
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
           python3 tests/prototype/test-branding.py
+          bash tests/release/test-release-asset-split.sh
 
       - name: Build ShreeOS Plasma ISO
         run: |
@@ -110,6 +117,7 @@ jobs:
           rm -rf release-assets
           mkdir release-assets
           cp "out/$RELEASE_ISO" "$checksum" "$packages" "$build_info" out/SHA256SUMS release-assets/
+          bash scripts/prepare-release-assets.sh release-assets "$RELEASE_ISO"
           echo "artifact_name=shreeos-plasma-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Upload certified release bundle
@@ -132,7 +140,7 @@ jobs:
           retention-days: 14
 
   publish:
-    if: ${{ needs.build.result == 'success' }}
+    if: ${{ github.event_name == 'push' && needs.build.result == 'success' }}
     name: Publish ShreeOS Plasma prerelease
     needs: build
     runs-on: ubuntu-24.04
@@ -151,7 +159,14 @@ jobs:
         run: |
           cd release-assets
           sha256sum -c SHA256SUMS
-          sha256sum -c "$RELEASE_ISO.sha256"
+          if [[ -f "$RELEASE_ISO" ]]; then
+            sha256sum -c "$RELEASE_ISO.sha256"
+          else
+            test -s "$RELEASE_ISO.parts.sha256"
+            actual="$(cat -- "$RELEASE_ISO".part-* | sha256sum | awk '{print $1}')"
+            expected="$(awk 'NR == 1 {print $1}' "$RELEASE_ISO.sha256")"
+            test "$actual" = "$expected"
+          fi
 
       - name: Publish GitHub prerelease
         env:
@@ -166,6 +181,8 @@ jobs:
 
           This prerelease is published only after the current Debian Live Plasma image passes configuration checks, package/asset validation, checksum validation, BIOS boot, UEFI boot, and automated desktop screenshot gates.
 
+          If the ISO is split into numbered parts for GitHub's per-file upload limit, use the included reassembly instructions and verify the reconstructed ISO with its SHA-256 file.
+
           It is a prototype prerelease, not the final stable ShreeOS release. Installer-to-disk, installed-system update/recovery, broader hardware coverage, and interactive acceptance remain release blockers for a stable version.
           EOF
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -178,3 +195,120 @@ jobs:
               --notes-file release-notes.md \
               --prerelease
           fi
+
+  republish-tested-build:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    name: Repackage and publish an already-tested Plasma build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN: ${{ inputs.source_run }}
+    steps:
+      - name: Check out current release tooling
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a successful certified build from master
+        run: |
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" > source-run.json
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN/jobs" > source-jobs.json
+          python3 - <<'PY'
+          import json, os, re
+          run = json.load(open('source-run.json'))
+          jobs = json.load(open('source-jobs.json'))['jobs']
+          assert run['status'] == 'completed'
+          assert run['path'] == '.github/workflows/release.yml'
+          assert run['event'] == 'push' and run['head_branch'] == 'master'
+          assert re.fullmatch(r'[0-9a-f]{40}', run['head_sha'])
+          assert run['repository']['full_name'] == os.environ['GH_REPO']
+          build = [j for j in jobs if j['name'] == 'Build and certify current Plasma prototype']
+          assert len(build) == 1 and build[0]['conclusion'] == 'success'
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f"SOURCE_SHA={run['head_sha']}\n")
+              env.write(f"ARTIFACT_NAME=shreeos-plasma-release-{run['id']}-{run['run_attempt']}\n")
+              env.write(f"RELEASE_TAG=v0.3.0-prototype-build.{run['id']}\n")
+          PY
+          SOURCE_SHA="$(jq -r .head_sha source-run.json)"
+          git merge-base --is-ancestor "$SOURCE_SHA" "$GITHUB_SHA"
+
+      - name: Download the certified build artifact
+        run: gh run download "$SOURCE_RUN" --repo "$GH_REPO" --name "$ARTIFACT_NAME" --dir assets
+
+      - name: Verify and prepare release assets
+        run: |
+          asset_prefix="${RELEASE_ISO%-amd64.iso}"
+          test -s "assets/$RELEASE_ISO"
+          test -s "assets/$RELEASE_ISO.sha256"
+          test -s "assets/${asset_prefix}-packages.txt"
+          test -s "assets/${asset_prefix}-build-info.txt"
+          (cd assets && sha256sum -c SHA256SUMS && sha256sum -c "$RELEASE_ISO.sha256")
+          bash scripts/prepare-release-assets.sh assets "$RELEASE_ISO"
+          (
+            cd assets
+            sha256sum -c SHA256SUMS
+            if [[ -f "$RELEASE_ISO" ]]; then
+              sha256sum -c "$RELEASE_ISO.sha256"
+            else
+              test -s "$RELEASE_ISO.parts.sha256"
+              actual="$(cat -- "$RELEASE_ISO".part-* | sha256sum | awk '{print $1}')"
+              expected="$(awk 'NR == 1 {print $1}' "$RELEASE_ISO.sha256")"
+              test "$actual" = "$expected"
+            fi
+          )
+
+      - name: Publish the verified prototype prerelease
+        run: |
+          cat > release-notes.md <<EOF
+          ShreeOS ${RELEASE_VERSION} Plasma preview.
+
+          Source commit: ${SOURCE_SHA}
+          Build: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}
+
+          This prototype passed configuration checks, package/asset validation, checksum validation, BIOS boot, UEFI boot, and automated desktop screenshot gates.
+
+          If the ISO is split into numbered parts for GitHub's per-file upload limit, use the included reassembly instructions and verify the reconstructed ISO with its SHA-256 file.
+
+          This is a development prerelease, not a production or dual-boot-certified release. Installer-to-disk, installed-system update/recovery, broader hardware coverage, and interactive acceptance remain release blockers for a stable version.
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" assets/* --clobber
+            gh release edit "$RELEASE_TAG" --title "ShreeOS ${RELEASE_VERSION} (build ${SOURCE_RUN})" --notes-file release-notes.md --prerelease
+          else
+            gh release create "$RELEASE_TAG" assets/* \
+              --target "$SOURCE_SHA" \
+              --title "ShreeOS ${RELEASE_VERSION} (build ${SOURCE_RUN})" \
+              --notes-file release-notes.md \
+              --prerelease
+          fi
+
+      - name: Verify published assets and provenance
+        run: |
+          release_api="$(gh release view "$RELEASE_TAG" --json apiUrl --jq .apiUrl)"
+          gh api "$release_api" > published-release.json
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          release = json.load(open('published-release.json'))
+          local = {p.name: p for p in Path('assets').iterdir() if p.is_file()}
+          assert release['tag_name'] == os.environ['RELEASE_TAG']
+          assert release['target_commitish'] == os.environ['SOURCE_SHA']
+          assert release['prerelease'] and not release['draft']
+          assert {a['name'] for a in release['assets']} == set(local)
+          for asset in release['assets']:
+              path = local[asset['name']]
+              with path.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert asset['state'] == 'uploaded' and asset['size'] == path.stat().st_size
+              assert asset['size'] < 2_147_483_648
+              assert asset['digest'] == f'sha256:{digest}'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"Published and verified {release['tag_name']} from {os.environ['SOURCE_SHA']} with {len(local)} assets.\n")
+          PY

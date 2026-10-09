@@ -148,6 +148,11 @@ jobs:
           set -Eeuo pipefail
           bash tests/base-system/test-base-system-contract.sh --static
 
+      - name: Test size-limited release ISO packaging
+        run: |
+          set -Eeuo pipefail
+          bash tests/release/test-release-asset-split.sh
+
       - name: Verify file permissions
         run: |
           set -Eeuo pipefail
