@@ -18,7 +18,7 @@ defaults:
 
 env:
   RELEASE_VERSION: 0.3.0-prototype
-  RELEASE_TAG: v0.3.0-prototype
+  RELEASE_TAG: v0.3.0-prototype-build.${{ github.run_id }}
   RELEASE_PROFILE: plasma
   RELEASE_ISO: shreeos-0.3.0-prototype-plasma-amd64.iso
 
@@ -78,6 +78,7 @@ jobs:
           python3 tests/prototype/test-system-features.py
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
+          python3 tests/prototype/test-branding.py
 
       - name: Build ShreeOS Plasma ISO
         run: |
@@ -160,17 +161,20 @@ jobs:
           cat > release-notes.md <<EOF
           ShreeOS ${RELEASE_VERSION} Plasma preview.
 
+          Source commit: ${GITHUB_SHA}
+          Build: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
           This prerelease is published only after the current Debian Live Plasma image passes configuration checks, package/asset validation, checksum validation, BIOS boot, UEFI boot, and automated desktop screenshot gates.
 
           It is a prototype prerelease, not the final stable ShreeOS release. Installer-to-disk, installed-system update/recovery, broader hardware coverage, and interactive acceptance remain release blockers for a stable version.
           EOF
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release-assets/* --clobber
-            gh release edit "$RELEASE_TAG" --title "ShreeOS ${RELEASE_VERSION}" --notes-file release-notes.md --prerelease
+            gh release edit "$RELEASE_TAG" --title "ShreeOS ${RELEASE_VERSION} (build ${GITHUB_RUN_ID})" --notes-file release-notes.md --prerelease
           else
             gh release create "$RELEASE_TAG" release-assets/* \
               --target "$GITHUB_SHA" \
-              --title "ShreeOS ${RELEASE_VERSION}" \
+              --title "ShreeOS ${RELEASE_VERSION} (build ${GITHUB_RUN_ID})" \
               --notes-file release-notes.md \
               --prerelease
           fi

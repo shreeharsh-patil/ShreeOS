@@ -63,6 +63,7 @@ The installer launch, dock paths, shortcuts and repository provisioning have
 received fixes; Linux installation and hardware acceptance remain open.
 See [system readiness](docs/SYSTEM-READINESS.md) and
 [feature commands](prototype/debian-live/features/README.md).
+The current source audit is in [docs/audit/2026-10-09-AUDIT.md](docs/audit/2026-10-09-AUDIT.md).
 
 ## Architecture direction
 

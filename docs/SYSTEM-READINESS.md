@@ -80,5 +80,29 @@ It does not include Apple's code, applications, services or proprietary
 animation implementation. Plank is an X11 dock; full Wayland touchpad gesture
 support requires a later native Plasma dock and session migration.
 
+## 2026-10-09 repository audit and identity pass
+
+The current source inventory and implementation blockers are recorded in
+[`docs/audit/2026-10-09-AUDIT.md`](audit/2026-10-09-AUDIT.md). The latest
+master CI result at audit time passed the ISO, lint, and Debian Live Prototype
+workflows, including the scripted BIOS/UEFI Plasma desktop capture. That is
+virtual boot evidence only; Calamares installation, first boot from the
+installed disk, physical hardware, and stable-release acceptance remain open.
+
+The former geometric S logo did not meet the product identity requirement. The
+new ShreeOS sunrise mark has primary, black, white, and adaptive SVGs, PNG
+exports at 16–512px, a system app icon, and a matching installer icon. The
+builder now uses these assets for the KDE icon, Calamares, the greeters, and
+Plymouth/GRUB. Review of the actual 2026-10-08 Plasma QEMU capture also found
+Debian's "Install Debian" desktop shortcut. The Plasma profile now masks the
+upstream shortcut autostart in its new-user template; the ISO test checks that
+the mask is packaged. A rebuilt QEMU capture is still needed to confirm the
+visible shortcut is gone and the new brand renders in the complete boot path.
+
+Local checks on the Windows workspace passed: logo SVG/PNG asset validation,
+Plasma and desktop configuration checks, the Debian prototype config contract,
+shell syntax, and `git diff --check`. The Linux ISO rebuild and QEMU retest
+have not run in this workspace.
+
 Implementation details and build/install commands:
 [system features](../prototype/debian-live/features/README.md).

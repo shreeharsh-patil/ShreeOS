@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">ShreeOS sunrise horizon emblem, adaptive</title>
+  <g fill="currentColor">
+    <path d="M52 144a76 76 0 0 1 152 0z"/>
+    <path d="M28 150c36-13 68-13 100 0s63 13 100-1" fill="none" stroke="currentColor" stroke-width="17" stroke-linecap="round"/>
+    <path d="M50 191c28-10 52-10 78-1s50 10 78 1" fill="none" stroke="currentColor" stroke-width="15" stroke-linecap="round"/>
+  </g>
+  <path d="M52 144a76 76 0 0 1 152 0z" fill="#4f91ff"/>
+</svg>

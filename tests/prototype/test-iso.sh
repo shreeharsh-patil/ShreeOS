@@ -72,7 +72,11 @@ if [ "$PROFILE" = desktop ]; then
     etc/xdg/autostart/shreeos-dock.desktop \
     etc/xdg/autostart/shreeos-session-setup.desktop \
     usr/local/bin/shreeos-dock-session \
-    usr/share/backgrounds/shreeos/shreeos-calm-dark.png; do
+    usr/share/backgrounds/shreeos/shreeos-calm-dark.png \
+    usr/share/icons/hicolor/scalable/apps/shreeos.svg \
+    usr/share/shreeos/branding/shreeos-logo-black.svg \
+    usr/share/shreeos/branding/shreeos-logo-white.svg \
+    usr/share/shreeos/branding/shreeos-logo-adaptive.svg; do
     if ! grep -Fq "squashfs-root/$desktop_asset" <<<"$image_contents"; then
       echo "Desktop ISO is missing ShreeOS desktop asset: $desktop_asset" >&2
       exit 1
@@ -102,6 +106,7 @@ if [ "$PROFILE" = plasma ]; then
     etc/systemd/system/shreeos-sddm-live-autologin.service \
     etc/skel/.config/autostart/shreeos-plasma-defaults.desktop \
     etc/skel/.config/autostart/shreeos-plasma-dock.desktop \
+    etc/skel/.config/autostart/calamares-desktop-icon.desktop \
     etc/skel/.config/plank/dock1/launchers/files.dockitem \
     usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js \
     usr/local/bin/shreeos-plasma-first-login \
@@ -142,6 +147,7 @@ if [ "$PROFILE" = plasma ]; then
     etc/calamares/settings.conf \
     etc/calamares/branding/shreeos/branding.desc \
     etc/calamares/branding/shreeos/shreeos-logo.svg \
+    etc/calamares/branding/shreeos/shreeos-app.svg \
     usr/share/sddm/themes/shreeos/Main.qml \
     usr/share/sddm/themes/shreeos/theme.conf \
     usr/local/sbin/shreeos-sddm-live-autologin \
@@ -151,7 +157,10 @@ if [ "$PROFILE" = plasma ]; then
     "usr/share/konsole/ShreeOS Light.colorscheme" \
     usr/share/flatpak/remotes.d/flathub.flatpakrepo \
     usr/share/pixmaps/shreeos-logo.png \
-    usr/share/icons/hicolor/scalable/apps/shreeos.svg; do
+    usr/share/icons/hicolor/scalable/apps/shreeos.svg \
+    usr/share/shreeos/branding/shreeos-logo-black.svg \
+    usr/share/shreeos/branding/shreeos-logo-white.svg \
+    usr/share/shreeos/branding/shreeos-logo-adaptive.svg; do
     if ! grep -Fq "squashfs-root/$image_path" <<<"$image_contents"; then
       echo "Plasma ISO is missing ShreeOS desktop asset: $image_path" >&2
       exit 1
