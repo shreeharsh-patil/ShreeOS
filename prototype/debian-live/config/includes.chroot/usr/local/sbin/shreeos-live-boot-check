@@ -28,6 +28,20 @@ if ! apt-get check; then
   fail 'apt/dpkg package database check failed'
 fi
 log 'apt/dpkg package database is healthy'
+
+if [ -f /etc/shreeos/unified-image ]; then
+  if ! dpkg-query -W -f='${Status}\n' shreeos-native-tools 2>/dev/null |
+      grep -Fxq 'install ok installed'; then
+    fail 'the native ShreeOS Debian package is not installed'
+  fi
+  if ! systemctl is-active --quiet shreeos-hardware.service; then
+    fail 'native read-only hardware daemon is not active'
+  fi
+  if ! shreedctl ping >/dev/null 2>&1; then
+    fail 'native ShreeOS hardware service IPC ping failed'
+  fi
+  log 'ShreeOS native hardware daemon and IPC are working'
+fi
 if ! lsblk -ndo TYPE | grep -Fxq disk; then
   fail 'the live kernel did not detect the QEMU storage device'
 fi
