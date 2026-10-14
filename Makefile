@@ -146,6 +146,11 @@ test-prototype: test-prototype-config
 
 SHREEOS_LIVE_PROFILE ?= base
 
+# Unified KDE image: preserves the native experimental pipeline separately.
+.PHONY: unified-iso
+unified-iso:
+	SHREEOS_UNIFIED=1 SHREEOS_LIVE_PROFILE=plasma bash scripts/build-debian-prototype.sh
+
 .PHONY: graphics
 graphics: toolchain base-system
 	bash scripts/graphics-readiness.sh --strict
