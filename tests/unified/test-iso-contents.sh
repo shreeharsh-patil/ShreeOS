@@ -21,7 +21,7 @@ for item in \
   usr/bin/shreeos-sysmon \
   usr/bin/shreedctl \
   usr/libexec/shreeos/shreed \
-  lib/systemd/system/shreeos-hardware.service \
+  usr/lib/systemd/system/shreeos-hardware.service \
   usr/bin/shreeos-native-status \
   usr/share/applications/shreeos-native-monitor.desktop \
   usr/share/doc/shreeos-native-tools/lpm/src/main.c \

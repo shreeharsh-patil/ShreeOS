@@ -33,8 +33,8 @@ cp -a "$root/hardware" "$temp/hardware"
 make -C "$temp/hardware" CROSS_COMPILE= LDFLAGS= all
 install -Dm0755 "$temp/hardware/shreed" "$pkg/usr/libexec/shreeos/shreed"
 install -Dm0755 "$temp/hardware/shreedctl" "$pkg/usr/bin/shreedctl"
-mkdir -p "$pkg/usr/share/applications" "$pkg/lib/systemd/system"
-cat > "$pkg/lib/systemd/system/shreeos-hardware.service" <<'SERVICE'
+mkdir -p "$pkg/usr/share/applications" "$pkg/usr/lib/systemd/system"
+cat > "$pkg/usr/lib/systemd/system/shreeos-hardware.service" <<'SERVICE'
 [Unit]
 Description=ShreeOS native read-only hardware inventory service
 Documentation=file:/usr/share/doc/shreeos-native-tools/README.md

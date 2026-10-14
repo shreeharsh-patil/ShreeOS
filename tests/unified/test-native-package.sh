@@ -19,7 +19,7 @@ test -x "$dir/extracted/usr/bin/shreeos-native-status"
 test -x "$dir/extracted/usr/bin/shreeos-verify-installed"
 test -x "$dir/extracted/usr/bin/shreedctl"
 test -x "$dir/extracted/usr/libexec/shreeos/shreed"
-test -f "$dir/extracted/lib/systemd/system/shreeos-hardware.service"
+test -f "$dir/extracted/usr/lib/systemd/system/shreeos-hardware.service"
 test -f "$dir/extracted/usr/lib/systemd/system-preset/60-shreeos-native.preset"
 "$dir/extracted/usr/libexec/shreeos/shreed" --unknown >/dev/null 2>&1 && {
   echo "Native daemon accepted invalid argument" >&2; exit 1;
