@@ -27,6 +27,7 @@ CONTROL
 install -Dm0755 "$root/scripts/shreeinfo" "$pkg/usr/bin/shreeinfo"
 install -Dm0755 "$root/desktop/apps/shree-sysmon.sh" "$pkg/usr/bin/shreeos-sysmon"
 install -Dm0755 "$root/scripts/shreeos-native-status" "$pkg/usr/bin/shreeos-native-status"
+install -Dm0755 "$root/scripts/shreeos-verify-installed" "$pkg/usr/bin/shreeos-verify-installed"
 mkdir -p "$pkg/usr/share/applications"
 cat > "$pkg/usr/share/applications/shreeos-native-monitor.desktop" <<'DESKTOP'
 [Desktop Entry]

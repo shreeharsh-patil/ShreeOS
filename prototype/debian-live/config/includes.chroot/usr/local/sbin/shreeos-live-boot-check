@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+# Calamares installs this script too; skip live-account checks on installed disks.
+if [ ! -e /run/live/medium ]; then
+  exit 0
+fi
+
 log() {
   printf 'SHREEOS_BOOT_CHECK: %s\n' "$*" > /dev/console
 }

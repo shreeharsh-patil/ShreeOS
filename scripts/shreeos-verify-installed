@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Run INSIDE the installed VM with the installation ISO detached.
+set -Eeuo pipefail
+fail() { printf 'SHREEOS_INSTALLED_FAIL: %s\n' "$*" >&2; exit 1; }
+[ ! -e /run/live/medium ] || fail 'Still booted from Live media'
+grep -Fxq 'ID=shreeos' /etc/os-release || fail 'Wrong OS identity'
+grep -Fxq 'VERSION_ID="0.4.0"' /etc/os-release || fail 'Wrong ShreeOS version'
+grep -Fxq 'edition=unified' /etc/shreeos/unified-image || fail 'Unified image marker missing'
+fs_type="$(findmnt -n -o FSTYPE /)" || fail 'Root filesystem could not be identified'
+case "$fs_type" in overlay|squashfs|tmpfs) fail "Root filesystem is still live ($fs_type)" ;; esac
+test -s /boot/grub/grub.cfg || fail 'Installed GRUB configuration missing'
+dpkg-query -W -f='${Status}\n' shreeos-native-tools 2>/dev/null |
+  grep -Fxq 'install ok installed' || fail 'Native tools package not installed'
+command -v shreeinfo >/dev/null || fail 'Native system info missing'
+command -v shreeos-sysmon >/dev/null || fail 'Native monitor missing'
+systemctl is-active --quiet NetworkManager.service || fail 'NetworkManager is inactive'
+systemctl is-active --quiet sddm.service || fail 'SDDM is inactive'
+if [ -n "$(dpkg --audit)" ]; then fail 'dpkg reports incomplete installations'; fi
+printf 'SHREEOS_INSTALLED_OK: %s architecture, %s root, GRUB/SDDM/network/native tools verified\n' \
+  "$(uname -m)" "$fs_type"

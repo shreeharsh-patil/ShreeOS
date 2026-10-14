@@ -46,3 +46,13 @@ filesystem integrity. Save the evidence and fix failures.
 
 The CI workflow uploads development artifacts only. Publishing to GitHub
 Releases must remain blocked until the above acceptance checks pass.
+
+## Installed VM acceptance
+
+In separate BIOS and UEFI disposable VMs, install the unified image using
+Calamares to a 25 GB virtual disk. Shut down, eject the ISO, cold-boot from
+the installed disk, log in to Plasma and run `shreeos-verify-installed`.
+It must print `SHREEOS_INSTALLED_OK`. Check that the ShreeOS native system
+monitor launches, and verify network connectivity and signed APT updates.
+Capture installation, boot and desktop screenshots. This is not automated
+by the current CI and must pass before publishing a public release.
