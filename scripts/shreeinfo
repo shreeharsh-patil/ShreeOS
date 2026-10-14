@@ -26,9 +26,18 @@ KERNEL=$(uname -r 2>/dev/null || echo "6.18")
 ARCH=$(uname -m 2>/dev/null || echo "x86_64")
 HOSTNAME=$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo "shreeos")
 UPTIME=$(uptime -p 2>/dev/null | sed 's/^up //' || echo "just booted")
-PACKAGES=$(ls -1 /var/lib/lpm/installed 2>/dev/null | wc -l || echo "19")
+if command -v dpkg-query >/dev/null 2>&1 && [ -r /var/lib/dpkg/status ]; then
+  PACKAGES="$(dpkg-query -W -f='${binary:Package}\n' 2>/dev/null | wc -l)"
+  PKG_MANAGER="dpkg/APT"
+else
+  PACKAGES="$(find /var/lib/lpm/installed -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)"
+  PKG_MANAGER="lpm"
+fi
 SHELL_NAME=$(basename "${SHELL:-/bin/bash}")
-WM="dwm (Shree Desktop)"
+WM="${XDG_CURRENT_DESKTOP:-}"
+if [ -z "$WM" ]; then
+  if [ -n "${KDE_FULL_SESSION:-}" ]; then WM="KDE Plasma"; else WM="dwm / console"; fi
+fi
 
 MEM_TOTAL=$(awk '/MemTotal:/ {printf "%.0fM", $2/1024}' /proc/meminfo 2>/dev/null || echo "4096M")
 MEM_AVAIL=$(awk '/MemAvailable:/ {printf "%.0fM", $2/1024}' /proc/meminfo 2>/dev/null || echo "2048M")
@@ -41,7 +50,7 @@ echo "    |  .---.  |        OS:           ${DISTRO_NAME} (${ARCH})"
 echo "    |  |   |  |        Host:         ${HOSTNAME}"
 echo "     \\  .-.  /         Kernel:       Linux ${KERNEL}"
 echo "      \`-----'          Uptime:       ${UPTIME}"
-echo "     /       \\         Packages:     ${PACKAGES} (lpm)"
+echo "     /       \\         Packages:     ${PACKAGES} (${PKG_MANAGER})"
 echo "    |  .---.  |        Shell:        ${SHELL_NAME}"
 echo "    |  |   |  |        Desktop:      ${WM}"
 echo "     \\  .-.  /         Processor:    ${CPU_MODEL}"

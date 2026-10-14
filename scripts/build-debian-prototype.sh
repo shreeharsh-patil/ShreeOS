@@ -6,6 +6,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 CONFIG_SOURCE="$REPO_ROOT/prototype/debian-live"
 source "$CONFIG_SOURCE/versions.conf"
 LIVE_PROFILE="${SHREEOS_LIVE_PROFILE:-base}"
+SHREEOS_UNIFIED="${SHREEOS_UNIFIED:-0}"
+case "$SHREEOS_UNIFIED" in 0|1) ;; *) echo "SHREEOS_UNIFIED must be 0 or 1" >&2; exit 2 ;; esac
+if [ "$SHREEOS_UNIFIED" = 1 ] && [ "$LIVE_PROFILE" != plasma ]; then
+  echo "Unified ShreeOS requires SHREEOS_LIVE_PROFILE=plasma" >&2
+  exit 2
+fi
 
 case "$LIVE_PROFILE" in
   base|desktop|plasma) ;;
@@ -243,6 +249,26 @@ if [ "$LIVE_PROFILE" = plasma ]; then
   chmod 0755 "$BUILD_DIR/config/hooks/live/9001-shreeos-sddm.hook.chroot"
 fi
 
+if [ "$SHREEOS_UNIFIED" = 1 ]; then
+  # One boot/runtime stack. Native tools are an ordinary Debian package;
+  # incompatible native init, LPM executable and libraries remain separate.
+  bash "$REPO_ROOT/scripts/package-unified-native.sh" "$BUILD_DIR/config/packages.chroot"
+  cat > "$BUILD_DIR/config/includes.chroot/etc/os-release" <<'OS_RELEASE'
+NAME="ShreeOS"
+PRETTY_NAME="ShreeOS 0.4.0 (Debian 13 Trixie)"
+ID=shreeos
+ID_LIKE=debian
+VERSION="0.4.0"
+VERSION_ID="0.4.0"
+VERSION_CODENAME=trixie
+HOME_URL="https://github.com/shreeharsh-patil/ShreeOS"
+SUPPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues"
+BUG_REPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues/new"
+OS_RELEASE
+  printf 'edition=unified\nnative_package=shreeos-native-tools\n' \
+    > "$BUILD_DIR/config/includes.chroot/etc/shreeos/unified-image"
+fi
+
 if [ "$LIVE_PROFILE" = desktop ]; then
   LIVE_TARGET=graphical
   LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-configuration,lightdm,hooks
@@ -258,6 +284,12 @@ mkdir -p "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.ta
 ln -sfn ../shreeos-boot-check.service \
   "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-boot-check.service"
 
+ISO_APPLICATION="ShreeOS Base Prototype"
+ISO_VOLUME="SHREEOS_PROTO"
+if [ "$SHREEOS_UNIFIED" = 1 ]; then
+  ISO_APPLICATION="ShreeOS 0.4.0 Unified Desktop"
+  ISO_VOLUME="SHREEOS_040"
+fi
 SNAPSHOT="https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/"
 SECURITY_SNAPSHOT="https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/"
 LIVE_APPEND="boot=live components live-config.components=${LIVE_APPEND_COMPONENTS} live-config.hooks=filesystem live-config.hostname=shreeos live-config.username=shree live-config.user-fullname=ShreeOS-Live-User live-config.locales=en_US.UTF-8 console=tty0 console=ttyS0,115200n8"
@@ -289,10 +321,10 @@ if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then LIVE_APPE
     --mirror-chroot-security "$SECURITY_SNAPSHOT" \
     --mirror-binary https://deb.debian.org/debian/ \
     --mirror-binary-security https://security.debian.org/debian-security/ \
-    --iso-application "ShreeOS Base Prototype" \
+    --iso-application "$ISO_APPLICATION" \
     --iso-preparer "ShreeOS build pipeline" \
     --iso-publisher "ShreeOS" \
-    --iso-volume "SHREEOS_PROTO" \
+    --iso-volume "$ISO_VOLUME" \
     --bootappend-live "$LIVE_APPEND"
   lb build
 )
@@ -321,6 +353,12 @@ OUTPUT_SUFFIX=""
 if [ "$LIVE_PROFILE" = desktop ]; then OUTPUT_SUFFIX="-desktop"; fi
 if [ "$LIVE_PROFILE" = plasma ]; then OUTPUT_SUFFIX="-plasma"; fi
 OUTPUT_PREFIX="$OUT_DIR/shreeos-${PROTOTYPE_VERSION}${OUTPUT_SUFFIX}"
+if [ "$SHREEOS_UNIFIED" = 1 ]; then
+  OUTPUT_PREFIX="$OUT_DIR/ShreeOS-0.4.0"
+  grep -Eq "^shreeos-native-tools[[:space:]]" "$PACKAGES_SOURCE" || {
+    echo "Unified ISO is missing native tools Debian package" >&2; exit 1;
+  }
+fi
 ISO_OUT="${OUTPUT_PREFIX}-amd64.iso"
 cp -- "$ISO_SOURCE" "$ISO_OUT"
 cp -- "$PACKAGES_SOURCE" "${OUTPUT_PREFIX}-packages.txt"
@@ -333,4 +371,7 @@ for package in live-build debootstrap xorriso squashfs-tools \
   dpkg-query -W -f='${Package}=${Version}\n' "$package" \
     >> "${OUTPUT_PREFIX}-build-info.txt"
 done
-printf 'Built %s prototype ISO: %s\n' "$LIVE_PROFILE" "$ISO_OUT"
+if [ "$SHREEOS_UNIFIED" = 1 ]; then
+  printf 'edition=unified\nnative_package=shreeos-native-tools\n' >> "${OUTPUT_PREFIX}-build-info.txt"
+fi
+printf 'Built %s ISO: %s\n' "$LIVE_PROFILE" "$ISO_OUT"
