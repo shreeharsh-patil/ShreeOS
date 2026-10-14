@@ -11,6 +11,7 @@ on:
       - 'scripts/shreeos-verify-installed'
       - 'desktop/apps/shree-sysmon.sh'
       - 'pkgmanager/**'
+      - 'hardware/**'
       - 'prototype/debian-live/**'
       - 'branding/**'
       - 'themes/plasma/**'
@@ -55,6 +56,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             live-build=1:20250505+deb13u1 \
+            gcc make libc6-dev \
             debootstrap xorriso squashfs-tools dpkg-dev \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
             qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
@@ -64,6 +66,7 @@ jobs:
           set -Eeuo pipefail
           bash tests/unified/test-native-package.sh
           bash tests/unified/test-install-boundaries.sh
+          make -C hardware test
           bash tests/prototype/test-config.sh
           python3 tests/prototype/test-plasma-config.py
           python3 tests/prototype/test-system-features.py

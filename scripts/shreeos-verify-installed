@@ -13,6 +13,9 @@ dpkg-query -W -f='${Status}\n' shreeos-native-tools 2>/dev/null |
   grep -Fxq 'install ok installed' || fail 'Native tools package not installed'
 command -v shreeinfo >/dev/null || fail 'Native system info missing'
 command -v shreeos-sysmon >/dev/null || fail 'Native monitor missing'
+command -v shreedctl >/dev/null || fail 'Native hardware IPC client missing'
+systemctl is-active --quiet shreeos-hardware.service || fail 'Native hardware service inactive'
+shreedctl ping >/dev/null || fail 'Native hardware IPC failed'
 systemctl is-active --quiet NetworkManager.service || fail 'NetworkManager is inactive'
 systemctl is-active --quiet sddm.service || fail 'SDDM is inactive'
 if [ -n "$(dpkg --audit)" ]; then fail 'dpkg reports incomplete installations'; fi
