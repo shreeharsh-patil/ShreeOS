@@ -92,4 +92,4 @@ cp "$root/pkgmanager/spec/lpkg-format.md" "$doc/lpm/spec/"
 install -m0644 "$root/docs/UNIFIED-IMAGE.md" "$doc/README.md"
 install -m0644 "$root/LICENSE" "$doc/LICENSE"
 dpkg-deb --root-owner-group --build "$pkg" "$dest/shreeos-native-tools_0.4.0_amd64.deb"
-dpkg-deb --field "$dest/shreeos-native-tools_0.4.0_all.deb" Package Version
+dpkg-deb --field "$dest/shreeos-native-tools_0.4.0_amd64.deb" Package Version
