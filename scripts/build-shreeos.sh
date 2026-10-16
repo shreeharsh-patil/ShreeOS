@@ -96,15 +96,23 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ -r /etc/os-release ]; then
-  # shellcheck source=/dev/null
-  . /etc/os-release
-  if [ "${ID:-}" != debian ]; then
+  # Keep the host's generic VERSION field out of this shell. On Debian it is
+  # "13 (trixie)", and sourcing os-release here would replace ShreeOS's 0.4.0
+  # value before the ISO name is passed to the prototype builder.
+  host_metadata="$(
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    printf '%s\n%s\n' "${ID:-}" "${VERSION_CODENAME:-}"
+  )"
+  host_id="${host_metadata%%$'\n'*}"
+  host_version_codename="${host_metadata#*$'\n'}"
+  if [ "$host_id" != debian ]; then
     printf 'Unsupported build host: %s %s. Build the unified image on Debian 13 (Trixie).\n' \
-      "${ID:-unknown}" "${VERSION_CODENAME:-unknown}" >&2
+      "${host_id:-unknown}" "${host_version_codename:-unknown}" >&2
     environment_ok=0
-  elif [ "${VERSION_CODENAME:-}" != trixie ]; then
+  elif [ "$host_version_codename" != trixie ]; then
     printf 'Warning: building on Debian %s, but the pinned snapshot is Trixie; the build may not resolve.\n' \
-      "${VERSION_CODENAME:-unknown}" >&2
+      "${host_version_codename:-unknown}" >&2
   fi
 fi
 
