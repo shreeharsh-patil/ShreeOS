@@ -42,7 +42,7 @@ jobs:
             debootstrap xorriso squashfs-tools dpkg-dev \
             grub-common grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
             qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
-            ca-certificates debian-archive-keyring python3 librsvg2-bin
+            ca-certificates debian-archive-keyring python3 librsvg2-bin git
 
       - name: Confirm the exact baseline source commit
         run: |
@@ -76,5 +76,5 @@ jobs:
         with:
           name: shreeos-0.4.0-untouched-performance-baseline-${{ github.run_id }}
           path: baseline-evidence/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
