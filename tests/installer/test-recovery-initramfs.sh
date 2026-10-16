@@ -37,10 +37,11 @@ gzip -t -- "$ARCHIVE"
 gzip -dc -- "$ARCHIVE" | cpio --list --quiet > "$TEST_ROOT/archive.list"
 
 for required in init etc/passwd etc/shadow home root proc boot mnt; do
-  grep -Fxq "./$required" "$TEST_ROOT/archive.list" || {
+  if ! grep -Fxq "./$required" "$TEST_ROOT/archive.list" &&
+     ! grep -Fxq "$required" "$TEST_ROOT/archive.list"; then
     echo "Recovery initramfs is missing required system entry: $required" >&2
     exit 1
-  }
+  fi
 done
 for forbidden in home/alice/.ssh/id_rsa root/.ssh/id_rsa proc/1/cmdline boot/bzImage mnt/disk-image; do
   if grep -Fxq "./$forbidden" "$TEST_ROOT/archive.list"; then
