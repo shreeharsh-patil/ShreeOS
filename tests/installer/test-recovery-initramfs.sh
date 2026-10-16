@@ -44,7 +44,8 @@ for required in init etc/passwd etc/shadow home root proc boot mnt; do
   fi
 done
 for forbidden in home/alice/.ssh/id_rsa root/.ssh/id_rsa proc/1/cmdline boot/bzImage mnt/disk-image; do
-  if grep -Fxq "./$forbidden" "$TEST_ROOT/archive.list"; then
+  if grep -Fxq "./$forbidden" "$TEST_ROOT/archive.list" ||
+     grep -Fxq "$forbidden" "$TEST_ROOT/archive.list"; then
     echo "Recovery initramfs contains excluded personal or mounted data: $forbidden" >&2
     exit 1
   fi
