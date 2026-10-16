@@ -174,10 +174,20 @@ shreeos-force:
 prototype-debian:
 	SHREEOS_LIVE_PROFILE="$(SHREEOS_LIVE_PROFILE)" bash scripts/build-debian-prototype.sh
 
+# Aggregate local configuration gate. This mirrors the checks the release
+# pipeline runs in its static stage, so a local run catches the same drift
+# instead of a subset of it.
 test-prototype-config:
+	bash scripts/verify-version.sh
+	bash tests/release/test-version-contract.sh
 	bash tests/prototype/test-config.sh
 	python3 tests/prototype/test-plasma-config.py
+	python3 tests/prototype/test-desktop-config.py
 	python3 tests/prototype/test-system-features.py
+	python3 tests/prototype/test-performance-config.py
+	python3 tests/prototype/test-search-calculator.py
+	python3 tests/prototype/test-workspace-overview.py
+	python3 tests/prototype/test-branding.py
 
 test-prototype: test-prototype-config
 	@test -n "$(ISO)" || { echo "Usage: make test-prototype ISO=path/to/prototype.iso" >&2; exit 2; }
