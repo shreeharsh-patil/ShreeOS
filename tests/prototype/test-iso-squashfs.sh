@@ -28,10 +28,10 @@ trap 'rm -rf -- "$TEST_DIR"' EXIT
 SQUASHFS="$TEST_DIR/filesystem.squashfs"
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.squashfs "$SQUASHFS" >/dev/null
 unsquashfs -s "$SQUASHFS" >/dev/null
-unsquashfs -t "$SQUASHFS" >/dev/null || {
-  echo 'SquashFS data-block integrity check failed' >&2
+if ! unsquashfs -no-progress -d "$TEST_DIR/extracted" "$SQUASHFS" >/dev/null; then
+  echo 'Full SquashFS extraction/integrity check failed' >&2
   exit 1
-}
+fi
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.packages "$TEST_DIR/packages.txt" >/dev/null
 [ -s "$TEST_DIR/packages.txt" ] || { echo 'ISO has no live package manifest' >&2; exit 1; }
 
