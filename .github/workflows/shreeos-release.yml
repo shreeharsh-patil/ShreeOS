@@ -118,6 +118,7 @@ jobs:
         run: |
           bash tests/prototype/test-config.sh
           bash tests/release/test-version-contract.sh
+          python3 tests/release/test-unified-artifact-cache.py
           bash tests/smoke/test-verify-stage.sh
 
       - name: Desktop, Plasma, calculator and overview configuration tests

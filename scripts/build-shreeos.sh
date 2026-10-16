@@ -162,7 +162,14 @@ inputs_hash() {
 verify_existing_artifact() {
   [ -s "$ISO_PATH" ] || return 1
   [ -s "$CHECKSUM_PATH" ] || return 1
+  [ -s "$PACKAGES_PATH" ] || return 1
+  [ -s "$BUILD_INFO_PATH" ] || return 1
+  [ -s "$MANIFEST_PATH" ] || return 1
   (cd "$OUT_DIR" && sha256sum --check --status "$ISO_NAME.sha256") || return 1
+  python3 "$REPO_ROOT/scripts/verify-unified-artifact.py" \
+    "$ISO_PATH" "$CHECKSUM_PATH" "$PACKAGES_PATH" "$BUILD_INFO_PATH" \
+    "$MANIFEST_PATH" "$VERSION" "$UNIFIED_PROFILE" "$SHREEOS_ARCH" \
+    "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" || return 1
   # A file that is not a bootable hybrid image is not a valid cached artifact.
   xorriso -indev "$ISO_PATH" -toc >/dev/null 2>&1 || return 1
   xorriso -osirrox on -indev "$ISO_PATH" -extract /live/filesystem.squashfs /dev/null >/dev/null 2>&1 || return 1
