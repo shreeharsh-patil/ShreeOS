@@ -398,6 +398,13 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn('install -D "../measurement-harness/$unit_path" "$unit_path"', baseline)
         self.assertIn("expected_changes=", baseline)
 
+    def test_performance_comparison_requires_matching_probe_hashes(self):
+        report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
+        self.assertIn('baseline_probe_sha256=', report)
+        self.assertIn('baseline_probe_service_sha256=', report)
+        self.assertIn('[ "$baseline_probe_sha256" != "$probe_sha256" ]', report)
+        self.assertIn('[ "$baseline_probe_service_sha256" != "$probe_service_sha256" ]', report)
+
     def test_boot_time_parser_handles_minute_and_second_values(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
         minutes_case = probe.index("    *min*)")

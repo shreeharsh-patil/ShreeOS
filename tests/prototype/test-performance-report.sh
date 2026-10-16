@@ -98,6 +98,8 @@ cmp -s "$SERVICE_SOURCE" "$TEST_DIR/probe.service" || {
   echo 'Image uses a different performance probe unit than the measurement harness; baseline and candidate would not be comparable.' >&2
   exit 1
 }
+probe_sha256="$(sha256sum "$PROBE_SOURCE" | awk '{print $1}')"
+probe_service_sha256="$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
 
 qemu-img create -q -f raw "$TARGET_DISK" 2G
 
@@ -163,8 +165,8 @@ grep 'SHREEOS_PERF ' "$SERIAL" | sed 's/^.*SHREEOS_PERF //' |
   printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
   printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
   printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network\n'
-  printf '# probe_sha256=%s\n' "$(sha256sum "$PROBE_SOURCE" | awk '{print $1}')"
-  printf '# probe_service_sha256=%s\n' "$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
+  printf '# probe_sha256=%s\n' "$probe_sha256"
+  printf '# probe_service_sha256=%s\n' "$probe_service_sha256"
   awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms)$/ {
     print $1 "\t" $2
   }' "$TEST_DIR/metrics.tsv"
@@ -233,6 +235,8 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
   baseline_source_commit="$(awk -F= '$1 == "# source_commit" { print $2; exit }' "$BASELINE")"
   baseline_iso_sha256="$(awk -F= '$1 == "# iso_sha256" { print $2; exit }' "$BASELINE")"
   baseline_conditions="$(awk -F= '$1 == "# conditions" { print $2; exit }' "$BASELINE")"
+  baseline_probe_sha256="$(awk -F= '$1 == "# probe_sha256" { print $2; exit }' "$BASELINE")"
+  baseline_probe_service_sha256="$(awk -F= '$1 == "# probe_service_sha256" { print $2; exit }' "$BASELINE")"
   if [ "$baseline_source_commit" != "$UNTOUCHED_BASELINE_COMMIT" ]; then
     printf 'Baseline provenance must name untouched source %s.\n' \
       "$UNTOUCHED_BASELINE_COMMIT" >&2
@@ -246,6 +250,18 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
   fi
   if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,no-network' ]; then
     printf 'Baseline was not measured under the controlled release conditions.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  if ! [[ "$baseline_probe_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ "$baseline_probe_sha256" != "$probe_sha256" ]; then
+    printf 'Baseline performance probe hash does not match this candidate.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  if ! [[ "$baseline_probe_service_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ "$baseline_probe_service_sha256" != "$probe_service_sha256" ]; then
+    printf 'Baseline performance probe service hash does not match this candidate.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))
   fi
