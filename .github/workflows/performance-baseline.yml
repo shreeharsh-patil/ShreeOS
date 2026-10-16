@@ -62,6 +62,7 @@ jobs:
         run: |
           mkdir -p baseline-evidence
           cd baseline-source
+          SHREEOS_VERSION_FILE="$PWD/VERSION" \
           GITHUB_SHA=9313ebb042cf71bb148441037940b130d49920d1 \
             bash scripts/build-shreeos.sh 2>&1 | tee ../baseline-evidence/build.log
           iso="out/shreeos($(tr -d '[:space:]' < VERSION)).iso"
