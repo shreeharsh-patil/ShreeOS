@@ -147,6 +147,64 @@ class PlasmaConfigTests(unittest.TestCase):
             self.assertEqual(custom.read_text(), "user-owned layout")
             self.assertEqual(marker.read_text(), "existing profile")
 
+    def test_first_login_waits_for_the_restarted_shell_before_setting_wallpaper(self):
+        shell = shutil.which("sh")
+        if os.name == "nt":
+            shell = str(Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/bin/bash.exe")
+        self.assertTrue(shell and Path(shell).is_file(), "A POSIX shell is required")
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            calls = folder / "calls"
+            config_home = folder / "config"
+            stubs = {
+                "sleep": '#!/bin/sh\nprintf "sleep\\n" >> "$CALLS"\n',
+                "pgrep": (
+                    '#!/bin/sh\n'
+                    'count_file="$CALLS.pgrep-count"\n'
+                    'count=0; [ ! -f "$count_file" ] || count="$(cat "$count_file")"\n'
+                    'count=$((count + 1)); printf "%s\\n" "$count" > "$count_file"\n'
+                    'printf "pgrep:%s\\n" "$count" >> "$CALLS"\n'
+                    'case "$count" in 1|2) echo 4321 ;; 4*) echo 5678 ;; esac\n'
+                ),
+                "plasma-apply-lookandfeel": (
+                    '#!/bin/sh\nprintf "lookandfeel\\n" >> "$CALLS"\n'
+                    'mkdir -p "$XDG_CONFIG_HOME"\n'
+                    'printf "plugin=org.kde.plasma.systemtray\\nplugin=org.kde.plasma.kickoff\\n'
+                    'plugin=org.kde.plasma.appmenu\\nplugin=org.kde.plasma.digitalclock\\n" '
+                    '> "$XDG_CONFIG_HOME/plasma-org.kde.plasma.desktop-appletsrc"\n'
+                ),
+                "plasma-apply-desktoptheme": '#!/bin/sh\nprintf "desktoptheme\\n" >> "$CALLS"\n',
+                "shreeos-theme": '#!/bin/sh\nprintf "theme\\n" >> "$CALLS"\n',
+                "plasma-apply-wallpaperimage": '#!/bin/sh\nprintf "wallpaper\\n" >> "$CALLS"\n',
+                "plasma-apply-colorscheme": '#!/bin/sh\nprintf "colorscheme\\n" >> "$CALLS"\n',
+                "kwriteconfig6": '#!/bin/sh\nprintf "kwriteconfig\\n" >> "$CALLS"\n',
+                "dpkg-query": '#!/bin/sh\nexit 0\n',
+                "dconf": '#!/bin/sh\nprintf "dconf\\n" >> "$CALLS"\n',
+                "notify-send": '#!/bin/sh\nprintf "notify\\n" >> "$CALLS"\n',
+            }
+            for name, body in stubs.items():
+                stub = folder / name
+                stub.write_text(body)
+                stub.chmod(0o755)
+            separator = ";" if os.name == "nt" else ":"
+            script_text = (INCLUDES / "usr/local/bin/shreeos-plasma-first-login").read_text()
+            self.assertEqual(script_text.count("/usr/local/bin/shreeos-theme"), 1)
+            script = folder / "shreeos-plasma-first-login"
+            script.write_text(script_text.replace("/usr/local/bin/shreeos-theme", "shreeos-theme"))
+            env = dict(os.environ, PATH=folder.as_posix() + separator + os.environ["PATH"],
+                       HOME=(folder / "home").as_posix(), XDG_CONFIG_HOME=config_home.as_posix(),
+                       SHREEOS_PLASMA_FIRST_LOGIN_SERVICE="1", CALLS=calls.as_posix())
+            result = subprocess.run([shell, script.as_posix()],
+                                    env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            trace = calls.read_text().splitlines()
+            self.assertLess(trace.index("pgrep:1"), trace.index("lookandfeel"))
+            self.assertLess(trace.index("lookandfeel"), trace.index("pgrep:2"))
+            self.assertLess(trace.index("pgrep:2"), trace.index("pgrep:3"))
+            self.assertLess(trace.index("pgrep:3"), trace.index("pgrep:4"))
+            self.assertLess(trace.index("pgrep:4"), trace.index("pgrep:5"))
+            self.assertLess(trace.index("pgrep:5"), trace.index("wallpaper"))
+
 
 if __name__ == "__main__":
     unittest.main()
