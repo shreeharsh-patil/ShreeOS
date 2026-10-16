@@ -147,7 +147,13 @@ wait "$emulator_pid" || true
 if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
   echo 'The image never completed its performance probe.' >&2
   tail -n 60 "$SERIAL" >&2 || true
-  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  if [ -n "$QEMU_LOG_DIR" ]; then
+    cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+    if [ -s "$TEST_DIR/qemu.log" ]; then
+      cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+    fi
+  fi
+  tail -n 60 "$TEST_DIR/qemu.log" >&2 || true
   exit 1
 fi
 
