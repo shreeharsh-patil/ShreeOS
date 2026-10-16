@@ -24,9 +24,9 @@ mkdir -p "${marker%/*}"
 # the shell before it has loaded the ShreeOS panel and dock.
 sleep 10
 uid="$(id -u)"
-shell_pid_before="$(pgrep -u "$uid" -x plasmashell | head -n 1 || true)"
 apply_attempt=0
 while [ "$apply_attempt" -lt 30 ]; do
+  shell_pid_before="$(pgrep -u "$uid" -x plasmashell | head -n 1 || true)"
   if plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout; then
     break
   fi

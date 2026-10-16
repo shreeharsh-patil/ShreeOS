@@ -164,7 +164,7 @@ class PlasmaConfigTests(unittest.TestCase):
                     'count=0; [ ! -f "$count_file" ] || count="$(cat "$count_file")"\n'
                     'count=$((count + 1)); printf "%s\\n" "$count" > "$count_file"\n'
                     'printf "pgrep:%s\\n" "$count" >> "$CALLS"\n'
-                    'case "$count" in 1|2) echo 4321 ;; 4*) echo 5678 ;; esac\n'
+                    'case "$count" in 1|2) echo 4321 ;; 4|6|7) echo 5678 ;; *) exit 1 ;; esac\n'
                 ),
                 "plasma-apply-lookandfeel": (
                     '#!/bin/sh\nprintf "lookandfeel\\n" >> "$CALLS"\n'
@@ -203,7 +203,9 @@ class PlasmaConfigTests(unittest.TestCase):
             self.assertLess(trace.index("pgrep:2"), trace.index("pgrep:3"))
             self.assertLess(trace.index("pgrep:3"), trace.index("pgrep:4"))
             self.assertLess(trace.index("pgrep:4"), trace.index("pgrep:5"))
-            self.assertLess(trace.index("pgrep:5"), trace.index("wallpaper"))
+            self.assertLess(trace.index("pgrep:5"), trace.index("pgrep:6"))
+            self.assertLess(trace.index("pgrep:6"), trace.index("pgrep:7"))
+            self.assertLess(trace.index("pgrep:7"), trace.index("wallpaper"))
 
 
 if __name__ == "__main__":
