@@ -38,25 +38,20 @@ if [ "$apply_attempt" -ge 30 ]; then
   exit 1
 fi
 
-# Plasma's resetLayout operation can stop the shell it was called from. The
-# user-service drop-in restarts it. Wait for the original process to exit before
-# treating a plasmashell process as ready; otherwise the wallpaper update can
-# race the old shell's shutdown and be lost. The interval grows so a restart
-# this quick is not preceded by a burst of one-second pgrep spawns.
+# Plasma's resetLayout operation can restart plasmashell. Give the original
+# process a short, bounded window to exit so a replacement can start before the
+# wallpaper update. Some Plasma versions apply the layout in-place, so keeping
+# the same PID must not prevent the first-login setup from completing.
 shell_waited=0
 shell_interval=1
 if [ -n "$shell_pid_before" ]; then
-  while [ "$shell_waited" -lt 30 ] &&
+  while [ "$shell_waited" -lt 10 ] &&
     pgrep -u "$uid" -x plasmashell | grep -Fxq "$shell_pid_before"; do
     sleep "$shell_interval"
     shell_waited=$((shell_waited + shell_interval))
     shell_interval=$((shell_interval * 2))
-    [ "$shell_interval" -le 5 ] || shell_interval=5
+    [ "$shell_interval" -le 3 ] || shell_interval=3
   done
-  if pgrep -u "$uid" -x plasmashell | grep -Fxq "$shell_pid_before"; then
-    logger -t shreeos-plasma-first-login 'Plasma shell did not exit after applying ShreeOS desktop defaults'
-    exit 1
-  fi
 fi
 
 shell_waited=0
