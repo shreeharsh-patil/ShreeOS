@@ -83,12 +83,12 @@ shreeos_fetch_candidates() {
 # Downloads a source tarball and verifies it before publishing it into the
 # shared source cache. Invalid cached/downloaded files are never retained.
 shreeos_fetch() {
-  local url="$1" dest="$2" expected_sha="$3"
+  local url="$1" dest="$2" expected_sha="${3,,}"
   local actual_sha tmp candidate_url
   local -a candidate_urls=()
   local -A seen=()
 
-  if [[ ! "${expected_sha}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+  if [[ ! "${expected_sha}" =~ ^[0-9a-f]{64}$ ]] || [[ "${expected_sha}" =~ ^0{64}$ ]]; then
     shreeos_die "Invalid SHA-256 pin for $(basename "${dest}"): ${expected_sha}"
   fi
 

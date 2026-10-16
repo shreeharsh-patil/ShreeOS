@@ -1,6 +1,15 @@
-[Compositing]
-# QEMU's live virtio display does not reliably support Plasma effects.
-Enabled=false
+# ShreeOS KWin defaults.
+#
+# Compositing is deliberately not forced here. KWin keeps its own backend
+# selection and driver safety checks, so an installed system with a supported GPU
+# gets normal, working compositing (rounded surfaces, balanced translucency and
+# blur). Forcing Enabled=false — as earlier revisions did — left every install
+# with a permanently uncomposited desktop.
+#
+# The live ISO is the one environment whose virtio display cannot render Plasma
+# effects reliably. That single case is handled at runtime for the live session
+# only, by /usr/local/bin/shreeos-plasma-first-login, which keys off the live
+# medium mount instead of changing the installed default.
 
 [Effect-blur]
 BlurStrength=8

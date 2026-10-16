@@ -1,8 +1,11 @@
+#define _GNU_SOURCE
 #include "shreed.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -115,6 +118,27 @@ static void test_concurrent_connections(const char *socket_path) {
     TEST("concurrent client requests", statuses == 12);
 }
 
+static int reject_unprivileged_peer(const char *socket_path) {
+    struct passwd *nobody = getpwnam("nobody");
+    pid_t child;
+    int status;
+
+    if (!nobody) return 0;
+    child = fork();
+    if (child < 0) return 0;
+    if (child == 0) {
+        char response[SHREED_RESPONSE_MAX + 1];
+        if (setgroups(0, NULL) != 0 || setgid(nobody->pw_gid) != 0 ||
+            setuid(nobody->pw_uid) != 0) {
+            _exit(2);
+        }
+        _exit(exchange(socket_path, "{\"action\":\"ping\"}", response,
+                       sizeof(response)) != 0 ? 0 : 1);
+    }
+    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 0;
+    return WEXITSTATUS(status) == 0;
+}
+
 int main(int argc, char **argv) {
     char socket_path[108];
     char log_path[108];
@@ -153,6 +177,11 @@ int main(int argc, char **argv) {
          strstr(response, "\"subscription\":\"hardware") != NULL);
     TEST("invalid JSON produces structured error", exchange(socket_path, "{\"secret\":\"do-not-log\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"code\":\"INVALID_REQUEST") != NULL);
+    if (geteuid() == 0) {
+        TEST("nonmember local peer is denied", reject_unprivileged_peer(socket_path));
+    } else {
+        printf("SKIP: nonmember local peer authorization test requires root\n");
+    }
 
     malformed_fd = connect_socket(socket_path);
     malformed_length = htonl(SHREED_MAX_MESSAGE + 1);

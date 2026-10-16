@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ] || [ ! -s "$1" ]; then
-  echo "Usage: test-iso.sh PATH_TO_PROTOTYPE_ISO [base|desktop|plasma]" >&2
+  echo "Usage: test-iso.sh PATH_TO_SHREEOS_ISO [base|desktop|plasma]" >&2
+  echo "  The unified release image is out/shreeos(VERSION).iso (profile: plasma)." >&2
   exit 2
 fi
 ISO="$(realpath "$1")"
@@ -83,6 +84,8 @@ if [ "$PROFILE" = desktop ]; then
     fi
   done
 fi
+# These are the packages shipped by the default Plasma profile. Office and
+# multimedia suites are opt-in toolsets and are checked separately.
 if [ "$PROFILE" = plasma ]; then
   for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
     sddm-theme-breeze breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
@@ -90,7 +93,6 @@ if [ "$PROFILE" = plasma ]; then
     plasma-nm plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
     fonts-inter x11-xserver-utils kdialog libnotify-bin plymouth plymouth-themes calamares calamares-settings-debian \
     plank dconf-cli kate gwenview okular kcalc \
-    libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-kf6 vlc \
     cups print-manager simple-scan orca speech-dispatcher-espeak-ng onboard \
     power-profiles-daemon systemd-zram-generator fwupd plasma-discover-backend-fwupd; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
@@ -107,6 +109,10 @@ if [ "$PROFILE" = plasma ]; then
     etc/skel/.config/autostart/shreeos-plasma-defaults.desktop \
     etc/skel/.config/autostart/shreeos-plasma-dock.desktop \
     etc/skel/.config/autostart/calamares-desktop-icon.desktop \
+    etc/skel/.config/baloofilerc \
+    etc/skel/.config/kwinrc \
+    usr/local/bin/shreeos-power \
+    usr/share/applications/shreeos-power.desktop \
     etc/skel/.config/plank/dock1/launchers/files.dockitem \
     usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js \
     usr/local/bin/shreeos-plasma-first-login \

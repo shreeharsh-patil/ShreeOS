@@ -25,7 +25,10 @@ bool shreed_authorize_peer(int fd, uid_t *peer_uid) {
     if (credentials.pid <= 0 || credentials.uid == (uid_t)-1 || credentials.gid == (gid_t)-1) return false;
     if (credentials.uid == 0 || credentials.uid == getuid()) { if (peer_uid) *peer_uid = credentials.uid; return true; }
     hardware_group = getgrnam("shree-hardware");
-    if (!hardware_group) { if (peer_uid) *peer_uid = credentials.uid; return true; }
+    if (!hardware_group) {
+        errno = ENOENT;
+        return false;
+    }
     if (credentials.gid == hardware_group->gr_gid) { if (peer_uid) *peer_uid = credentials.uid; return true; }
     snprintf(proc_path, sizeof(proc_path), "/proc/%ld/status", (long)credentials.pid);
     status = fopen(proc_path, "r");

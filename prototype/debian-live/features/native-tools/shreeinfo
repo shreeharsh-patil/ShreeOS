@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+os_name='ShreeOS'
+version='unknown'
+if [ -r /etc/os-release ]; then
+  . /etc/os-release
+  os_name="${PRETTY_NAME:-$os_name}"
+  version="${VERSION_ID:-$version}"
+  case "${VERSION:-}" in
+    'ShreeOS '*) version="${VERSION#ShreeOS }" ;;
+  esac
+fi
+
+kernel="$(uname -r 2>/dev/null || printf 'unknown')"
+arch="$(uname -m 2>/dev/null || printf 'unknown')"
+host="$(hostname 2>/dev/null || printf 'unknown')"
+uptime="$(uptime -p 2>/dev/null | sed 's/^up //' || printf 'unknown')"
+packages="$(dpkg-query -W -f='${binary:Package}\n' 2>/dev/null | wc -l | tr -d ' ')"
+desktop="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-Console}}"
+memory_total="$(awk '/^MemTotal:/ {printf "%.0f MiB", $2/1024}' /proc/meminfo 2>/dev/null || printf 'unknown')"
+memory_available="$(awk '/^MemAvailable:/ {printf "%.0f MiB", $2/1024}' /proc/meminfo 2>/dev/null || printf 'unknown')"
+cpu_model="$(awk -F': ' '/model name/ {print $2; exit}' /proc/cpuinfo 2>/dev/null || printf 'unknown')"
+
+printf '\n  ShreeOS %s\n' "$version"
+printf '  %-18s %s\n' 'System:' "$os_name" 'Host:' "$host" 'Architecture:' "$arch" \
+  'Kernel:' "$kernel" 'Uptime:' "$uptime" 'Desktop:' "$desktop" \
+  'Packages:' "$packages (dpkg)" 'Processor:' "${cpu_model:-unknown}" \
+  'Memory:' "${memory_available:-unknown} available / ${memory_total:-unknown}"
+printf '\n'

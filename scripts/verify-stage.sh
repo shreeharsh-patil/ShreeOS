@@ -99,6 +99,7 @@ case "$stage" in
   rootfs)
     require_exec "$SHREEOS_STAGE_ROOT/sbin/init" "rootfs PID 1"
     require_exec "$SHREEOS_STAGE_ROOT/usr/bin/system-update.sh" "transactional system updater"
+    require_exec "$SHREEOS_STAGE_ROOT/usr/bin/shreeos-build-recovery-initramfs" "protected recovery initramfs builder"
     require_file "$SHREEOS_BUILD_DIR/initramfs.cpio.gz" "rootfs initramfs"
     require_file "$SHREEOS_STAGE_ROOT/etc/shreeos/profile" "rootfs profile marker"
     [ "$(tr -d '\r\n' < "$SHREEOS_STAGE_ROOT/etc/shreeos/profile")" = "$profile" ] || \
@@ -122,10 +123,47 @@ case "$stage" in
     require_file "$iso.sha256" "ISO checksum"
     manifest="${iso%.iso}-manifest.json"
     require_file "$manifest" "ISO manifest"
-    grep -Fq '"profile": "'"$profile"'"' "$manifest" || \
-      shreeos_die "ISO manifest profile does not match active profile: $profile"
-    grep -Fq '"commit": "' "$manifest" || shreeos_die "ISO manifest has no commit provenance"
-    grep -Fq '"sha256": "' "$manifest" || shreeos_die "ISO manifest has no SHA-256 provenance"
+    python3 - "$iso" "$iso.sha256" "$manifest" "$profile" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+
+iso_path, checksum_path, manifest_path = map(Path, sys.argv[1:4])
+profile = sys.argv[4]
+try:
+    lines = checksum_path.read_text(encoding="ascii").splitlines()
+    if len(lines) != 1:
+        raise ValueError("checksum sidecar must contain exactly one entry")
+    # GNU sha256sum marks binary-mode filenames with `*`; Git Bash uses that
+    # form on Windows, while Linux's default text mode uses two spaces.
+    match = re.fullmatch(r"([0-9a-fA-F]{64}) (?: |\*)(.+)", lines[0])
+    if not match or match.group(2) != iso_path.name:
+        raise ValueError("checksum sidecar does not name the ISO")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest root must be a JSON object")
+    with iso_path.open("rb") as stream:
+        actual_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+    size_bytes = iso_path.stat().st_size
+except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+    raise SystemExit(f"ISO cache verification failed: {error}")
+
+if not re.fullmatch(r"[0-9a-f]{40}", manifest.get("commit", "")):
+    raise SystemExit("ISO manifest has no valid commit provenance")
+if manifest.get("profile") != profile:
+    raise SystemExit(f"ISO manifest profile does not match active profile: {profile}")
+if manifest.get("iso") != iso_path.name:
+    raise SystemExit("ISO manifest names a different image")
+if match.group(1).lower() != actual_sha256 or manifest.get("sha256") != actual_sha256:
+    raise SystemExit("ISO SHA-256 does not match the sidecar and manifest")
+manifest_size = manifest.get("size_bytes")
+if (isinstance(manifest_size, bool) or not isinstance(manifest_size, int)
+        or manifest_size != size_bytes):
+    raise SystemExit("ISO size does not match the manifest")
+print(f"ISO cache bytes and provenance verified: {iso_path.name}")
+PY
     ;;
   *)
     shreeos_die "Usage: verify-stage.sh <toolchain|base-system|kernel|packages|desktop|rootfs|iso>"

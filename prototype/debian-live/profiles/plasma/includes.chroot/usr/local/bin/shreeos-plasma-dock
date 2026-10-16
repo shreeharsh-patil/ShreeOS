@@ -24,15 +24,24 @@ exec >>"$log_dir/shreeos-plasma-dock.log" 2>&1
 
 # The initial layout reset restarts plasmashell. Start the dock afterwards so
 # its reserved screen area is not lost during that reset.
-attempt=0
+#
+# Wait with a growing interval instead of a fixed one-second poll. The previous
+# loop spawned pgrep once per second for up to three minutes on every single
+# login, which was a measurable idle-CPU cost on low-end hardware and the kind
+# of busy-wait this desktop deliberately avoids.
+uid="$(id -u)"
+waited=0
+interval=1
 while [ ! -e "$config_home/shreeos/plasma-defaults-applied" ] ||
-  ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; do
-  if [ "$attempt" -ge 180 ]; then
+  ! pgrep -u "$uid" -x plasmashell >/dev/null 2>&1; do
+  if [ "$waited" -ge 180 ]; then
     logger -t shreeos-plasma-dock 'Desktop defaults did not finish; dock startup deferred'
     exit 1
   fi
-  sleep 1
-  attempt=$((attempt + 1))
+  sleep "$interval"
+  waited=$((waited + interval))
+  interval=$((interval * 2))
+  [ "$interval" -le 5 ] || interval=5
 done
 
 marker="$config_home/shreeos/plasma-dock-v1"

@@ -6,20 +6,25 @@ if [ "$#" -ne 1 ]; then
   exit 2
 fi
 root="$(cd "$(dirname "$0")/.." && pwd -P)"
+version="$(tr -d '[:space:]' < "$root/VERSION")"
+if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+  echo "Invalid ShreeOS package version: $version" >&2
+  exit 1
+fi
 mkdir -p "$1"
 dest="$(cd "$1" && pwd -P)"
 temp="$(mktemp -d)"
 trap 'rm -rf -- "$temp"' EXIT
 pkg="$temp/shreeos-native-tools"
 mkdir -p "$pkg/DEBIAN"
-cat > "$pkg/DEBIAN/control" <<'CONTROL'
+cat > "$pkg/DEBIAN/control" <<CONTROL
 Package: shreeos-native-tools
-Version: 0.4.0
+Version: $version
 Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: ShreeOS Developers <noreply@users.noreply.github.com>
-Depends: bash, coreutils, procps, konsole, systemd
+Depends: adduser, bash, coreutils, procps, konsole, systemd
 Description: Compatible native ShreeOS utilities for the unified Plasma image
  Read-only system information, the original terminal system monitor, and
  historical LPM package source; Debian continues to own system packages.
@@ -62,6 +67,12 @@ if [ "${1:-}" = configure ] && command -v deb-systemd-helper >/dev/null 2>&1; th
   deb-systemd-helper unmask shreeos-hardware.service >/dev/null 2>&1 || true
   deb-systemd-helper enable shreeos-hardware.service
 fi
+if ! getent group shree-hardware >/dev/null 2>&1; then
+  addgroup --system --quiet shree-hardware
+fi
+if getent passwd shree >/dev/null 2>&1; then
+  adduser --quiet shree shree-hardware
+fi
 exit 0
 POSTINST
 chmod 0755 "$pkg/DEBIAN/postinst"
@@ -91,5 +102,6 @@ cp "$root/pkgmanager/src/"*.c "$root/pkgmanager/src/"*.h "$root/pkgmanager/src/M
 cp "$root/pkgmanager/spec/lpkg-format.md" "$doc/lpm/spec/"
 install -m0644 "$root/docs/UNIFIED-IMAGE.md" "$doc/README.md"
 install -m0644 "$root/LICENSE" "$doc/LICENSE"
-dpkg-deb --root-owner-group --build "$pkg" "$dest/shreeos-native-tools_0.4.0_amd64.deb"
-dpkg-deb --field "$dest/shreeos-native-tools_0.4.0_amd64.deb" Package Version
+package="$dest/shreeos-native-tools_${version}_amd64.deb"
+dpkg-deb --root-owner-group --build "$pkg" "$package"
+dpkg-deb --field "$package" Package Version

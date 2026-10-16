@@ -1,0 +1,15 @@
+# ShreeOS release performance targets, enforced by
+# tests/prototype/test-performance-report.sh against the SHREEOS_PERF metrics the
+# live image writes to its console.
+#
+# Columns: metric<TAB>limit<TAB>comparison<TAB>provenance
+#
+# These are requirements, not measurements. No untouched-build baseline is
+# committed yet, so Stage E deliberately fails until a baseline is reviewed and
+# committed. The candidate must improve idle memory or CPU by 20%, unless the
+# untouched image already meets both absolute limits.
+desktop_ready	1	min	Plasma, KWin and the single configured dock must be ready before idle sampling
+pss_available	1	min	per-process proportional set size is read from /proc/PID/smaps_rollup
+mem_used_mib	850	max	idle memory stretch target for the unified desktop image
+cpu_busy_pct	2	max	sustained idle CPU, measured from /proc/stat over a 30 s window
+units_failed	0	max	a failed unit at idle is a defect, not a budget

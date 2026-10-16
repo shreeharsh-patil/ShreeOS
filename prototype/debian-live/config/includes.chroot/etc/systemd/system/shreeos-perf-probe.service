@@ -1,0 +1,23 @@
+[Unit]
+Description=ShreeOS live boot performance probe
+Documentation=https://github.com/shreeharsh-patil/ShreeOS/tree/master/docs
+# Live media only. After installation /run/live/medium does not exist, so this
+# unit is a no-op on every installed system and costs nothing at boot.
+ConditionPathExists=/run/live/medium
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/shreeos-perf-probe
+StandardOutput=journal+console
+StandardError=journal+console
+# Measurement must not distort the thing it measures.
+Nice=19
+CPUSchedulingPolicy=batch
+IOSchedulingClass=idle
+TimeoutStartSec=300
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

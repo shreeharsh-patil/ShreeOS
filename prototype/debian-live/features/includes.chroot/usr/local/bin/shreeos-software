@@ -3,7 +3,7 @@ set -eu
 
 usage() {
   echo 'Usage: shreeos-software list | show BUNDLE | install BUNDLE'
-  echo 'Bundles: developer, security, creative'
+  echo 'Bundles: developer, security, creative, office, multimedia'
 }
 action="${1:-list}"
 case "$action" in
@@ -13,7 +13,7 @@ case "$action" in
 esac
 bundle="$2"
 case "$bundle" in
-  developer|security|creative) ;;
+  developer|security|creative|office|multimedia) ;;
   *) echo "Unknown software bundle: $bundle" >&2; exit 2 ;;
 esac
 

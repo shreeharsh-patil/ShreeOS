@@ -1,0 +1,54 @@
+#!/bin/sh
+set -eu
+
+target="${1:-1.1.1.1}"
+tls_host="${2:-}"
+valid_host() {
+  case "$1" in ''|-*) return 1 ;; esac
+  printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9_.:-]+$'
+}
+valid_host "$target" || { echo 'Target must be a hostname or IP address.' >&2; exit 2; }
+if [ -n "$tls_host" ]; then
+  valid_host "$tls_host" || { echo 'TLS host must be a hostname or IP address.' >&2; exit 2; }
+fi
+
+section() { printf '\n-- %s --\n' "$1"; }
+printf 'ShreeOS network diagnostics\nTarget: %s\n' "$target"
+
+section 'Interfaces'
+if command -v ip >/dev/null 2>&1; then
+  ip -brief link 2>/dev/null || ip link 2>/dev/null || true
+  ip -brief address 2>/dev/null || ip address 2>/dev/null || true
+else
+  printf 'iproute2 is unavailable.\n'
+fi
+
+section 'Routes'
+if command -v ip >/dev/null 2>&1; then ip route 2>/dev/null || true; fi
+
+section 'DNS'
+if command -v resolvectl >/dev/null 2>&1; then resolvectl status 2>/dev/null || true;
+elif [ -r /etc/resolv.conf ]; then cat /etc/resolv.conf;
+else printf '/etc/resolv.conf is not readable.\n'; fi
+
+section 'Reachability'
+if command -v ping >/dev/null 2>&1; then
+  if ping -c 3 -W 3 -- "$target"; then printf 'Reachability: OK\n';
+  else printf 'Reachability: unavailable or failed.\n'; fi
+else printf 'ping is unavailable.\n'; fi
+
+section 'Listening sockets'
+if command -v ss >/dev/null 2>&1; then ss -lntu 2>/dev/null || true;
+else printf 'ss is unavailable.\n'; fi
+
+section 'Wireless devices'
+if command -v nmcli >/dev/null 2>&1; then
+  nmcli -f DEVICE,TYPE,STATE,CONNECTION device status 2>/dev/null || true
+else printf 'NetworkManager CLI is unavailable.\n'; fi
+
+if [ -n "$tls_host" ]; then
+  section "TLS certificate: $tls_host"
+  if command -v timeout >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1; then
+    timeout 10s openssl s_client -connect "${tls_host}:443" -servername "$tls_host" -brief </dev/null 2>&1 || true
+  else printf 'timeout or openssl is unavailable.\n'; fi
+fi

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Network Diagnostics
+Comment=Inspect interfaces, routes, DNS and listening sockets
+Exec=shree-netdiag
+Icon=network-wired
+Terminal=true
+Categories=System;Network;Utility;
+Keywords=network;diagnostics;wifi;dns;routes;shreeos;

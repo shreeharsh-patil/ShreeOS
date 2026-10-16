@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 from math import cos, pi, sin
 from pathlib import Path
 
@@ -58,11 +59,11 @@ def raster_mark(size: int, color: tuple[int, int, int, int], accent=None):
     return rgba.resize((size, size), Image.Resampling.LANCZOS)
 
 
-def save_mark(stem: str, size: int, color, accent=None):
-    raster_mark(size, color, accent).save(OUTPUT / f"{stem}-{size}.png", optimize=True)
+def save_mark(output: Path, stem: str, size: int, color, accent=None):
+    raster_mark(size, color, accent).save(output / f"{stem}-{size}.png", optimize=True)
 
 
-def save_tile(stem: str, size: int, installer=False):
+def save_tile(output: Path, stem: str, size: int, installer=False):
     image = Image.new("RGBA", (size * SCALE, size * SCALE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     edge = round(size * SCALE * 0.03125)
@@ -86,20 +87,24 @@ def save_tile(stem: str, size: int, installer=False):
         draw.line((mid, top, mid, bottom), fill="white", width=stroke)
         draw.line((mid - overlay_size // 5, bottom - overlay_size // 5, mid, bottom), fill="white", width=stroke)
         draw.line((mid, bottom, mid + overlay_size // 5, bottom - overlay_size // 5), fill="white", width=stroke)
-    image.resize((size, size), Image.Resampling.LANCZOS).save(OUTPUT / f"{stem}-{size}.png", optimize=True)
+    image.resize((size, size), Image.Resampling.LANCZOS).save(output / f"{stem}-{size}.png", optimize=True)
 
 
 def main():
-    OUTPUT.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT,
+                        help="directory for PNG exports (defaults to the checked-in asset directory)")
+    output = parser.parse_args().output_dir
+    output.mkdir(parents=True, exist_ok=True)
     transparent = (255, 255, 255, 255)
     for size in (16, 32, 64, 128, 256, 512):
-        save_mark("shreeos-logo", size, transparent, (79, 145, 255, 255))
-        save_mark("shreeos-logo-black", size, (17, 19, 24, 255))
-        save_mark("shreeos-logo-white", size, (255, 255, 255, 255))
+        save_mark(output, "shreeos-logo", size, transparent, (79, 145, 255, 255))
+        save_mark(output, "shreeos-logo-black", size, (17, 19, 24, 255))
+        save_mark(output, "shreeos-logo-white", size, (255, 255, 255, 255))
     for size in (128, 256, 512):
-        save_tile("shreeos-app", size)
-        save_tile("shreeos-installer", size, installer=True)
-    print(f"Exported transparent ShreeOS logo PNGs to {OUTPUT}")
+        save_tile(output, "shreeos-app", size)
+        save_tile(output, "shreeos-installer", size, installer=True)
+    print(f"Exported transparent ShreeOS logo PNGs to {output}")
 
 
 if __name__ == "__main__":

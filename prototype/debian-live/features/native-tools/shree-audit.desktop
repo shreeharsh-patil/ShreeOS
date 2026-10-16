@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Security Audit
+Comment=Review package integrity, account and service health
+Exec=shree-audit
+Icon=security-high
+Terminal=true
+Categories=System;Security;Utility;
+Keywords=security;audit;integrity;packages;shreeos;

@@ -1,0 +1,91 @@
+#!/bin/sh
+set -eu
+
+# ShreeOS power profiles: Performance, Balanced (default), Battery Saver.
+#
+# Each profile drives only interfaces the running machine actually advertises:
+# power-profiles-daemon for CPU/GPU/platform power, and the ShreeOS desktop
+# motion tool for animation cost. Nothing here writes kernel tunables, touches
+# cpufreq directly, or assumes hardware capabilities that may be absent, so a
+# system that supports none of these still runs — it simply reports that the
+# platform power interface did not confirm the change.
+
+usage() {
+  echo 'Usage: shreeos-power [performance|balanced|battery-saver|--status]' >&2
+}
+
+status() {
+  ppd='unknown'
+  if command -v powerprofilesctl >/dev/null 2>&1; then
+    ppd="$(powerprofilesctl get 2>/dev/null || echo unknown)"
+  else
+    ppd='unavailable'
+  fi
+  motion="$(sed -n 's/^Motion=//p' "${XDG_CONFIG_HOME:-$HOME/.config}/shreeosrc" 2>/dev/null || true)"
+  printf 'power-profiles-daemon=%s\nmotion=%s\n' "$ppd" "${motion:-unknown}"
+}
+
+if [ "$#" -gt 1 ]; then
+  usage
+  exit 2
+fi
+mode="${1:-}"
+if [ "$mode" = '--status' ]; then
+  status
+  exit 0
+fi
+if [ -z "$mode" ]; then
+  mode="$(kdialog --title 'ShreeOS Power' --radiolist 'Choose a power profile:' \
+    performance 'Maximum performance, higher power use' off \
+    balanced 'Balanced performance and battery life' on \
+    battery-saver 'Lower platform power use, fewer visual effects' off)" || exit 0
+fi
+
+case "$mode" in
+  performance) platform=performance; motion=performance ;;
+  balanced) platform=balanced; motion=balanced ;;
+  battery-saver) platform=power-saver; motion=reduced ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+
+# --- Platform power ---------------------------------------------------------
+# Ask power-profiles-daemon first and only if it advertises the profile, so an
+# unsupported request is reported rather than silently accepted.
+platform_ok=0
+if command -v powerprofilesctl >/dev/null 2>&1; then
+  if powerprofilesctl list 2>/dev/null | grep -q -- "$platform"; then
+    if powerprofilesctl set "$platform" 2>/dev/null; then
+      platform_ok=1
+    fi
+  fi
+fi
+
+# --- Desktop motion ---------------------------------------------------------
+# Resolved through PATH so the profile stays testable and so a stripped-down
+# image without the motion tool still switches platform power.
+motion_result='Motion preferences unchanged.'
+motion_tool="$(command -v shreeos-motion || true)"
+if [ -n "$motion_tool" ]; then
+  if "$motion_tool" "$motion" >/dev/null 2>&1; then
+    motion_result="Desktop motion set to $motion."
+  else
+    motion_result='Desktop motion preferences could not be applied automatically.'
+  fi
+fi
+
+if command -v kwriteconfig6 >/dev/null 2>&1; then
+  kwriteconfig6 --file shreeosrc --group Desktop --key PowerProfile "$mode"
+fi
+
+if [ "$platform_ok" -eq 1 ]; then
+  message="Power profile set to $mode."
+else
+  message="Power profile recorded as $mode, but this machine's power interface did not confirm it."
+fi
+if command -v notify-send >/dev/null 2>&1; then
+  notify-send 'ShreeOS Power' "$message $motion_result"
+fi
+printf '%s %s\n' "$message" "$motion_result"

@@ -168,6 +168,8 @@ class CommandTests(unittest.TestCase):
     def test_bad_arguments_do_not_launch_privileged_actions(self):
         cases = [
             (PLASMA / "usr/local/bin/shreeos-motion", ["bad-mode"]),
+            (PLASMA / "usr/local/bin/shreeos-power", ["turbo"]),
+            (PLASMA / "usr/local/bin/shreeos-power", ["balanced", "extra"]),
             (FEATURES / "includes.chroot/usr/local/bin/shreeos-software", ["install", "../../etc/passwd"]),
             (FEATURES / "includes.chroot/usr/local/bin/shreeos-software", ["install", "security", "--yes"]),
             (DESKTOP / "usr/local/bin/shreeos-installer", ["--config", "/tmp/untrusted"]),

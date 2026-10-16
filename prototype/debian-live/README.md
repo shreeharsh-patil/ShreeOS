@@ -69,19 +69,17 @@ installs these in a Debian Trixie container and pins
 `live-build` to the version in `versions.conf`.
 
 ```sh
-make prototype-debian
-make test-prototype ISO=out/shreeos-0.3.0-prototype-amd64.iso
+# The ShreeOS operating system: one unified Plasma image.
+make shreeos
+make shreeos-check
 
-# Optional desktop profile.
-make prototype-debian SHREEOS_LIVE_PROFILE=desktop
-make test-prototype SHREEOS_LIVE_PROFILE=desktop \
-  ISO=out/shreeos-0.3.0-prototype-desktop-amd64.iso
-
-# Optional KDE Plasma profile.
-make prototype-debian SHREEOS_LIVE_PROFILE=plasma
-make test-prototype SHREEOS_LIVE_PROFILE=plasma \
-  ISO=out/shreeos-0.3.0-prototype-plasma-amd64.iso
+# Experimental console and XFCE images (never published).
+SHREEOS_LIVE_PROFILE=base bash scripts/build-debian-prototype.sh
+SHREEOS_LIVE_PROFILE=desktop bash scripts/build-debian-prototype.sh
 ```
+
+The version in every image and filename comes from the repository-root `VERSION`
+file; `versions.conf` no longer defines one.
 
 Images are built from the Debian Trixie snapshot in `versions.conf`; live-build
 configures the running system to use Debian's signed Trixie and security
@@ -102,17 +100,17 @@ The desktop profile now configures an original Plymouth theme with a centered
 ShreeOS logo and animated blue loading dots; BIOS/UEFI splash appearance still
 needs verification.
 
-An additional experimental `plasma` profile installs Debian's official KDE
-Plasma packages with SDDM and ShreeOS-owned session defaults. The desktop starts
-in ShreeOS Light with a photographic mountain sunrise wallpaper, a 28px
-translucent top menu bar, a date/clock between expanding spacers, and a centered
-Plank dock. The dock has 44px icons, 130% hover magnification, running-app
-indicators and persistent pinned applications. It uses the X11 session; Plank
-is not a Wayland dock. Appearance switching also updates the dock and icon
-theme while preserving the wallpaper and pinned apps. Build it with
-`SHREEOS_LIVE_PROFILE=plasma bash scripts/build-debian-prototype.sh` and
-validate with `bash tests/prototype/test-iso.sh out/shreeos-0.3.0-prototype-plasma-amd64.iso plasma`.
-This is a separate profile; it does not replace the existing XFCE desktop.
+The `plasma` profile is the ShreeOS operating system itself. It installs
+Debian's official KDE Plasma packages with SDDM and ShreeOS-owned session
+defaults. The desktop starts in ShreeOS Light with a photographic mountain
+sunrise wallpaper, a 30px translucent top menu bar, a date/clock between
+expanding spacers, and a centered Plank dock. The dock has 50px icons, 145%
+hover magnification, running-app indicators and persistent pinned
+applications. It uses the X11 session; Plank is not a Wayland dock. Appearance
+switching also updates the dock and icon theme while preserving the wallpaper
+and pinned apps. Build it with `make shreeos` and validate with
+`bash tests/prototype/test-iso.sh "out/shreeos($(tr -d '[:space:]' < ../../VERSION)).iso" plasma`.
+The XFCE `desktop` profile remains available as an experiment only.
 Discover uses Debian's PackageKit backend for system packages and the
 preconfigured Flathub remote through Discover's Flatpak backend. No Flatpak
 apps are bundled in the ISO. Its application menu also includes the branded
@@ -124,11 +122,12 @@ for the repository audit, component matrix, and current scope.
 
 ## Everyday desktop and system features
 
-Plasma now selects an office suite, media player, printing/scanning,
-accessibility tools, firmware updates in Discover, power profiles and capped
-compressed swap. Desktop Motion offers balanced, performance and reduced
-animation preferences. Developer, security and creative software sets can be
-selected for an ISO or installed later through signed APT.
+The desktop includes printing/scanning, accessibility tools, firmware updates
+in Discover, power profiles and capped compressed swap. Desktop Motion offers
+balanced, performance and reduced animation preferences. Developer, security,
+creative, office and multimedia software sets can be selected for an ISO or
+installed later through signed APT; office and multimedia applications are not
+bundled in the default image.
 
 See [features and commands](features/README.md) and the current
 [readiness audit](../../docs/SYSTEM-READINESS.md) for implemented fixes,

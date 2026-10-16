@@ -55,7 +55,7 @@ def configure_sources(root_mount):
     # This module runs only on a freshly unpacked installation.
     previous = [target("etc/apt/sources.list")]
     previous.extend(target(str(p.relative_to(root))) for p in sources_dir.iterdir()
-                    if p.suffix in (".list", ".sources") and p != destination)
+                    if p.suffix in (".list", ".sources") and p.name != destination.name)
     content = (
         "Types: deb\nURIs: https://deb.debian.org/debian\n"
         "Suites: trixie trixie-updates\n"

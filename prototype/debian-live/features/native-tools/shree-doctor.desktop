@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS Health Check
+Comment=Check Debian, systemd, storage and network health
+Exec=shree-doctor
+Icon=dialog-information
+Terminal=true
+Categories=System;Utility;
+Keywords=health;diagnostics;system;network;shreeos;

@@ -1,4 +1,4 @@
-# ShreeOS 0.4.0 unified Plasma desktop ISO (development)
+# ShreeOS unified Plasma desktop ISO (development)
 
 The unified image extends the Debian 13 Live KDE Plasma prototype with
 selected native ShreeOS utilities, using normal Debian package management.
@@ -17,8 +17,11 @@ It is NOT a binary concatenation of two incompatible operating systems.
   package manager. Native LPM uses different paths and ownership rules from dpkg.
 - The experimental native init/kernel/BusyBox/dwm pipeline remains independently
   buildable and is not installed over Debian's boot-critical components.
-- Native utilities are installed as shreeos-native-tools_0.4.0_amd64.deb and
+- Native utilities are installed as a versioned `shreeos-native-tools` package and
   persist from the live image to a disk installation via the SquashFS root.
+- The hardware daemon denies peers outside the `shree-hardware` group. The live
+  user and Calamares-created users receive that group through their supported
+  account setup paths.
 
 ## Build on Debian 13
 
@@ -28,14 +31,15 @@ as root in a disposable Debian 13 VM or container:
     make unified-iso
 
 Expected outputs:
-    out/ShreeOS-0.4.0-amd64.iso
-    out/ShreeOS-0.4.0-amd64.iso.sha256
-    out/ShreeOS-0.4.0-packages.txt
-    out/ShreeOS-0.4.0-build-info.txt
+    out/shreeos(VERSION).iso
+    out/shreeos(VERSION).iso.sha256
+    out/shreeos(VERSION)-packages.txt
+    out/shreeos(VERSION)-build-info.txt
 
 Check:
-    bash tests/prototype/test-iso.sh out/ShreeOS-0.4.0-amd64.iso plasma
-    bash tests/unified/test-iso-contents.sh out/ShreeOS-0.4.0-amd64.iso
+    iso="out/shreeos($(tr -d '[:space:]' < VERSION)).iso"
+    bash tests/prototype/test-iso.sh "$iso" plasma
+    bash tests/unified/test-iso-contents.sh "$iso"
 
 ## No unverified release claims
 

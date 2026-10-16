@@ -1,39 +1,71 @@
 # Build guide
 
-## Experimental Debian Live prototype
+## Build the ShreeOS desktop image
 
-The current recommended path for evaluating the proposed package-managed
-base is the console-only Debian Live prototype. It targets Debian 13 (Trixie)
-on amd64 and must be built as root on a Debian 13 Linux host or disposable VM.
-Native Windows is not supported. WSL may work only with a functioning Linux
-distribution and root filesystem support.
+`make shreeos` is the canonical build for the ShreeOS operating system. It
+targets Debian 13 (Trixie) on amd64, must run as root on a Debian 13 Linux host
+or disposable VM, and produces exactly one primary artifact:
+
+```
+out/shreeos(VERSION).iso
+```
+
+`VERSION` is the repository-root `VERSION` file. That file is the single
+authoritative version source for the whole project: `build.conf`,
+`prototype/debian-live/versions.conf`, the generated `/etc/os-release`, the ISO
+filename and the release tag all derive from it. `scripts/verify-version.sh`
+enforces that, and the build fails rather than ship a mismatched image.
+
+Native Windows is not a supported build host. WSL works only with a functioning
+Linux distribution and root filesystem support.
 
 The exact Debian snapshot and `live-build` version are recorded in
 [`../prototype/debian-live/versions.conf`](../prototype/debian-live/versions.conf).
-CI installs the supporting tools listed in
-[`../.github/workflows/debian-prototype.yml`](../.github/workflows/debian-prototype.yml).
+The authoritative pipeline that installs the supporting tools is
+[`../.github/workflows/shreeos-release.yml`](../.github/workflows/shreeos-release.yml).
 
 ```sh
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
 git switch master
-make test-prototype-config
-make prototype-debian
-make test-prototype ISO=out/shreeos-0.3.0-prototype-amd64.iso
+
+make shreeos-check     # validate dependencies, live-build pin and version contract
+make shreeos           # build out/shreeos(VERSION).iso and its metadata
+make shreeos-verify    # re-verify an existing image without rebuilding
 ```
 
-Build output is written to ignored `build/` and `out/` directories. The build
-script deletes only its dedicated `build/debian-live-prototype` scratch
-directory. The ISO validation extracts the SquashFS and checks the package
-manifest, then boots the image in BIOS and UEFI QEMU configurations. It does
-not yet test desktop login, physical hardware, graphical installation or an
-installed system.
+Useful build knobs:
 
-The matching GitHub Actions workflow runs the build and boot checks in a
-Debian Trixie container for pushes to `master`, pull requests targeting
-`master`, or manual dispatch. It uploads a temporary CI artifact with the ISO,
-checksum, package manifest and build metadata. This is not a release pipeline
-and the artifact is not a supported distribution download.
+| Variable | Effect |
+|---|---|
+| `SHREEOS_FIRMWARE=standard` | Default for the unified image: main + non-free-firmware |
+| `SHREEOS_FIRMWARE=free` | Free-firmware-only image |
+| `SHREEOS_TOOLSETS=developer,security,creative` | Add optional software bundles |
+
+Build output is written to ignored `build/` and `out/` directories. The script
+deletes only this image's own prior outputs and its dedicated
+`build/debian-live-prototype` scratch directory; it refuses to delete anything
+outside the output directory. It also refuses to reuse a cached artifact unless
+that artifact re-verifies against its recorded checksum.
+
+`tests/prototype/test-iso.sh` extracts the SquashFS, checks the package manifest
+and required assets, then boots the image in BIOS and UEFI QEMU configurations
+and rejects blank or empty desktop screenshots. Physical hardware acceptance and
+interactive installer acceptance are separate, still-open gates.
+
+### Experimental profiles
+
+The console (`base`) and XFCE (`desktop`) Debian Live images remain buildable for
+research and regression coverage:
+
+```sh
+SHREEOS_LIVE_PROFILE=base bash scripts/build-debian-prototype.sh
+SHREEOS_LIVE_PROFILE=desktop bash scripts/build-debian-prototype.sh
+```
+
+They emit suffixed throwaway names such as `shreeos-VERSION-desktop-amd64.iso`
+and are never published. The unified Plasma image is the ShreeOS operating
+system; these are not alternative products.
 
 ## Existing source-built path
 

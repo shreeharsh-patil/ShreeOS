@@ -9,10 +9,10 @@ windowPlacement: center
 strings:
     productName: ShreeOS
     shortProductName: ShreeOS
-    version: 1.0
-    shortVersion: 1.0
-    versionedName: ShreeOS 1.0
-    shortVersionedName: ShreeOS 1.0
+    version: @VERSION@
+    shortVersion: @VERSION@
+    versionedName: ShreeOS @VERSION@
+    shortVersionedName: ShreeOS @VERSION@
     bootloaderEntryName: ShreeOS
     productUrl: https://github.com/shreeharsh-patil/ShreeOS
     supportUrl: https://github.com/shreeharsh-patil/ShreeOS/issues

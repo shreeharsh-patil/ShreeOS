@@ -1,4 +1,4 @@
-name: Unified ShreeOS 0.4.0 ISO
+name: Unified ShreeOS development ISO
 
 on:
   pull_request:
@@ -79,29 +79,34 @@ jobs:
       - name: Build one unified desktop ISO
         run: make unified-iso
       - name: Check SquashFS and native tools
-        run: bash tests/unified/test-iso-contents.sh out/ShreeOS-0.4.0-amd64.iso
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          iso="out/shreeos(${version}).iso"
+          bash tests/unified/test-iso-contents.sh "$iso"
       - name: Boot BIOS and UEFI Plasma and verify visible desktop
         run: |
           set -Eeuo pipefail
           mkdir -p build-logs/unified-qemu
+          version="$(tr -d '[:space:]' < VERSION)"
+          iso="out/shreeos(${version}).iso"
           QEMU_LOG_DIR=build-logs/unified-qemu \
-            bash tests/prototype/test-iso.sh out/ShreeOS-0.4.0-amd64.iso plasma
+            bash tests/prototype/test-iso.sh "$iso" plasma
       - name: Upload development ISO, checksum and manifests
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-0.4.0-unified-development-${{ github.sha }}
+          name: shreeos-unified-development-${{ github.sha }}
           path: |
-            out/ShreeOS-0.4.0-amd64.iso
-            out/ShreeOS-0.4.0-amd64.iso.sha256
-            out/ShreeOS-0.4.0-packages.txt
-            out/ShreeOS-0.4.0-build-info.txt
+            out/shreeos*.iso
+            out/shreeos*.iso.sha256
+            out/shreeos*-packages.txt
+            out/shreeos*-build-info.txt
           if-no-files-found: error
           retention-days: 14
       - name: Preserve BIOS/UEFI logs and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-0.4.0-unified-qemu-logs-${{ github.sha }}
+          name: shreeos-unified-qemu-logs-${{ github.sha }}
           path: build-logs/unified-qemu/
           if-no-files-found: warn
           retention-days: 30

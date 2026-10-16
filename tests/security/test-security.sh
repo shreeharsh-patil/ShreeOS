@@ -82,6 +82,13 @@ cmp -s "$FETCH_SOURCE" "$FETCH_DEST" || {
   exit 1
 }
 
+FETCH_UPPER_SHA="$(printf '%s' "$FETCH_SHA" | tr '[:lower:]' '[:upper:]')"
+shreeos_fetch "$FETCH_URL" "$FETCH_DEST" "$FETCH_UPPER_SHA" >/dev/null
+cmp -s "$FETCH_SOURCE" "$FETCH_DEST" || {
+  echo "  [FAIL] Uppercase SHA-256 pin was not normalized before comparison" >&2
+  exit 1
+}
+
 printf 'corrupt-cache\n' > "$FETCH_DEST"
 shreeos_fetch "$FETCH_URL" "$FETCH_DEST" "$FETCH_SHA" >/dev/null
 cmp -s "$FETCH_SOURCE" "$FETCH_DEST" || {

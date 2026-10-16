@@ -6,7 +6,10 @@
 
 CROSS_COMPILE ?=
 CC := $(CROSS_COMPILE)gcc
-CFLAGS := -static -Os -Wall -Wextra
+# The version shown by the login prompt comes from the single authoritative
+# version source at the repository root, so no C source needs to hardcode one.
+SHREEOS_VERSION ?= $(shell tr -d '[:space:]' < ../../VERSION 2>/dev/null || echo unknown)
+CFLAGS := -static -Os -Wall -Wextra -DSHREEOS_VERSION=\"$(SHREEOS_VERSION)\"
 LDFLAGS := -static
 LDLIBS := -lcrypt
 
