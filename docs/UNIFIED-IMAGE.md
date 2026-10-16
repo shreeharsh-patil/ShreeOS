@@ -8,17 +8,18 @@ It is NOT a binary concatenation of two incompatible operating systems.
 
 - Debian Linux kernel packages, glibc, systemd (PID 1), GRUB, SDDM, Calamares,
   drivers, NetworkManager, apt and dpkg remain authoritative.
-- ShreeOS owns branding, its Plasma layout, read-only native "shreeinfo",
-  original terminal system monitor, native `shreed` C daemon, the `shreedctl`
-  client, and integration diagnostics. The daemon runs as a distinct systemd
-  service (not a replacement for systemd or NetworkManager).
+- ShreeOS owns branding, its Plasma layout, read-only `shreeinfo` from the
+  `shreeos-tools` package, original terminal system monitor, native `shreed` C
+  daemon, the `shreedctl` client, and integration diagnostics. The daemon runs
+  as a distinct systemd service (not a replacement for systemd or NetworkManager).
 - LPM code and the .lpkg specification are distributed as **reference sources**
   in /usr/share/doc/shreeos-native-tools/lpm, not as an active root-level
   package manager. Native LPM uses different paths and ownership rules from dpkg.
 - The experimental native init/kernel/BusyBox/dwm pipeline remains independently
   buildable and is not installed over Debian's boot-critical components.
-- Native utilities are installed as a versioned `shreeos-native-tools` package and
-  persist from the live image to a disk installation via the SquashFS root.
+- Native utilities are installed as versioned `shreeos-tools` and
+  `shreeos-native-tools` packages and persist from the live image to a disk
+  installation via the SquashFS root.
 - The hardware daemon denies peers outside the `shree-hardware` group. The live
   user and Calamares-created users receive that group through their supported
   account setup paths.

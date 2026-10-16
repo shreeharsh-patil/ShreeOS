@@ -13,9 +13,10 @@ test -s "$deb"
 test "$(dpkg-deb --field "$deb" Package)" = shreeos-native-tools
 test "$(dpkg-deb --field "$deb" Version)" = "$version"
 test "$(dpkg-deb --field "$deb" Architecture)" = amd64
+dpkg-deb --field "$deb" Depends | grep -Fq "shreeos-tools (= $version)"
 dpkg-deb -x "$deb" "$dir/extracted"
 dpkg-deb -e "$deb" "$dir/control"
-test -x "$dir/extracted/usr/bin/shreeinfo"
+test ! -e "$dir/extracted/usr/bin/shreeinfo"
 test -x "$dir/extracted/usr/bin/shreeos-sysmon"
 test -x "$dir/extracted/usr/bin/shreeos-native-status"
 test -x "$dir/extracted/usr/bin/shreeos-verify-installed"

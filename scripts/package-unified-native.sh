@@ -24,12 +24,11 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: ShreeOS Developers <noreply@users.noreply.github.com>
-Depends: adduser, bash, coreutils, procps, konsole, systemd
+Depends: adduser, bash, coreutils, procps, konsole, shreeos-tools (= $version), systemd
 Description: Compatible native ShreeOS utilities for the unified Plasma image
  Read-only system information, the original terminal system monitor, and
  historical LPM package source; Debian continues to own system packages.
 CONTROL
-install -Dm0755 "$root/scripts/shreeinfo" "$pkg/usr/bin/shreeinfo"
 install -Dm0755 "$root/desktop/apps/shree-sysmon.sh" "$pkg/usr/bin/shreeos-sysmon"
 install -Dm0755 "$root/scripts/shreeos-native-status" "$pkg/usr/bin/shreeos-native-status"
 install -Dm0755 "$root/scripts/shreeos-verify-installed" "$pkg/usr/bin/shreeos-verify-installed"
