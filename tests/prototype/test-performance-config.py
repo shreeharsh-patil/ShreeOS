@@ -103,6 +103,20 @@ class SessionStartupTests(unittest.TestCase):
                                 "Allow the delayed first-login layout and dock startup to finish")
         self.assertIn('within ${plasma_session_wait_seconds} seconds', boot_check)
 
+    def test_plasma_qemu_timeout_covers_slow_guest_clock_and_boot_gate(self):
+        boot_check = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check").read_text(encoding="utf-8")
+        wait_limit = re.search(r"plasma_session_wait_seconds=(\d+)", boot_check)
+        self.assertIsNotNone(wait_limit)
+
+        iso_test = (ROOT / "tests/prototype/test-iso.sh").read_text(encoding="utf-8")
+        self.assertIn('local qemu_timeout=420', iso_test)
+        self.assertIn('if [ "$PROFILE" = plasma ]; then qemu_timeout=2400; fi', iso_test)
+        self.assertIn('local deadline=$((SECONDS + qemu_timeout))', iso_test)
+        self.assertIn('timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64', iso_test)
+        # In CI's TCG-backed VM, the guest clock advances far slower than the
+        # host clock. Keep enough host time for boot plus the guest-side gate.
+        self.assertGreaterEqual(2400, int(wait_limit.group(1)) * 8)
+
     def assert_backoff(self, name):
         text = (BIN / name).read_text(encoding="utf-8")
         self.assertRegex(text, r"interval=\$\(\([a-z_]*interval \* 2\)\)",
