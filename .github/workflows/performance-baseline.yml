@@ -22,7 +22,7 @@ jobs:
       - name: Install Git before checkout so both source commits are recorded
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git
+          apt-get install -y --no-install-recommends ca-certificates git
 
       - name: Check out the current measurement harness
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
