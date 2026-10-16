@@ -7,9 +7,8 @@
 # with a permanently uncomposited desktop.
 #
 # The live ISO is the one environment whose virtio display cannot render Plasma
-# effects reliably. That single case is handled at runtime for the live session
-# only, by /usr/local/bin/shreeos-plasma-first-login, which keys off the live
-# medium mount instead of changing the installed default.
+# effects reliably. Its temporary account is configured before SDDM starts in
+# the live-config hook, without changing this installed-user default.
 
 [Effect-blur]
 BlurStrength=8

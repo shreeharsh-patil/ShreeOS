@@ -113,16 +113,4 @@ if command -v kwriteconfig6 >/dev/null 2>&1; then
   kwriteconfig6 --file shreeosrc --group Desktop --key PowerProfile balanced
 fi
 
-# The release-verification live medium renders on QEMU's virtio display, where
-# Plasma effects are not reliably drawable. Disable compositing for the live
-# session only: this runs once per user and the installed system, whose
-# /run/live/medium does not exist, keeps the compositor KWin selects for itself.
-if [ -d /run/live/medium ] && command -v kwriteconfig6 >/dev/null 2>&1; then
-  kwriteconfig6 --file kwinrc --group Compositing --key Enabled false
-  if ! dbus-send --session --type=method_call --print-reply \
-    --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1; then
-    logger -t shreeos-plasma-first-login 'Live-session compositing change will apply at next sign-in'
-  fi
-fi
-
 touch "$marker"

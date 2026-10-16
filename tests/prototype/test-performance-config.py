@@ -77,19 +77,90 @@ class CompositingTests(unittest.TestCase):
                          "Blur cannot be enabled while compositing is forced off")
 
     def test_live_media_is_the_only_place_that_disables_compositing(self):
-        first_login = (BIN / "shreeos-plasma-first-login").read_text(encoding="utf-8")
-        self.assertIn("/run/live/medium", first_login)
-        self.assertRegex(first_login, r"Compositing[^\n]*Enabled false")
-        # The guard must be the live-medium test, not an unconditional write.
+        hook = (ROOT / "prototype/debian-live/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user").read_text(encoding="utf-8")
+        self.assertIn("/run/live/medium", hook)
+        self.assertIn('"${root}/etc/shreeos/image-profile")" = plasma', hook)
+        self.assertRegex(hook, r"--group Compositing --key Enabled false")
+        # The live account is configured before SDDM; installed users use /etc/skel.
         guarded = re.search(
-            r"if \[ -d /run/live/medium \][^\n]*\n(?:.*\n)*?fi\n", first_login)
+            r"if \[ -e \"\$\{root\}/run/live/medium\" \][^\n]*\n(?:.*\n)*?fi\n", hook)
         self.assertIsNotNone(guarded, "Live compositing change must be inside its guard")
+        first_login = (BIN / "shreeos-plasma-first-login").read_text(encoding="utf-8")
+        self.assertNotIn("org.kde.KWin reconfigure", first_login)
 
     def test_desktop_still_gets_four_workspaces_and_left_window_controls(self):
         kwinrc = read_ini(INCLUDES / "etc/skel/.config/kwinrc")
         self.assertEqual(kwinrc["Desktops"]["Number"], "4")
         self.assertEqual(kwinrc["org.kde.kdecoration2"]["ButtonsOnLeft"], "XIA")
         self.assertEqual(kwinrc["org.kde.kdecoration2"]["ButtonsOnRight"], "")
+
+
+class LiveCompositingTests(unittest.TestCase):
+    HOOK = ROOT / "prototype/debian-live/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user"
+
+    def run_hook(self, profile, live):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            root = folder / "root"
+            (root / "etc/shreeos").mkdir(parents=True)
+            (root / "etc/shreeos/image-profile").write_text(profile + "\n", encoding="utf-8")
+            (root / "home/shree/.config").mkdir(parents=True)
+            if live:
+                (root / "run/live").mkdir(parents=True)
+                (root / "run/live/medium").touch()
+
+            stubs = {
+                "getent": "#!/bin/sh\nprintf 'shree:x:1000:1000:ShreeOS:/home/shree:/bin/bash\\n'\n",
+                "passwd": (
+                    "#!/bin/sh\n"
+                    'case "$1" in\n'
+                    '  --lock) exit 0 ;;\n'
+                    '  --status) printf "shree L 2026-01-01 0 99999 7 -1\\n" ;;\n'
+                    '  *) exit 2 ;;\n'
+                    'esac\n'
+                ),
+                "runuser": (
+                    "#!/bin/sh\n"
+                    '[ "$1" = -u ] && [ "$2" = shree ] && [ "$3" = -- ] || exit 2\n'
+                    "shift 3\nexec \"$@\"\n"
+                ),
+                "kwriteconfig6": (
+                    "#!/bin/sh\n"
+                    'printf "%s\\n" "$*" >> "$CALLS"\n'
+                    'mkdir -p "$XDG_CONFIG_HOME"\n'
+                    "printf '[Compositing]\\nEnabled=false\\n' > \"$XDG_CONFIG_HOME/kwinrc\"\n"
+                ),
+                "logger": "#!/bin/sh\nexit 0\n",
+            }
+            stub_dir = folder / "bin"
+            stub_dir.mkdir()
+            for name, body in stubs.items():
+                stub = stub_dir / name
+                stub.write_text(body, encoding="utf-8")
+                stub.chmod(0o755)
+
+            calls = folder / "calls"
+            env = dict(os.environ, PATH=stub_dir.as_posix() + os.pathsep + os.environ["PATH"],
+                       SHREEOS_LIVE_ROOT=root.as_posix(), CALLS=calls.as_posix())
+            result = subprocess.run([shell(), self.HOOK.as_posix()],
+                                    env=env, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            call_text = calls.read_text(encoding="utf-8") if calls.exists() else ""
+            kwinrc = root / "home/shree/.config/kwinrc"
+            settings = kwinrc.read_text(encoding="utf-8") if kwinrc.exists() else ""
+            return call_text, settings
+
+    def test_live_plasma_disables_compositing_before_sddm(self):
+        calls, settings = self.run_hook("plasma", live=True)
+        self.assertIn("--file kwinrc --group Compositing --key Enabled false", calls)
+        self.assertEqual(settings, "[Compositing]\nEnabled=false\n")
+
+    def test_non_plasma_and_installed_sessions_keep_default_compositing(self):
+        for profile, live in (("desktop", True), ("plasma", False)):
+            with self.subTest(profile=profile, live=live):
+                calls, settings = self.run_hook(profile, live)
+                self.assertEqual(calls, "")
+                self.assertEqual(settings, "")
 
 
 class SessionStartupTests(unittest.TestCase):

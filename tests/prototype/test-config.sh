@@ -299,5 +299,6 @@ for bundle in office multimedia; do
   test -s "$CONFIG_DIR/features/toolsets/$bundle.list.chroot"
   grep -Fq "$bundle" "$CONFIG_DIR/features/includes.chroot/usr/local/bin/shreeos-software"
 done
-grep -Fq '/run/live/medium' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
+grep -Fq '/run/live/medium' \
+  "$CONFIG_DIR/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user"
 printf 'Debian prototype configuration contract passed.\n'
