@@ -19,6 +19,11 @@ jobs:
       image: debian:trixie-slim
       options: --privileged
     steps:
+      - name: Install Git before checkout so both source commits are recorded
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git
+
       - name: Check out the current measurement harness
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -44,10 +49,12 @@ jobs:
             qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
             ca-certificates debian-archive-keyring python3 librsvg2-bin git
 
-      - name: Confirm the baseline source tree
+      - name: Confirm the exact baseline source commit
         run: |
-          test -s baseline-source/VERSION
-          printf 'Untouched baseline source checked out at ref 9313ebb042cf71bb148441037940b130d49920d1\n'
+          expected=9313ebb042cf71bb148441037940b130d49920d1
+          actual="$(git -C baseline-source rev-parse HEAD)"
+          [[ "$actual" == "$expected" ]]
+          printf 'Untouched baseline source: %s\n' "$actual"
 
       - name: Build the untouched baseline ISO
         run: |
