@@ -15,9 +15,13 @@ for dir in "${PROJECT_ROOT}/desktop/scripts" "${PROJECT_ROOT}/desktop/apps" "${P
   [ -d "$dir" ] || continue
   for f in "$dir"/*; do
     [ -f "$f" ] || continue
-    # If it is a shell script (has shebang or .sh)
-    if head -n 1 "$f" 2>/dev/null | grep -qE '^#!/(bin|usr)'; then
+    first_line="$(head -n 1 "$f" 2>/dev/null || true)"
+    # Check each entry point with the language named by its shebang.
+    if [[ "$f" == *.sh ]] || [[ "$first_line" =~ ^\#!.*[[:space:]/](bash|sh)([[:space:]]|$) ]]; then
       bash -n "$f" || { echo "Syntax error in $f"; exit 1; }
+    elif [[ "$first_line" =~ ^\#!.*[[:space:]/]python3?([[:space:]]|$) ]]; then
+      python3 -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), filename=sys.argv[1])' "$f" ||
+        { echo "Python syntax error in $f"; exit 1; }
     fi
   done
 done
