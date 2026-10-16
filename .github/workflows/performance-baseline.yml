@@ -62,6 +62,25 @@ jobs:
         run: |
           mkdir -p baseline-evidence
           cd baseline-source
+          # Commit 9313ebb sources /etc/os-release into the same shell as the
+          # ShreeOS VERSION variable. VERSION is optional in os-release; omit
+          # only that host display field so it cannot rename the baseline ISO
+          # as Debian "13 (trixie)". Keep the real Debian ID and codename.
+          os_release_source="$(mktemp)"
+          os_release_mounted=0
+          cleanup_os_release() {
+            if [[ "$os_release_mounted" == 1 ]]; then
+              umount /etc/os-release
+            fi
+            rm -f -- "$os_release_source"
+          }
+          trap cleanup_os_release EXIT
+          sed '/^VERSION=/d' /etc/os-release > "$os_release_source"
+          mount --bind "$os_release_source" /etc/os-release
+          os_release_mounted=1
+          grep -Fxq 'ID=debian' /etc/os-release
+          grep -Fxq 'VERSION_CODENAME=trixie' /etc/os-release
+          ! grep -q '^VERSION=' /etc/os-release
           SHREEOS_VERSION_FILE="$PWD/VERSION" \
           GITHUB_SHA=9313ebb042cf71bb148441037940b130d49920d1 \
             bash scripts/build-shreeos.sh 2>&1 | tee ../baseline-evidence/build.log
