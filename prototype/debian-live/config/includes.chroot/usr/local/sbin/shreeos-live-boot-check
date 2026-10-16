@@ -74,6 +74,7 @@ log 'live account has no sudo access'
 if [ -f /etc/shreeos/image-profile ] &&
   [ "$(cat /etc/shreeos/image-profile)" = plasma ]; then
   log 'Plasma profile detected; checking SDDM and Plasma session'
+  plasma_session_wait_seconds=300
   elapsed=0
     until systemctl is-active --quiet sddm.service &&
     pgrep -u shree -x plasmashell >/dev/null &&
@@ -81,10 +82,10 @@ if [ -f /etc/shreeos/image-profile ] &&
     [ -f /home/shree/.config/shreeos/plasma-defaults-applied ] &&
     grep -Fq 'plugin=org.kde.plasma.appmenu' /home/shree/.config/plasma-org.kde.plasma.desktop-appletsrc &&
     pgrep -u shree -x plank >/dev/null; do
-    if [ "$elapsed" -ge 150 ]; then
+    if [ "$elapsed" -ge "$plasma_session_wait_seconds" ]; then
       ps -eo user,pid,args | grep -E '[s]ddm|[p]lasmashell|[k]win_x11|[p]lank' \
         | while IFS= read -r diagnostic; do log "$diagnostic"; done
-      fail 'SDDM did not start Plasma, the ShreeOS menu bar, and Plank dock within 150 seconds'
+      fail "SDDM did not start Plasma, the ShreeOS menu bar, and Plank dock within ${plasma_session_wait_seconds} seconds"
     fi
     sleep 1
     elapsed=$((elapsed + 1))

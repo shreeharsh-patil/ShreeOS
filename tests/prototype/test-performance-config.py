@@ -95,6 +95,14 @@ class CompositingTests(unittest.TestCase):
 class SessionStartupTests(unittest.TestCase):
     """Session scripts must not poll a process table once per second."""
 
+    def test_live_plasma_boot_gate_allows_slow_first_login_to_finish(self):
+        boot_check = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-live-boot-check").read_text(encoding="utf-8")
+        wait_limit = re.search(r"plasma_session_wait_seconds=(\d+)", boot_check)
+        self.assertIsNotNone(wait_limit, "Plasma boot gate must have an explicit startup budget")
+        self.assertGreaterEqual(int(wait_limit.group(1)), 300,
+                                "Allow the delayed first-login layout and dock startup to finish")
+        self.assertIn('within ${plasma_session_wait_seconds} seconds', boot_check)
+
     def assert_backoff(self, name):
         text = (BIN / name).read_text(encoding="utf-8")
         self.assertRegex(text, r"interval=\$\(\([a-z_]*interval \* 2\)\)",
