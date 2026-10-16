@@ -115,6 +115,17 @@ if bash "$verifier" --tag 'v9.9.9' >/dev/null 2>&1; then
 fi
 pass 'tag validation accepts matching tags and rejects others'
 
+release_workflow="$REPO_ROOT/.github/workflows/shreeos-release.yml"
+grep -Fq 'pull_request:' "$release_workflow" ||
+  fail 'the unified release checks do not run for pull requests'
+grep -Fq 'gh release view "$tag"' "$release_workflow" ||
+  fail 'published release verification does not use the selected tag'
+grep -Fq 'RELEASE_TAG="$tag"' "$release_workflow" ||
+  fail 'published release verification does not check the selected tag'
+grep -Fq 'sha256sum build.conf' "$REPO_ROOT/scripts/build-shreeos.sh" ||
+  fail 'the unified ISO cache key omits build.conf'
+pass 'pull request checks, selected release tags, and build configuration cache inputs are enforced'
+
 iso_dir="$TMP/iso"
 mkdir -p "$iso_dir"
 : >"$iso_dir/$expected"
