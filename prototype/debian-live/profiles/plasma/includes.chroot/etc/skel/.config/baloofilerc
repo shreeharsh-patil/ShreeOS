@@ -1,0 +1,13 @@
+# ShreeOS defaults for the Baloo file indexer.
+#
+# This file uses only keys that Baloo documents, so Plasma's Search settings show
+# exactly what is configured here. Filename indexing stays on, so Spotlight-style
+# file search keeps working in KRunner and Dolphin; content extraction (the part
+# that walks whole documents on every idle moment) is off by default.
+#
+# Users can turn full content search back on in
+# System Settings > Search > File Search ("Also index file content"), which
+# writes Only Basic Indexing=false into the user's own copy of this file.
+[Basic Settings]
+Indexing-Enabled=true
+Only Basic Indexing=true

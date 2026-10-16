@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Power Profile
+Comment=Choose Performance, Balanced, or Battery Saver
+Exec=/usr/local/bin/shreeos-power
+Icon=preferences-system-power-management
+Categories=Settings;System;PowerManagement;
+OnlyShowIn=KDE;
+Keywords=power;battery;performance;profile;shreeos;

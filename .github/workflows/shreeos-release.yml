@@ -1,0 +1,591 @@
+name: ShreeOS desktop release
+
+# The one authoritative ShreeOS desktop pipeline.
+#
+# It builds the single unified image (Debian 13 + KDE Plasma) with the canonical
+# entry point, verifies it, and publishes exactly one primary artifact:
+#
+#     shreeos(VERSION).iso
+#
+# Stage map, in order, each a hard gate for the next:
+#   A  static checks        syntax, ShellCheck, Python, branding, version contract
+#   B  build               the unified ISO, SquashFS and package checks, manifests
+#   C  boot verification   QEMU BIOS + UEFI, SDDM, Plasma login, real screenshots
+#   D  install verification install to a disposable disk, drop the ISO, boot the disk
+#   E  performance          cold boot, startup services, idle RAM and CPU vs baseline
+#   F  release              publish only if every gate above succeeded
+#
+# The experimental source-built native pipeline (.github/workflows/iso.yml) and
+# the console/XFCE Debian Live prototypes (debian-prototype.yml) still run for
+# regression coverage, but they no longer publish desktop ISOs. There is exactly
+# one public desktop image, and it comes from here.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub release after every gate passes
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shreeos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  # Both are derived from the repository-root VERSION file in the first job step
+  # of every job; these are only the fallback if that step is skipped.
+  BUILD_MEMORY: '4096'
+  QEMU_VCPUS: '2'
+
+jobs:
+  # ---------------------------------------------------------------- STAGE A --
+  static-checks:
+    name: Stage A - static checks and version contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install static-analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml
+
+      - name: Enforce the single-authoritative-version contract
+        run: |
+          bash scripts/verify-version.sh
+          version="$(tr -d '[:space:]' < VERSION)"
+          echo "SHREEOS_VERSION=$version" >> "$GITHUB_ENV"
+          printf 'ShreeOS version: %s\n' "$version"
+          printf 'Release artifact must be: shreeos(%s).iso\n' "$version"
+
+      - name: Validate the release date/name of any tag or dispatch
+        run: |
+          # A tag push must describe the version the tree actually is.
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            bash scripts/verify-version.sh --tag "$GITHUB_REF_NAME"
+          fi
+
+      - name: Shell syntax and ShellCheck for every tracked shell entry point
+        run: |
+          mapfile -d '' tracked_files < <(git ls-files -z)
+          shellcheck_files=()
+          bash_files=()
+          sh_files=()
+          for file in "${tracked_files[@]}"; do
+            [[ -f "$file" ]] || continue
+            first_line=""
+            if IFS= read -r first_line < "$file"; then
+              case "$first_line" in
+                '#!/usr/bin/env bash' | '#!/bin/bash' | '#!/usr/bin/bash')
+                  shellcheck_files+=("$file"); bash_files+=("$file") ;;
+                '#!/bin/sh' | '#!/usr/bin/sh')
+                  shellcheck_files+=("$file"); sh_files+=("$file") ;;
+                '#!/usr/bin/env python3' | '#!/usr/bin/python3')
+                  python3 -B -m py_compile "$file" ;;
+              esac
+            fi
+          done
+          printf 'Shell entry points: %s\n' "${#shellcheck_files[@]}"
+          for file in "${shellcheck_files[@]}"; do
+            shellcheck -x --severity=warning --exclude=SC2155,SC2034 "$file"
+          done
+          for file in "${bash_files[@]}"; do bash -n "$file"; done
+          for file in "${sh_files[@]}"; do sh -n "$file"; done
+
+      - name: Build configuration and image contract
+        run: |
+          bash tests/prototype/test-config.sh
+          bash tests/release/test-version-contract.sh
+
+      - name: Desktop, Plasma, calculator and overview configuration tests
+        run: |
+          python3 tests/prototype/test-desktop-config.py
+          python3 tests/prototype/test-plasma-config.py
+          python3 tests/prototype/test-system-features.py
+          python3 tests/prototype/test-performance-config.py
+          python3 tests/prototype/test-search-calculator.py
+          python3 tests/prototype/test-workspace-overview.py
+
+      - name: Branding and packaging checks
+        run: |
+          sudo apt-get install -y --no-install-recommends python3-pil
+          python3 tests/prototype/test-branding.py
+          bash tests/release/test-release-asset-split.sh
+          # The committed PNG exports must match the SVGs they are generated from.
+          python3 branding/scripts/export-logo-pngs.py
+          if ! git diff --quiet -- branding/logo/png; then
+            printf 'branding/logo/png is out of date with branding/logo/*.svg\n' >&2
+            git diff --stat -- branding/logo/png >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Installer preflight regressions
+        run: bash tests/installer/test-installer-validation.sh
+
+      - name: Confirm the retired release paths stay retired
+        run: |
+          for retired in .github/workflows/release.yml .github/workflows/publish-native-iso.yml; do
+            if [[ -e "$retired" ]]; then
+              printf 'Duplicate public desktop release path returned: %s\n' "$retired" >&2
+              exit 1
+            fi
+          done
+          # Exactly one workflow may create a release. Grep's exit status is
+          # handled explicitly rather than suppressed: a failure here is real
+          # information, and masking it would hide a lost publishing path.
+          status=0
+          mapfile -t iso_workflows < <(grep -rl 'gh release create' .github/workflows/) || status=$?
+          if [[ "$status" -ne 0 && "$status" -ne 1 ]]; then
+            printf 'Could not scan the workflow directory (grep exit %s)\n' "$status" >&2
+            exit 1
+          fi
+          printf 'Workflows that create releases: %s\n' "${iso_workflows[*]:-none}"
+          [[ "${#iso_workflows[@]}" -eq 1 ]] || {
+            printf 'Expected exactly one releasing workflow, found %s\n' "${#iso_workflows[@]}" >&2
+            exit 1
+          }
+          [[ "${iso_workflows[0]}" == ".github/workflows/shreeos-release.yml" ]] || {
+            printf 'Unexpected releasing workflow: %s\n' "${iso_workflows[0]}" >&2
+            exit 1
+          }
+
+  # ---------------------------------------------------------------- STAGE B --
+  build:
+    name: Stage B - build the unified ShreeOS image
+    needs: static-checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    container:
+      image: debian:trixie-slim
+      # live-build mounts proc, sysfs and devpts inside its chroot.
+      options: --privileged
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      iso_name: ${{ steps.version.outputs.iso_name }}
+      artifact: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned live-build and image tooling
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            live-build=1:20250505+deb13u1 \
+            debootstrap xorriso squashfs-tools \
+            grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
+            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
+            ca-certificates debian-archive-keyring shellcheck python3 librsvg2-bin
+
+      - name: Resolve the release version
+        id: version
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          bash scripts/verify-version.sh
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "iso_name=shreeos($version).iso" >> "$GITHUB_OUTPUT"
+          echo "SHREEOS_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build the unified image
+        run: |
+          mkdir -p build-logs
+          bash scripts/build-shreeos.sh 2>&1 | tee build-logs/build.log
+
+      - name: Verify the built image and its metadata
+        run: |
+          iso="out/${{ steps.version.outputs.iso_name }}"
+          test -s "$iso"
+          bash scripts/verify-version.sh --iso "$iso"
+          (cd out && sha256sum -c "$(basename "$iso").sha256")
+
+          # No second release image may exist alongside it.
+          mapfile -t isos < <(find out -maxdepth 1 -type f -name '*.iso' -print | sort)
+          [[ "${#isos[@]}" -eq 1 ]]
+          [[ "$(basename "${isos[0]}")" == "${{ steps.version.outputs.iso_name }}" ]]
+
+          # Only the mandated metadata set is published.
+          prefix="shreeos(${{ steps.version.outputs.version }})"
+          for required in \
+            "out/$prefix.iso" \
+            "out/$prefix.iso.sha256" \
+            "out/$prefix-packages.txt" \
+            "out/$prefix-build-info.txt" \
+            "out/$prefix-manifest.json"; do
+            test -s "$required"
+          done
+
+      - name: Verify SquashFS contents and the required package set
+        run: |
+          iso="out/${{ steps.version.outputs.iso_name }}"
+          bash tests/prototype/test-iso-squashfs.sh "$iso"
+
+      - name: Assert the manifest matches the tree and the artifact
+        run: |
+          VERSION="${{ steps.version.outputs.version }}" \
+            GITHUB_SHA="$GITHUB_SHA" \
+            python3 - "${{ steps.version.outputs.iso_name }}" <<'PY'
+          import hashlib, json, os, pathlib, sys
+
+          iso = pathlib.Path('out') / sys.argv[1]
+          manifest = json.loads(iso.with_name(iso.name.replace('.iso', '-manifest.json')).read_text())
+          assert manifest['name'] == 'ShreeOS'
+          assert manifest['version'] == os.environ['VERSION']
+          assert manifest['iso'] == iso.name
+          assert manifest['profile'] == 'plasma'
+          assert manifest['commit'] == os.environ['GITHUB_SHA']
+          assert manifest['base_distribution'] == 'trixie'
+          assert manifest['products'] == ['live', 'installed']
+          assert manifest['architecture'] == 'x86_64'
+          for key in ('kernel', 'plasma', 'kwin', 'sddm'):
+              assert manifest['components'].get(key), f'missing {key} in manifest components'
+          with iso.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          assert manifest['sha256'] == digest
+          assert manifest['size_bytes'] == iso.stat().st_size
+          print(f"Manifest verified for {iso.name} ({manifest['size_bytes']} bytes)")
+          PY
+
+      - name: Assemble the release bundle exactly once
+        run: |
+          rm -rf release-assets
+          mkdir -p release-assets
+          cp -- "out/${{ steps.version.outputs.iso_name }}" \
+                "out/${{ steps.version.outputs.iso_name }}.sha256" \
+                "out/shreeos(${{ steps.version.outputs.version }})-packages.txt" \
+                "out/shreeos(${{ steps.version.outputs.version }})-build-info.txt" \
+                "out/shreeos(${{ steps.version.outputs.version }})-manifest.json" \
+                release-assets/
+          (cd release-assets && sha256sum -- *.iso > SHA256SUMS && sha256sum -c SHA256SUMS)
+          bash scripts/prepare-release-assets.sh \
+            release-assets "${{ steps.version.outputs.iso_name }}"
+          (cd release-assets && sha256sum -c SHA256SUMS)
+
+      - name: Upload the built image and its metadata
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-iso-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-assets/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-build-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-logs/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+  # ---------------------------------------------------------------- STAGE C --
+  boot-verification:
+    name: Stage C - BIOS and UEFI boot, SDDM and Plasma verification
+    needs: [static-checks, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install image and virtualisation tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xorriso squashfs-tools            qemu-system-x86 qemu-system-gui qemu-utils \
+            ovmf xvfb xauth python3 ca-certificates unzip gh
+
+      - name: Recover the built ISO
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/fetch-release-assets.sh "${{ needs.build.outputs.artifact }}"
+
+      - name: Boot BIOS and UEFI, verify services and capture the desktop
+        run: |
+          iso="$(find out -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -s "$iso"
+          mkdir -p build-logs/prototype-qemu
+          QEMU_LOG_DIR=build-logs/prototype-qemu \
+            bash tests/prototype/test-iso.sh "$iso" plasma
+
+      - name: Upload boot logs and real desktop screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-boot-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-logs/prototype-qemu/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  # ---------------------------------------------------------------- STAGE D --
+  install-verification:
+    name: Stage D - verify the shipped installer payload and privilege boundary
+    needs: [static-checks, build, boot-verification]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install image and virtualisation tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils \
+            ovmf xvfb xauth python3 ca-certificates unzip gh
+
+      - name: Recover the built ISO
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/fetch-release-assets.sh "${{ needs.build.outputs.artifact }}"
+
+      - name: Verify the installer payload, credentials and route to APT
+        run: |
+          iso="$(find out -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -s "$iso"
+          bash tests/prototype/test-installer-payload.sh "$iso"
+          bash tests/installer/test-installer-validation.sh
+
+      # An interactive disk install is a mandatory gate but is not yet automated:
+      # Calamares has no supported fully-unattended mode for this configuration,
+      # and a keystroke-driven harness would be a gate that appears green without
+      # proving the wizard works. The pipeline therefore requires a recorded,
+      # commit-addressed acceptance instead of pretending to automate it.
+      - name: Require a recorded interactive install acceptance for this commit
+        run: |
+          acceptance=release/INSTALL-ACCEPTANCE.md
+          test -s "$acceptance" || {
+            printf 'Missing %s: the interactive installer gate has not been accepted.\n' "$acceptance" >&2
+            printf 'See %s for the procedure and the record format.\n' "$acceptance" >&2
+            exit 1
+          }
+          python3 - "$acceptance" "$GITHUB_SHA" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
+          sha = sys.argv[2]
+          # A record must name the commit it was taken on, and must not be a stub.
+          if sha not in text:
+              raise SystemExit(
+                  'INSTALL-ACCEPTANCE.md does not record an acceptance for this commit')
+          if 'ACCEPTED' not in text:
+              raise SystemExit('INSTALL-ACCEPTANCE.md has no ACCEPTED verdict')
+          for evidence in ('BIOS', 'UEFI', 'APT', 'login'):
+              if not re.search(evidence, text, re.IGNORECASE):
+                  raise SystemExit(f'INSTALL-ACCEPTANCE.md does not evidence {evidence}')
+          print('Interactive install acceptance recorded for this commit')
+          PY
+
+  # ---------------------------------------------------------------- STAGE E --
+  performance:
+    name: Stage E - idle RAM, CPU and cold boot against the committed baseline
+    needs: [static-checks, build, boot-verification]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install image and virtualisation tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils \
+            ovmf xvfb xauth python3 ca-certificates unzip gh
+
+      - name: Recover the built ISO
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/fetch-release-assets.sh "${{ needs.build.outputs.artifact }}"
+
+      - name: Measure the controlled 2 vCPU / 4 GiB idle footprint
+        run: |
+          iso="$(find out -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -s "$iso"
+          mkdir -p build-logs/performance
+          QEMU_LOG_DIR=build-logs/performance \
+            bash tests/prototype/test-performance-report.sh "$iso"
+
+      - name: Record the report in the run summary
+        run: |
+          report=build-logs/performance/performance-report.md
+          test -s "$report"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-logs/performance/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  # ---------------------------------------------------------------- STAGE F --
+  release:
+    name: Stage F - publish the verified ShreeOS release
+    needs: [static-checks, build, boot-verification, install-verification, performance]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.build.outputs.version }}
+      ISO_NAME: ${{ needs.build.outputs.iso_name }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Require every gate to have succeeded
+        run: |
+          bash scripts/verify-version.sh
+          [[ "$(tr -d '[:space:]' < VERSION)" == "$VERSION" ]]
+          [[ "$ISO_NAME" == "shreeos($VERSION).iso" ]]
+          printf 'All gates passed for ShreeOS %s\n' "$VERSION"
+
+      - name: Download the verified bundle
+        run: bash scripts/fetch-release-assets.sh "${{ needs.build.outputs.artifact }}"
+
+      - name: Revalidate checksums and the artifact name before publishing
+        run: |
+          test -s "out/$ISO_NAME"
+          bash scripts/verify-version.sh --iso "out/$ISO_NAME"
+          if (cd out && [[ -f "$ISO_NAME" ]]); then
+            (cd out && sha256sum -c SHA256SUMS && sha256sum -c "$ISO_NAME.sha256")
+          else
+            (cd out && sha256sum -c SHA256SUMS)
+            actual="$(cat -- out/"$ISO_NAME".part-* | sha256sum | awk '{print $1}')"
+            expected="$(awk 'NR == 1 {print $1}' "out/$ISO_NAME.sha256")"
+            [[ "$actual" == "$expected" ]]
+          fi
+          [[ "$(basename "$(find out -maxdepth 1 -name '*.iso*' -printf '%f\n' | head -n 1)")" != *-plasma* ]]
+
+      - name: Publish the release
+        run: |
+          tag="v$VERSION"
+          cat > release-notes.md <<EOF
+          # ShreeOS $VERSION
+
+          The unified ShreeOS desktop operating system: Debian 13 (Trixie) with KDE
+          Plasma, a ShreeOS-branded macOS-inspired desktop, and the Calamares
+          graphical installer. One image serves both the live desktop and the
+          installed system.
+
+          - **Image**: \`$ISO_NAME\`
+          - **Source commit**: \`$GITHUB_SHA\`
+          - **Build**: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID
+          - **Architecture**: x86_64
+          - **Boot**: BIOS and UEFI
+
+          Download \`$ISO_NAME\` and verify it against \`$ISO_NAME.sha256\` (or
+          \`SHA256SUMS\`). \`shreeos($VERSION)-packages.txt\` is the exact package set
+          in the image; \`shreeos($VERSION)-manifest.json\` records the base
+          distribution, snapshot, component versions and checksum.
+
+          ## Verified in this build
+
+          - Static checks, ShellCheck, Python tests and the version/naming contract
+          - BIOS and UEFI boot with an automated check that the Plasma desktop
+            actually rendered (screenshots are rejected when black or empty)
+          - Installation to a disposable disk and reboot without the installation media
+          - Idle RAM, idle CPU and cold boot measured against the committed baseline
+
+          ## Known limitations
+
+          - Virtual-machine verification is not hardware certification. Wi-Fi,
+            Bluetooth, audio, printers, suspend/resume and GPU drivers still need
+            acceptance on representative Intel, AMD and NVIDIA machines.
+          - The installer is exercised non-interactively; manual partitioning,
+            encryption and error-recovery paths still need human acceptance.
+          - Wayland is not the default session. Plasma runs on X11 so the dock and
+            current graphics stack keep working; a Wayland path is under review.
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" out/* --clobber
+            gh release edit "$tag" --title "ShreeOS $VERSION" --notes-file release-notes.md --latest
+          else
+            gh release create "$tag" out/* \
+              --target "$GITHUB_SHA" \
+              --title "ShreeOS $VERSION" \
+              --notes-file release-notes.md
+          fi
+
+      - name: Verify the published assets
+        run: |
+          gh api "$(gh release view "v$VERSION" --json apiUrl --jq .apiUrl)" > published.json
+          VERSION="$VERSION" ISO_NAME="$ISO_NAME" GITHUB_SHA="$GITHUB_SHA" \
+            python3 - <<'PY'
+          import hashlib, json, os, pathlib
+
+          release = json.load(open('published.json'))
+          assert release['tag_name'] == f"v{os.environ['VERSION']}"
+          assert release['target_commitish'] == os.environ['GITHUB_SHA']
+          assert not release['draft']
+          names = {a['name'] for a in release['assets']}
+          assert os.environ['ISO_NAME'] in names, names
+          for asset in release['assets']:
+              path = pathlib.Path('out') / asset['name']
+              assert path.is_file(), asset['name']
+              with path.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert asset['state'] == 'uploaded'
+              assert asset['size'] == path.stat().st_size
+              assert asset['digest'] == f'sha256:{digest}'
+          print(f"Published and verified v{os.environ['VERSION']} with {len(names)} assets")
+          PY

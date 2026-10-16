@@ -4,6 +4,8 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_DIR="$REPO_ROOT/prototype/debian-live"
+# The directive is relative to the repository root, where the linter runs.
+# shellcheck source=prototype/debian-live/versions.conf
 source "$CONFIG_DIR/versions.conf"
 
 [[ "$DEBIAN_SUITE" =~ ^trixie$ ]]
@@ -237,4 +239,46 @@ grep -Fq 'shreeos-calm-light.png' \
 grep -Fq 'rsvg-convert --width=1920' "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'shreeos-alpenglow.png' \
   "$CONFIG_DIR/profiles/plasma/includes.chroot/usr/local/bin/shreeos-plasma-first-login"
+
+# --- Single authoritative version -------------------------------------------------
+# The image version must come from the repository-root VERSION file, and the
+# shipped /etc/os-release must be generated from it rather than hardcoded.
+test "$PROTOTYPE_VERSION" = "$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
+grep -Fq '@VERSION@' "$CONFIG_DIR/config/includes.chroot/etc/os-release"
+grep -Fq '@VERSION_ID@' "$CONFIG_DIR/config/includes.chroot/etc/os-release"
+if grep -Eq '^VERSION="?[0-9]' "$CONFIG_DIR/config/includes.chroot/etc/os-release"; then
+  echo 'etc/os-release must not hardcode a version' >&2
+  exit 1
+fi
+grep -Fq 'SHREEOS_OUTPUT_BASENAME' "$REPO_ROOT/scripts/build-debian-prototype.sh"
+# The single quotes are load-bearing: this asserts the *literal* text
+# "${VERSION}" appears in the builder, which is what makes the release filename
+# version-derived. Expanding it would make the assertion vacuous.
+# shellcheck disable=SC2016
+grep -Fq 'shreeos(${VERSION}).iso' "$REPO_ROOT/scripts/build-shreeos.sh"
+test -x "$REPO_ROOT/scripts/build-shreeos.sh"
+test -x "$REPO_ROOT/scripts/verify-version.sh"
+
+# --- Idle-cost and power-profile defaults ------------------------------------------
+for required in power-profiles-daemon systemd-zram-generator; do
+  grep -Fxq "$required" "$plasma_packages" || {
+    echo "Plasma profile is missing: $required" >&2
+    exit 1
+  }
+done
+test -s "$plasma_includes/etc/skel/.config/baloofilerc"
+grep -Fq 'Only Basic Indexing=true' "$plasma_includes/etc/skel/.config/baloofilerc"
+test -s "$plasma_includes/etc/skel/.config/kwinrc"
+# An actual setting line, not the explanatory comment that mentions the old one.
+if grep -Eq '^[[:space:]]*Enabled[[:space:]]*=[[:space:]]*false' \
+  "$plasma_includes/etc/skel/.config/kwinrc"; then
+  echo 'The installed desktop must not force compositing off.' >&2
+  exit 1
+fi
+test -x "$plasma_includes/usr/local/bin/shreeos-power"
+test -s "$plasma_includes/usr/share/applications/shreeos-power.desktop"
+grep -Fq 'Exec=/usr/local/bin/shreeos-power' \
+  "$plasma_includes/usr/share/applications/shreeos-power.desktop"
+grep -Fq 'power-saver' "$plasma_includes/usr/local/bin/shreeos-power"
+grep -Fq '/run/live/medium' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
 printf 'Debian prototype configuration contract passed.\n'

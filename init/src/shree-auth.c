@@ -10,6 +10,16 @@
  *   - Supports TTY login loop (--login-tty) and X11 session launch (--session <cmd>)
  */
 
+/*
+ * The image version is supplied by the build as
+ * -DSHREEOS_VERSION="<version>" from the repository-root VERSION file, which is
+ * the single authoritative version source for the project. A binary compiled
+ * without it must not claim a version it does not know.
+ */
+#ifndef SHREEOS_VERSION
+#define SHREEOS_VERSION "unknown"
+#endif
+
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -206,7 +216,7 @@ int main(int argc, char **argv) {
 
     do {
         if (username[0] == '\0') {
-            printf("\nShreeOS 4.0.0-dev (x86_64)\n");
+            printf("\nShreeOS %s (x86_64)\n", SHREEOS_VERSION);
             printf("login: ");
             fflush(stdout);
             if (!fgets(username, sizeof(username), stdin)) {

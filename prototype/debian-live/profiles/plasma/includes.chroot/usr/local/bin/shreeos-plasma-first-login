@@ -38,13 +38,19 @@ fi
 
 # Plasma's resetLayout operation can stop the shell it was called from. The
 # user-service drop-in restarts it; wait for that managed restart before
-# applying the remaining session settings.
-shell_attempt=0
-while [ "$shell_attempt" -lt 30 ] && ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; do
-  shell_attempt=$((shell_attempt + 1))
-  sleep 1
+# applying the remaining session settings. The interval grows so a restart this
+# quick is not preceded by a burst of one-second pgrep spawns.
+uid="$(id -u)"
+shell_waited=0
+shell_interval=1
+while [ "$shell_waited" -lt 30 ] &&
+  ! pgrep -u "$uid" -x plasmashell >/dev/null 2>&1; do
+  sleep "$shell_interval"
+  shell_waited=$((shell_waited + shell_interval))
+  shell_interval=$((shell_interval * 2))
+  [ "$shell_interval" -le 5 ] || shell_interval=5
 done
-if ! pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1; then
+if ! pgrep -u "$uid" -x plasmashell >/dev/null 2>&1; then
   logger -t shreeos-plasma-first-login 'Plasma shell did not restart after applying ShreeOS desktop defaults'
   exit 1
 fi
@@ -81,4 +87,24 @@ if [ "$attempt" -ge 30 ]; then
   logger -t shreeos-plasma-first-login 'Plasma did not write the ShreeOS menu bar, system tray, and clock configuration'
   exit 1
 fi
+
+# Balanced is the ShreeOS default power profile. power-profiles-daemon already
+# defaults to balanced; recording it keeps the desktop, shreeos-power --status
+# and the daemon in agreement without spawning a single polling process.
+if command -v kwriteconfig6 >/dev/null 2>&1; then
+  kwriteconfig6 --file shreeosrc --group Desktop --key PowerProfile balanced
+fi
+
+# The release-verification live medium renders on QEMU's virtio display, where
+# Plasma effects are not reliably drawable. Disable compositing for the live
+# session only: this runs once per user and the installed system, whose
+# /run/live/medium does not exist, keeps the compositor KWin selects for itself.
+if [ -d /run/live/medium ] && command -v kwriteconfig6 >/dev/null 2>&1; then
+  kwriteconfig6 --file kwinrc --group Compositing --key Enabled false
+  if ! dbus-send --session --type=method_call --print-reply \
+    --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1; then
+    logger -t shreeos-plasma-first-login 'Live-session compositing change will apply at next sign-in'
+  fi
+fi
+
 touch "$marker"

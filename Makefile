@@ -1,12 +1,27 @@
 # ShreeOS top-level build orchestration
 #
-# Profiles:
-#   PROFILE=desktop  (default: legacy experimental source-build desktop path)
+# THE SHREEOS OPERATING SYSTEM IS BUILT WITH `make shreeos`.
+#
+# `make shreeos` assembles the one unified desktop distribution: a single
+# Debian 13 (Trixie) + KDE Plasma root filesystem that boots live and installs
+# with Calamares, released as exactly one artifact, out/shreeos(VERSION).iso.
+# Its version comes from the repository-root VERSION file.
+#
+# Everything below it in this file is either shared tooling for that image or an
+# EXPERIMENTAL legacy path. The source-built native pipeline (toolchain,
+# base-system, kernel, packages, desktop, rootfs, iso) is retained for research
+# and historical tests; it is not a release path and does not publish ISOs.
+#
+# Legacy experimental profiles:
+#   PROFILE=desktop  (default: source-built desktop path)
 #   PROFILE=security (desktop workstation plus defensive/security diagnostics)
 #   PROFILE=minimal  (small headless rescue/validation environment)
 #   PROFILE=server   (headless networking/server environment)
 #
 # Targets:
+#   shreeos         — Build the unified ShreeOS desktop image (out/shreeos(VERSION).iso)
+#   shreeos-check   — Validate the build environment and version contract only
+#   shreeos-verify  — Re-verify an already-built image without rebuilding
 #   toolchain       — Phase 1: cross-compilation toolchain
 #   base-system     — Phase 2: base userland packages
 #   kernel          — Phase 3: Linux kernel
@@ -47,7 +62,12 @@ export PROFILE
 help:
 	@echo "ShreeOS Build System (Active Profile: $(PROFILE))"
 	@echo ""
-	@echo "Core Pipeline Targets:"
+	@echo "Unified ShreeOS desktop image (the release product):"
+	@echo "  make shreeos              Build out/shreeos(VERSION).iso (Debian 13 + KDE Plasma)"
+	@echo "  make shreeos-check        Validate build environment and version contract only"
+	@echo "  make shreeos-verify       Re-verify an existing image without rebuilding"
+	@echo ""
+	@echo "Legacy experimental source-build pipeline:"
 	@echo "  make toolchain            Phase 1: Cross-compilation toolchain"
 	@echo "  make base-system          Phase 2: Base userland packages"
 	@echo "  make kernel               Phase 3: Linux kernel"
@@ -129,8 +149,27 @@ audit-iso:
 audit-test:
 	python3 tests/audit/test-shreeos-audit.py
 
-# Separate Debian Live base/desktop/Plasma prototypes. They do not replace the
-# existing source-built ISO target; build explicitly on Debian Linux as root.
+# -- Unified ShreeOS desktop image (the one user-facing release build) ------
+# Produces out/shreeos(VERSION).iso plus its checksum, package manifest, build
+# metadata and JSON manifest. Requires Debian 13 and root; it validates the
+# toolchain, the version contract and the pinned live-build before it starts.
+.PHONY: shreeos shreeos-check shreeos-verify shreeos-force
+shreeos:
+	bash scripts/build-shreeos.sh
+
+shreeos-check:
+	bash scripts/verify-version.sh
+	bash scripts/build-shreeos.sh --check
+
+shreeos-verify:
+	bash scripts/build-shreeos.sh --verify-only
+
+shreeos-force:
+	bash scripts/build-shreeos.sh --force
+
+# Experimental Debian Live profiles (base console, XFCE desktop). These are
+# development targets only: they emit suffixed throwaway images and are never
+# published. `make shreeos` is the ShreeOS operating system.
 .PHONY: prototype-debian test-prototype test-prototype-config
 prototype-debian:
 	SHREEOS_LIVE_PROFILE="$(SHREEOS_LIVE_PROFILE)" bash scripts/build-debian-prototype.sh

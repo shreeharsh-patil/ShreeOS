@@ -15,6 +15,57 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   Debian Live Plasma desktop to the native image. Hardware acceptance,
   installed-system updates/recovery and performance validation remain open.
 
+## [0.4.0] - 2026-10-16
+
+### Added
+- One canonical product build. `make shreeos` (or
+  `bash scripts/build-shreeos.sh`) assembles the unified ShreeOS desktop and
+  writes exactly one primary artifact, `out/shreeos(VERSION).iso`, with its
+  checksum, package manifest, build record and JSON manifest. It validates the
+  environment, the pinned `live-build` and the version contract before it
+  starts, and fails rather than ship a partial image.
+- The repository-root `VERSION` file is now the single authoritative version
+  source. `build.conf`, `prototype/debian-live/versions.conf`, the generated
+  `/etc/os-release` and the release tag all derive from it, and
+  `scripts/verify-version.sh` fails the build when any of them drifts.
+- `.github/workflows/shreeos-release.yml`: one authoritative desktop pipeline
+  with static checks, build, BIOS/UEFI boot verification with real desktop
+  screenshots, installer verification, idle-resource measurement, and a release
+  stage that refuses to run unless every earlier stage succeeded.
+- `shreeos-power` with Performance, Balanced (default) and Battery Saver
+  profiles, mapped onto power-profiles-daemon and the desktop motion profile.
+- `shreeos-perf-probe`, a live-media-only one-shot probe that records cold-boot
+  time, loaded services and the idle RAM/CPU footprint to the console, plus
+  `prototype/debian-live/performance-targets.tsv` and
+  `tests/prototype/test-performance-report.sh` to enforce the release targets.
+- `docs/UNIFIED-ARCHITECTURE.md`: the integration matrix for the unified image,
+  including what is reused, adapted, optional, excluded and still missing.
+- `release/INSTALL-ACCEPTANCE.md`: the recorded interactive-install acceptance
+  that the release stage requires, because Calamares has no supported
+  fully-unattended mode and a keystroke harness would fake that gate.
+
+### Changed
+- The installed desktop no longer forces compositing off. KWin selects its own
+  renderer and keeps its driver safety checks; the QEMU live medium, whose
+  virtio display cannot draw Plasma effects reliably, is the only environment
+  that disables compositing, at runtime and for the live session alone.
+- Baloo keeps filename indexing but no longer extracts document content by
+  default, so file search still works while the sustained indexing cost drops.
+- The session startup scripts wait with a growing interval instead of polling
+  `pgrep` once per second; the dock no longer spends up to 180 process spawns
+  on every login.
+- The dock decision is documented: Plank on X11, with no competing KDE dock
+  running alongside it, and a regression test that fails if one is added.
+- Console and XFCE Debian Live images are explicitly experimental. They keep
+  regression coverage but are never published, and the native source-built
+  image no longer publishes a desktop ISO either.
+
+### Removed
+- `.github/workflows/release.yml` and
+  `.github/workflows/publish-native-iso.yml`, which published additional
+  desktop ISOs under prototype and native names. Superseded by the single
+  pipeline above.
+
 ## [Unreleased]
 
 ### Added

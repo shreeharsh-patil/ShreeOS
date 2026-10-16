@@ -171,7 +171,10 @@ insmod part_msdos
 insmod ext2
 insmod fat
 
-menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-4.0.0-dev}" {
+# DISTRO_VERSION comes from build.conf, which resolves it from the repository's
+# VERSION file. The fallback is deliberately not a version: a menu that names a
+# version this build does not know would be worse than one that says so.
+menuentry "${DISTRO_NAME:-ShreeOS} ${DISTRO_VERSION:-unknown}" {
     echo "Loading Linux kernel..."
     search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
     linux /boot/bzImage root=PARTUUID=${ROOT_PARTUUID} rw rootwait console=tty0 console=ttyS0,115200n8 ${CMDLINE_EXTRA}

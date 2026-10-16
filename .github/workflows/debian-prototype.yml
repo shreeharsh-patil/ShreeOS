@@ -1,4 +1,10 @@
-name: Debian Live Prototype
+name: Debian Live experiments (console and XFCE)
+
+# EXPERIMENTAL. These are throwaway console (base) and XFCE desktop images kept
+# as regression coverage for the shared Debian Live configuration. They are NOT
+# ShreeOS releases and they never publish ISOs. The ShreeOS operating system and
+# its one public image, out/shreeos(VERSION).iso, are built and released by
+# .github/workflows/shreeos-release.yml.
 
 on:
   push:
@@ -92,10 +98,12 @@ jobs:
 
       - name: Validate prototype configuration
         run: |
+          bash tests/release/test-version-contract.sh
           bash tests/prototype/test-config.sh
           python3 tests/prototype/test-desktop-config.py
           python3 tests/prototype/test-plasma-config.py
           python3 tests/prototype/test-system-features.py
+          python3 tests/prototype/test-performance-config.py
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
           python3 tests/prototype/test-branding.py
@@ -109,6 +117,12 @@ jobs:
             tests/prototype/test-search-calculator.py \
             tests/prototype/test-workspace-overview.py
 
+      - name: Resolve the shared image version
+        id: version
+        run: |
+          bash scripts/verify-version.sh
+          echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
       - name: Build and boot-test the console base
         run: bash scripts/build-debian-prototype.sh
       - name: Validate base SquashFS and boot in BIOS and UEFI QEMU
@@ -116,9 +130,9 @@ jobs:
           set -Eeuo pipefail
           mkdir -p build-logs/prototype-qemu
           QEMU_LOG_DIR=build-logs/prototype-qemu bash tests/prototype/test-iso.sh \
-            out/shreeos-0.3.0-prototype-amd64.iso
+            "out/shreeos-${{ steps.version.outputs.version }}-amd64.iso"
 
-      - name: Build the optional ShreeOS desktop profile
+      - name: Build the optional XFCE desktop experiment
         run: SHREEOS_LIVE_PROFILE=desktop bash scripts/build-debian-prototype.sh
 
       - name: Validate desktop package set and boot the XFCE session in BIOS and UEFI QEMU
@@ -126,27 +140,17 @@ jobs:
           set -Eeuo pipefail
           mkdir -p build-logs/prototype-qemu
           QEMU_LOG_DIR=build-logs/prototype-qemu bash tests/prototype/test-iso.sh \
-            out/shreeos-0.3.0-prototype-desktop-amd64.iso desktop
+            "out/shreeos-${{ steps.version.outputs.version }}-desktop-amd64.iso" desktop
 
-      - name: Build the optional ShreeOS Plasma profile
-        run: SHREEOS_LIVE_PROFILE=plasma bash scripts/build-debian-prototype.sh
-
-      - name: Validate Plasma package set and boot its SDDM session in BIOS and UEFI QEMU
-        run: |
-          set -Eeuo pipefail
-          mkdir -p build-logs/prototype-qemu
-          QEMU_LOG_DIR=build-logs/prototype-qemu bash tests/prototype/test-iso.sh \
-            out/shreeos-0.3.0-prototype-plasma-amd64.iso plasma
-
-      - name: Upload base and desktop prototype ISOs, manifests, checksums, and build metadata
+      - name: Upload the experimental console and XFCE images
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-debian-live-prototype-${{ github.sha }}
+          name: shreeos-debian-live-experiments-${{ github.sha }}
           path: |
-            out/shreeos-0.3.0-prototype*.iso
-            out/shreeos-0.3.0-prototype*.iso.sha256
-            out/shreeos-0.3.0-prototype*-packages.txt
-            out/shreeos-0.3.0-prototype*-build-info.txt
+            out/shreeos-${{ steps.version.outputs.version }}-amd64.iso*
+            out/shreeos-${{ steps.version.outputs.version }}-amd64-*.txt
+            out/shreeos-${{ steps.version.outputs.version }}-desktop-amd64.iso*
+            out/shreeos-${{ steps.version.outputs.version }}-desktop-amd64-*.txt
           if-no-files-found: error
           retention-days: 7
 

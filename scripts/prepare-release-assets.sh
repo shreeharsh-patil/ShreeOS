@@ -10,10 +10,20 @@ asset_dir="$(cd -- "$1" && pwd)"
 iso_name="$2"
 part_size="${3:-1900000000}"
 
-[[ "$iso_name" =~ ^[A-Za-z0-9._-]+\.iso$ ]] || {
+# Parentheses are part of the mandated release name, shreeos(VERSION).iso, so
+# they must be accepted. Everything that could escape the asset directory or
+# confuse a shell word is still rejected: no slashes, no whitespace, no glob
+# metacharacters other than the required parentheses.
+[[ "$iso_name" =~ ^[A-Za-z0-9._()+-]+\.iso$ ]] || {
   echo "Invalid ISO filename: $iso_name" >&2
   exit 2
 }
+case "$iso_name" in
+  */* | *..* | *' '* | *'*'* | *'?'* | *'['* | *'$'* | *'~'* | *"'"* | *'"'*)
+    echo "Invalid ISO filename: $iso_name" >&2
+    exit 2
+    ;;
+esac
 [[ "$part_size" =~ ^[0-9]+$ ]] && ((part_size > 0 && part_size < 2147483648)) || {
   echo "Part size must be a positive byte count below GitHub's 2 GiB asset limit." >&2
   exit 2

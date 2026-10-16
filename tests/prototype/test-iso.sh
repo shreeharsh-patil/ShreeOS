@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ] || [ ! -s "$1" ]; then
-  echo "Usage: test-iso.sh PATH_TO_PROTOTYPE_ISO [base|desktop|plasma]" >&2
+  echo "Usage: test-iso.sh PATH_TO_SHREEOS_ISO [base|desktop|plasma]" >&2
+  echo "  The unified release image is out/shreeos(VERSION).iso (profile: plasma)." >&2
   exit 2
 fi
 ISO="$(realpath "$1")"
@@ -107,6 +108,10 @@ if [ "$PROFILE" = plasma ]; then
     etc/skel/.config/autostart/shreeos-plasma-defaults.desktop \
     etc/skel/.config/autostart/shreeos-plasma-dock.desktop \
     etc/skel/.config/autostart/calamares-desktop-icon.desktop \
+    etc/skel/.config/baloofilerc \
+    etc/skel/.config/kwinrc \
+    usr/local/bin/shreeos-power \
+    usr/share/applications/shreeos-power.desktop \
     etc/skel/.config/plank/dock1/launchers/files.dockitem \
     usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js \
     usr/local/bin/shreeos-plasma-first-login \

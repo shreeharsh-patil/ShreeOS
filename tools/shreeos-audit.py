@@ -762,9 +762,10 @@ def detect_profile(path: str, distro_id: str = "shreeos") -> str:
       * `<id>-<version>.iso`            -> the minimal profile (no suffix)
       * `<id>-<version>-<profile>.iso`  -> every other profile
 
-    Both cases matter. The version itself contains a dash (`0.2.2-dev`), so the
-    minimal image cannot be recognised by "the last component" -- it has to be
-    recognised by the *absence* of a known profile suffix after the id prefix.
+    Both cases matter. A version may itself contain a dash (ShreeOS development
+    versions carry a suffix), so the minimal image cannot be recognised by "the
+    last component" -- it has to be recognised by the *absence* of a known
+    profile suffix after the id prefix.
 
     A name that is not a ShreeOS image, or whose trailing component is not a
     known profile, returns "unknown" rather than a guess. Guessing changes

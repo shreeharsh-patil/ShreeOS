@@ -4,6 +4,10 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 CONFIG_SOURCE="$REPO_ROOT/prototype/debian-live"
+# The directive (relative to the repository root, which is where the linter is
+# invoked) lets it follow the file, so versions.conf's version derivation is
+# actually checked instead of being skipped as unresolvable.
+# shellcheck source=prototype/debian-live/versions.conf
 source "$CONFIG_SOURCE/versions.conf"
 LIVE_PROFILE="${SHREEOS_LIVE_PROFILE:-base}"
 
@@ -79,6 +83,18 @@ mkdir -p "$BUILD_ROOT"
 rm -rf -- "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$OUT_DIR"
 cp -a "$CONFIG_SOURCE/config" "$BUILD_DIR/config"
+# etc/os-release is generated from the version source of truth, so the shipped
+# image can never advertise a version that disagrees with VERSION.
+os_release_template="$CONFIG_SOURCE/config/includes.chroot/etc/os-release"
+[ -s "$os_release_template" ] || { echo "Missing os-release template: $os_release_template" >&2; exit 2; }
+grep -Fq '@VERSION@' "$os_release_template" || { echo 'os-release template lost @VERSION@' >&2; exit 2; }
+sed -e '/^# This file is a build-time template/,$d' \
+  -e "s|@VERSION@|$PROTOTYPE_VERSION|g" \
+  -e "s|@VERSION_ID@|${PROTOTYPE_VERSION%%-*}|g" \
+  "$os_release_template" > "$BUILD_DIR/config/includes.chroot/etc/os-release"
+grep -Fxq "VERSION=\"$PROTOTYPE_VERSION\"" "$BUILD_DIR/config/includes.chroot/etc/os-release" || {
+  echo 'Generated os-release does not carry the ShreeOS version' >&2; exit 2;
+}
 cp -a "$CONFIG_SOURCE/features/includes.chroot/." "$BUILD_DIR/config/includes.chroot/"
 mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/shreeos/toolsets"
 cp "$CONFIG_SOURCE/features/toolsets/"*.list.chroot \
@@ -257,6 +273,10 @@ fi
 mkdir -p "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants"
 ln -sfn ../shreeos-boot-check.service \
   "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-boot-check.service"
+# The boot performance probe is enabled on live media only. Its own unit carries
+# ConditionPathExists=/run/live/medium, so an installed system never runs it.
+ln -sfn ../shreeos-perf-probe.service \
+  "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-perf-probe.service"
 
 SNAPSHOT="https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/"
 SECURITY_SNAPSHOT="https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/"
@@ -317,20 +337,48 @@ if [ "$LIVE_PROFILE" = plasma ]; then
   done
 fi
 
+# Output naming.
+#
+# The canonical unified build (scripts/build-shreeos.sh) passes
+# SHREEOS_OUTPUT_BASENAME and owns the mandated "shreeos(VERSION).iso" name.
+# A direct build of an experimental profile keeps a suffixed name, so an
+# experiment can never be mistaken for, or published as, the unified release.
 OUTPUT_SUFFIX=""
+ISO_SUFFIX="-amd64"
+BUILD_KIND="experimental"
 if [ "$LIVE_PROFILE" = desktop ]; then OUTPUT_SUFFIX="-desktop"; fi
 if [ "$LIVE_PROFILE" = plasma ]; then OUTPUT_SUFFIX="-plasma"; fi
-OUTPUT_PREFIX="$OUT_DIR/shreeos-${PROTOTYPE_VERSION}${OUTPUT_SUFFIX}"
-ISO_OUT="${OUTPUT_PREFIX}-amd64.iso"
+if [ -n "${SHREEOS_OUTPUT_BASENAME:-}" ]; then
+  # Parentheses are part of the mandated filename; validate tightly so the value
+  # cannot escape the output directory or carry a forbidden release suffix.
+  if ! [[ "$SHREEOS_OUTPUT_BASENAME" =~ ^shreeos\([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\)$ ]]; then
+    echo "Unsafe SHREEOS_OUTPUT_BASENAME: $SHREEOS_OUTPUT_BASENAME" >&2
+    exit 2
+  fi
+  OUTPUT_PREFIX="$OUT_DIR/$SHREEOS_OUTPUT_BASENAME"
+  ISO_SUFFIX=""
+  BUILD_KIND="unified"
+else
+  OUTPUT_PREFIX="$OUT_DIR/shreeos-${PROTOTYPE_VERSION}${OUTPUT_SUFFIX}"
+fi
+ISO_OUT="${OUTPUT_PREFIX}${ISO_SUFFIX}.iso"
 cp -- "$ISO_SOURCE" "$ISO_OUT"
 cp -- "$PACKAGES_SOURCE" "${OUTPUT_PREFIX}-packages.txt"
 (cd "$OUT_DIR" && sha256sum "$(basename "$ISO_OUT")" > "$(basename "$ISO_OUT").sha256")
-printf 'suite=%s\nsnapshot=%s\nlive_build=%s\nprofile=%s\nfirmware=%s\ntoolsets=%s\n' \
-  "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" "$LIVE_PROFILE" "$FIRMWARE" "$TOOLSETS" \
+manifest_version() {
+  awk -v pkg="$1" '$1 == pkg { print $2; exit }' "$PACKAGES_SOURCE"
+}
+printf 'version=%s\nkind=%s\nsuite=%s\nsnapshot=%s\nlive_build=%s\nprofile=%s\nfirmware=%s\ntoolsets=%s\narchitecture=x86_64\n' \
+  "$PROTOTYPE_VERSION" "$BUILD_KIND" "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" \
+  "$LIVE_PROFILE" "$FIRMWARE" "$TOOLSETS" \
   > "${OUTPUT_PREFIX}-build-info.txt"
+printf 'kernel=%s\nplasma=%s\nkwin=%s\nsddm=%s\n' \
+  "$(manifest_version linux-image-amd64)" "$(manifest_version plasma-workspace)" \
+  "$(manifest_version kwin-x11)" "$(manifest_version sddm)" \
+  >> "${OUTPUT_PREFIX}-build-info.txt"
 for package in live-build debootstrap xorriso squashfs-tools \
   grub-pc-bin grub-efi-amd64-bin; do
   dpkg-query -W -f='${Package}=${Version}\n' "$package" \
     >> "${OUTPUT_PREFIX}-build-info.txt"
 done
-printf 'Built %s prototype ISO: %s\n' "$LIVE_PROFILE" "$ISO_OUT"
+printf 'Built %s %s ISO: %s\n' "$LIVE_PROFILE" "$BUILD_KIND" "$ISO_OUT"

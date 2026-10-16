@@ -1,10 +1,15 @@
 NAME="ShreeOS"
-PRETTY_NAME="ShreeOS 0.3.0 Prototype (Debian 13 Trixie)"
+PRETTY_NAME="ShreeOS @VERSION@ (Debian 13 Trixie)"
 ID=shreeos
 ID_LIKE=debian
-VERSION="0.3.0-prototype"
-VERSION_ID="0.3.0"
+VERSION="@VERSION@"
+VERSION_ID="@VERSION_ID@"
 VERSION_CODENAME=trixie
 HOME_URL="https://github.com/shreeharsh-patil/ShreeOS"
 SUPPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues"
 BUG_REPORT_URL="https://github.com/shreeharsh-patil/ShreeOS/issues/new"
+
+# This file is a build-time template. `scripts/build-shreeos.sh` substitutes
+# @VERSION@ and @VERSION_ID@ from the repository-root VERSION file while the
+# image is assembled, so the shipped /etc/os-release can never drift from the
+# source of truth. Do not hardcode a version here.

@@ -1,0 +1,13 @@
+# ShreeOS release performance targets, enforced by
+# tests/prototype/test-performance-report.sh against the SHREEOS_PERF metrics the
+# live image writes to its console.
+#
+# Columns: metric<TAB>limit<TAB>comparison<TAB>provenance
+#
+# These are requirements, not measurements. No measured baseline is committed,
+# because a number nobody took would be worse than none: the first successful
+# pipeline run records the baseline and publishes it with the run's artifacts,
+# and only then does regression comparison start.
+mem_used_mib	850	max	idle memory stretch target for the unified desktop image
+cpu_busy_pct	2	max	sustained idle CPU, measured from /proc/stat over a 30 s window
+units_failed	0	max	a failed unit at idle is a defect, not a budget

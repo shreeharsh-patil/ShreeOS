@@ -20,10 +20,15 @@ The repository contains two distinct build paths:
 | Existing source-built image | Custom cross-build pipeline, Linux kernel, BusyBox-oriented early userspace, custom ShreeOS init and package tooling, and a small X11/dwm graphical stack | Existing experimental path; its README-era claims are not a substitute for testing the generated image |
 | Debian Live prototype | Debian Trixie userspace, apt/dpkg, systemd, live-boot, NetworkManager, common storage/diagnostic tools, SquashFS, and hybrid BIOS/UEFI boot configuration | Console BIOS/UEFI boot passes in CI; XFCE screenshot gate is failing; Plasma package/session profile is newly added and awaits Linux CI |
 
-Native desktop development ISOs are available from
-[GitHub Releases](https://github.com/shreeharsh-patil/ShreeOS/releases).
-The current native version is `4.0.0-dev`; these are development prereleases,
-and a supported production desktop release has not been certified.
+The ShreeOS operating system is built from one canonical entry point.
+`make shreeos` assembles the single unified desktop image and writes exactly one
+primary artifact, `out/shreeos(VERSION).iso`; its version comes from the
+repository-root `VERSION` file (currently `0.4.0`) and every other version
+reference derives from it. A supported production desktop release has not been
+certified yet: see
+[`docs/UNIFIED-ARCHITECTURE.md`](docs/UNIFIED-ARCHITECTURE.md) for what is
+integrated into the image and
+[`docs/SYSTEM-READINESS.md`](docs/SYSTEM-READINESS.md) for the open release gates.
 CI has built the optional XFCE profile and started its session, but the
 QEMU screenshot is still black after first-login setup completes; the screenshot
 gate and visual acceptance remain open. The desktop includes a ShreeOS XFCE
@@ -92,12 +97,13 @@ acceleration have not yet been certified. The current source-built image has
 its own kernel and hardware limitations; consult the phase plan before using it
 as an installed system.
 
-## Build the Debian Live prototype
+## Build the ShreeOS desktop image
 
 Use a Debian 13 Trixie Linux host or a disposable Debian 13 VM with root access.
 The build uses `live-build`, `debootstrap`, GRUB, xorriso, SquashFS tools and
-other packages listed in
-[`.github/workflows/debian-prototype.yml`](.github/workflows/debian-prototype.yml).
+other packages; `scripts/build-shreeos.sh` validates all of them, the pinned
+`live-build` version and the version contract before it starts, and fails
+instead of building a partial image.
 The repository checkout should have enough free space for package downloads,
 the unpacked live root, and the ISO; allow at least 20 GB. Native Windows is
 not a build host. WSL is suitable only when a working Linux distribution,
@@ -108,28 +114,39 @@ available.
 git clone https://github.com/shreeharsh-patil/ShreeOS.git
 cd ShreeOS
 git switch master
-make test-prototype-config
-make prototype-debian
-make test-prototype ISO=out/shreeos-0.3.0-prototype-amd64.iso
 
-# Optional desktop build and its stronger QEMU login check.
-make prototype-debian SHREEOS_LIVE_PROFILE=desktop
-make test-prototype SHREEOS_LIVE_PROFILE=desktop \
-  ISO=out/shreeos-0.3.0-prototype-desktop-amd64.iso
+# Validate the environment and the version contract without building.
+make shreeos-check
 
-# Experimental KDE Plasma profile (SDDM and Plasma X11 session).
-make prototype-debian SHREEOS_LIVE_PROFILE=plasma
-make test-prototype SHREEOS_LIVE_PROFILE=plasma \
-  ISO=out/shreeos-0.3.0-prototype-plasma-amd64.iso
+# Build the one unified desktop image: out/shreeos(VERSION).iso.
+make shreeos
+
+# Equivalent direct entry point, with more control.
+bash scripts/build-shreeos.sh
+bash scripts/build-shreeos.sh --force        # ignore the reusable-input cache
+bash scripts/build-shreeos.sh --verify-only  # re-verify an existing image
 ```
 
-The build target refuses to run without root and removes only its dedicated
-`build/debian-live-prototype` scratch directory before rebuilding. Generated
-files are placed under ignored `build/` and `out/` directories. The prototype
-CI workflow builds the same image path, checks its package manifest and
-SquashFS, then attempts BIOS and UEFI QEMU boots. CI artifacts are short-lived
-development artifacts, not releases. Because this workspace is Windows, the
-first complete image build and QEMU results must come from Linux CI.
+The build refuses to run without root, and removes only this image's own prior
+outputs plus its dedicated `build/debian-live-prototype` scratch directory.
+Generated files stay under ignored `build/` and `out/` directories. Alongside
+the ISO it writes `shreeos(VERSION).iso.sha256`, the exact package manifest, a
+`build-info.txt` record and a machine-readable `-manifest.json` containing the
+Git commit, base distribution and snapshot, build timestamp, architecture and
+kernel/Plasma versions.
+
+Command-line options let the image be built with free-only firmware
+(`SHREEOS_FIRMWARE=free`) or with optional software bundles
+(`SHREEOS_TOOLSETS=developer,security,creative`). The console and XFCE images
+remain buildable as experiments with
+`SHREEOS_LIVE_PROFILE=base|desktop bash scripts/build-debian-prototype.sh`.
+They emit suffixed throwaway names and are never published.
+
+The authoritative pipeline is
+[`.github/workflows/shreeos-release.yml`](.github/workflows/shreeos-release.yml):
+static checks, build, BIOS/UEFI boot verification with real desktop screenshots,
+installation verification, performance measurement, and release. Because this
+workspace is Windows, the image build and QEMU results must come from Linux CI.
 
 The previous source-built path has separate host requirements and commands;
 consult [`docs/BUILD_GUIDE.md`](docs/BUILD_GUIDE.md) and the relevant Makefile

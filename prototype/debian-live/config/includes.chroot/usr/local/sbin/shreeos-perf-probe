@@ -1,0 +1,154 @@
+#!/bin/sh
+set -eu
+
+# ShreeOS live boot performance probe.
+#
+# Runs once on live media only and writes machine-readable SHREEOS_PERF lines to
+# the console, so the release pipeline can record cold-boot time, loaded
+# services and the real idle RAM/CPU footprint from the serial log. This exists
+# because a guest with no agent and no network can still be measured, and
+# because "we changed a config" is not evidence of a resource win.
+#
+# Nothing here writes to the system, installs anything, or runs in an installed
+# system: the unit that starts this is conditioned on the live medium.
+
+WINDOW_SECONDS=30
+
+emit() { printf 'SHREEOS_PERF %s=%s\n' "$1" "$2"; }
+
+meminfo_kib() {
+  awk -v key="$1" '$1 == key { print $2; exit }' /proc/meminfo
+}
+
+to_mib() {
+  # Integer MiB from KiB, rounding down; never fails on a missing value.
+  case "${1:-}" in
+    '' | *[!0-9]*) echo 0 ;;
+    *) echo $(( $1 / 1024 )) ;;
+  esac
+}
+
+to_ms() {
+  # systemd-analyze prints "1.234s", "123ms", or "1min 2.345s".
+  case "${1:-}" in
+    '') echo 0 ;;
+    *ms) printf '%.0f\n' "$(printf '%s' "${1%ms}" | tr -dc '0-9.')" ;;
+    *s) awk -v v="$(printf '%s' "${1%s}" | tr -dc '0-9.')" 'BEGIN { printf "%.0f\n", v * 1000 }' ;;
+    *min*)
+      awk -v raw="$1" 'BEGIN {
+        split(raw, parts, "min");
+        printf "%.0f\n", (parts[1] + 0) * 60000 + (parts[2] + 0) * 1000
+      }'
+      ;;
+    *) echo 0 ;;
+  esac
+}
+
+# --- Cold boot ---------------------------------------------------------------
+probe_started="$(cut -d' ' -f1 /proc/uptime)"
+if command -v systemd-analyze >/dev/null 2>&1; then
+  summary="$(systemd-analyze time 2>/dev/null || true)"
+  if [ -n "$summary" ]; then
+    firmware="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(firmware\)).*/\1/p')"
+    loader="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(loader\)).*/\1/p')"
+    kernel="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(kernel\)).*/\1/p')"
+    userspace="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(userspace\)).*/\1/p')"
+    total="$(printf '%s\n' "$summary" | sed -n 's/.*= *\([0-9.][^ ]*\)$/\1/p')"
+    reached="$(printf '%s\n' "$summary" | sed -n 's/.*reached after \([0-9.][^ ]*\) .*/\1/p')"
+    emit boot_firmware_ms "$(to_ms "$firmware")"
+    emit boot_loader_ms "$(to_ms "$loader")"
+    emit boot_kernel_ms "$(to_ms "$kernel")"
+    emit boot_userspace_ms "$(to_ms "$userspace")"
+    emit boot_total_ms "$(to_ms "$total")"
+    emit graphical_reached_ms "$(to_ms "$reached")"
+  fi
+  # The slowest units are the actionable part of a boot-time regression.
+  blame="$(systemd-analyze blame --no-pager 2>/dev/null | head -n 8 | tr -s ' ' | tr '\n' ';' || true)"
+  emit blame_top "${blame%;}"
+fi
+
+# --- Startup services --------------------------------------------------------
+if command -v systemctl >/dev/null 2>&1; then
+  running="$(systemctl list-units --type=service --state=running --no-legend --no-pager 2>/dev/null | wc -l | tr -d ' ')"
+  failed="$(systemctl list-units --state=failed --no-legend --no-pager 2>/dev/null | wc -l | tr -d ' ')"
+  emit services_running "$running"
+  emit units_failed "$failed"
+  emit units_total "$(systemctl list-units --no-legend --no-pager 2>/dev/null | wc -l | tr -d ' ')"
+  emit user_units_total "$(systemctl --user list-units --no-legend --no-pager 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
+fi
+
+# --- Memory ------------------------------------------------------------------
+total_kib="$(meminfo_kib MemTotal)"
+available_kib="$(meminfo_kib MemAvailable)"
+swap_total_kib="$(meminfo_kib SwapTotal)"
+swap_free_kib="$(meminfo_kib SwapFree)"
+emit mem_total_mib "$(to_mib "$total_kib")"
+emit mem_available_mib "$(to_mib "$available_kib")"
+emit mem_used_mib "$(to_mib $(( ${total_kib:-0} - ${available_kib:-0} )))"
+emit swap_total_mib "$(to_mib "$swap_total_kib")"
+emit swap_used_mib "$(to_mib $(( ${swap_total_kib:-0} - ${swap_free_kib:-0} )))"
+
+processes="$(ps -e --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+emit processes "$processes"
+
+# --- The processes that actually dominate a Plasma desktop -------------------
+for name in plasmashell kwin_x11 kwin_wayland sddm Xorg X plank baloo_file; do
+  # Sort first, then collapse: a process name can match several PIDs, and
+  # concatenating their RSS values would invent a number.
+  rss="$(ps -C "$name" -o rss= 2>/dev/null | sort -n | tail -n 1 | tr -d ' ' || true)"
+  if [ -n "$rss" ]; then
+    emit "rss_mib_${name}" "$(to_mib "$rss")"
+  fi
+done
+
+top_rss="$(ps -eo rss=,comm= --sort=-rss 2>/dev/null | head -n 5 |
+  while read -r rss comm; do
+    [ -n "${comm:-}" ] || continue
+    printf '%s:%d ' "$comm" "$(to_mib "$rss")"
+  done | sed 's/ *$//')"
+emit top_rss_mib "${top_rss:-none}"
+
+# --- Idle CPU ----------------------------------------------------------------
+# Two /proc/stat samples over a fixed window. This measures the whole guest,
+# which is exactly the "sustained idle CPU" figure the release target refers to.
+cpu_sample() {
+  awk '/^cpu / {
+    total = 0
+    for (field = 2; field <= 9; field++) total += $field
+    printf "%s %s\n", $5, total
+  }' /proc/stat
+}
+
+idle_before=0
+total_before=0
+read -r idle_before total_before <<EOF
+$(cpu_sample)
+EOF
+emit probe_window_s "$WINDOW_SECONDS"
+sleep "$WINDOW_SECONDS"
+idle_after=0
+total_after=0
+read -r idle_after total_after <<EOF
+$(cpu_sample)
+EOF
+
+cpu_idle_pct="$(awk -v ib="$idle_before" -v tb="$total_before" \
+  -v ia="$idle_after" -v ta="$total_after" 'BEGIN {
+    idle = ia - ib
+    total = ta - tb
+    if (total <= 0) { print "0.00"; exit }
+    printf "%.2f\n", (idle * 100) / total
+  }')"
+emit cpu_idle_pct "$cpu_idle_pct"
+emit cpu_busy_pct "$(awk -v idle="$cpu_idle_pct" 'BEGIN { printf "%.2f\n", 100 - idle }')"
+
+top_cpu="$(ps -eo pcpu=,comm= --sort=-pcpu 2>/dev/null | head -n 5 |
+  while read -r pcpu comm; do
+    [ -n "${comm:-}" ] || continue
+    printf '%s:%s ' "$comm" "$pcpu"
+  done | sed 's/ *$//')"
+emit top_cpu_pct "${top_cpu:-none}"
+emit probe_elapsed_s "$(awk -v start="$probe_started" -v now="$(cut -d' ' -f1 /proc/uptime)" \
+  'BEGIN { printf "%.0f\n", now - start }')"
+
+printf 'SHREEOS_PERF_END\n'
