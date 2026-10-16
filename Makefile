@@ -412,6 +412,7 @@ test-auth:
 
 .PHONY: test-installer
 test-installer:
+	bash tests/installer/test-recovery-initramfs.sh
 	bash tests/installer/test-installer-validation.sh
 
 .PHONY: test-pkgmanager

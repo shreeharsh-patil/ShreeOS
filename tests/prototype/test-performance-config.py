@@ -192,6 +192,13 @@ class PowerProfileTests(unittest.TestCase):
                     self.assertIn(fragment, text)
                 self.assertIn(f"--key> <PowerProfile> <{profile}>", text)
 
+    def test_battery_saver_description_matches_implemented_behavior(self):
+        result = self.run_power()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        chooser = (BIN / "shreeos-power").read_text(encoding="utf-8")
+        self.assertIn("Lower platform power use, fewer visual effects", chooser)
+        self.assertNotIn("reduced background work", chooser)
+
     def test_an_unsupported_platform_profile_is_reported_not_claimed(self):
         # power-profiles-daemon on a desktop usually advertises no power-saver.
         (self.folder / "powerprofilesctl").write_text(

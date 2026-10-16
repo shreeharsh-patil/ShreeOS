@@ -70,6 +70,9 @@ fi
 if [ "$PROFILE" = "security" ]; then
   REQUIRED_EXECUTABLES+=(usr/bin/shree-audit usr/bin/shree-netdiag)
 fi
+if [ "$SKIP_INIT" = false ]; then
+  REQUIRED_EXECUTABLES+=(usr/bin/shreeos-build-recovery-initramfs)
+fi
 
 lumen_step "Assembling root filesystem in ${LUMEN_STAGE_ROOT}"
 
@@ -222,6 +225,11 @@ if [ "$SKIP_INIT" = false ]; then
   if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/shree-recovery.sh" ]; then
     cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/shree-recovery.sh" "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-recovery"
     chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shree-recovery"
+  fi
+  if [ -f "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/build-recovery-initramfs.sh" ]; then
+    cp "${SHREEOS_ROOT_DIR:-${LUMEN_ROOT_DIR}}/installer/scripts/build-recovery-initramfs.sh" \
+      "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreeos-build-recovery-initramfs"
+    chmod 755 "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/usr/bin/shreeos-build-recovery-initramfs"
   fi
 else
   [ -s "${SHREEOS_STAGE_ROOT:-${LUMEN_STAGE_ROOT}}/sbin/init" ] || \

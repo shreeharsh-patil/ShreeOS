@@ -24,6 +24,8 @@ on:
   push:
     branches: [master]
     tags: ['v*']
+  pull_request:
+    branches: [master]
   workflow_dispatch:
     inputs:
       publish:
@@ -65,10 +67,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Install static-analysis tools
+      - name: Install static-analysis and installer test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml python3-pil
+          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml python3-pil cpio
 
       - name: Enforce the single-authoritative-version contract
         run: |
@@ -116,6 +118,7 @@ jobs:
         run: |
           bash tests/prototype/test-config.sh
           bash tests/release/test-version-contract.sh
+          bash tests/smoke/test-verify-stage.sh
 
       - name: Desktop, Plasma, calculator and overview configuration tests
         run: |
@@ -138,8 +141,10 @@ jobs:
           python3 branding/scripts/verify-logo-png-exports.py
           git diff --check
 
-      - name: Installer preflight regressions
-        run: bash tests/installer/test-installer-validation.sh
+      - name: Installer and recovery regressions
+        run: |
+          bash tests/installer/test-recovery-initramfs.sh
+          bash tests/installer/test-installer-validation.sh
 
       - name: Confirm the retired release paths stay retired
         run: |
@@ -619,13 +624,14 @@ jobs:
 
       - name: Verify the published assets
         run: |
-          gh api "$(gh release view "v$VERSION" --json apiUrl --jq .apiUrl)" > published.json
-          VERSION="$VERSION" ISO_NAME="$ISO_NAME" GITHUB_SHA="$GITHUB_SHA" \
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; else tag="v$VERSION"; fi
+          gh api "$(gh release view "$tag" --json apiUrl --jq .apiUrl)" > published.json
+          VERSION="$VERSION" ISO_NAME="$ISO_NAME" RELEASE_TAG="$tag" GITHUB_SHA="$GITHUB_SHA" \
             python3 - <<'PY'
           import hashlib, json, os, pathlib
 
           release = json.load(open('published.json'))
-          assert release['tag_name'] == f"v{os.environ['VERSION']}"
+          assert release['tag_name'] == os.environ['RELEASE_TAG']
           assert release['target_commitish'] == os.environ['GITHUB_SHA']
           assert not release['draft']
           expected = {

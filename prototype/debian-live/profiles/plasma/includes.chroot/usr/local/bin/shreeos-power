@@ -38,7 +38,7 @@ if [ -z "$mode" ]; then
   mode="$(kdialog --title 'ShreeOS Power' --radiolist 'Choose a power profile:' \
     performance 'Maximum performance, higher power use' off \
     balanced 'Balanced performance and battery life' on \
-    battery-saver 'Lower power use, reduced background work' off)" || exit 0
+    battery-saver 'Lower platform power use, fewer visual effects' off)" || exit 0
 fi
 
 case "$mode" in

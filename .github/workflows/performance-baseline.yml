@@ -25,6 +25,7 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates git
 
       - name: Check out the current measurement harness
+        id: checkout_harness
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 1
@@ -32,6 +33,7 @@ jobs:
           path: measurement-harness
 
       - name: Check out the untouched baseline source
+        id: checkout_baseline
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: 9313ebb042cf71bb148441037940b130d49920d1
@@ -52,7 +54,7 @@ jobs:
       - name: Confirm the exact baseline source commit
         run: |
           expected=9313ebb042cf71bb148441037940b130d49920d1
-          actual="$(git -C baseline-source rev-parse HEAD)"
+          actual='${{ steps.checkout_baseline.outputs.commit }}'
           [[ "$actual" == "$expected" ]]
           printf 'Untouched baseline source: %s\n' "$actual"
 
@@ -60,7 +62,8 @@ jobs:
         run: |
           mkdir -p baseline-evidence
           cd baseline-source
-          bash scripts/build-shreeos.sh 2>&1 | tee ../baseline-evidence/build.log
+          GITHUB_SHA=9313ebb042cf71bb148441037940b130d49920d1 \
+            bash scripts/build-shreeos.sh 2>&1 | tee ../baseline-evidence/build.log
           iso="out/shreeos($(tr -d '[:space:]' < VERSION)).iso"
           test -s "$iso"
           (cd out && sha256sum -c "$(basename "$iso").sha256")

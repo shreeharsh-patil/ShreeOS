@@ -142,6 +142,8 @@ inputs_hash() {
       printf 'profile=%s\n' "$UNIFIED_PROFILE"
       printf 'firmware=%s\n' "${SHREEOS_FIRMWARE:-standard}"
       printf 'toolsets=%s\n' "${SHREEOS_TOOLSETS:-}"
+      printf 'architecture=%s\n' "$SHREEOS_ARCH"
+      sha256sum build.conf
       find prototype/debian-live desktop/plasma themes/plasma branding scripts/build-shreeos.sh \
         scripts/build-debian-prototype.sh scripts/build-shreeos-tools-package.sh -type f -print0 |
         sort -z | xargs -0 sha256sum
@@ -211,10 +213,18 @@ iso_mtime="$(stat -c '%Y' "$ISO_PATH")"
 (cd "$OUT_DIR" && sha256sum -- "$ISO_NAME" > "$(basename -- "$CHECKSUM_PATH")")
 sha256="$(awk 'NR == 1 {print $1}' "$CHECKSUM_PATH")"
 size_bytes="$(stat -c '%s' "$ISO_PATH")"
-commit="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
-dirty=0
-if [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null || true)" ]; then
-  dirty=1
+if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  commit="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  dirty=0
+  if [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]; then
+    dirty=1
+  fi
+else
+  # actions/checkout falls back to a clean source archive in minimal Debian
+  # build containers that do not contain Git. Preserve its immutable commit
+  # identity instead of writing "unknown" into an otherwise verified build.
+  commit="${GITHUB_SHA:-unknown}"
+  if [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then dirty=0; else dirty=1; fi
 fi
 
 manifest_value() {

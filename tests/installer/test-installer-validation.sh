@@ -212,14 +212,23 @@ grep -Fq 'ALL EXISTING DATA ON ${DISK} WILL BE PERMANENTLY DESTROYED!' "${ROOT_D
   echo "  [FAIL] Destructive-operation warning was removed" >&2
   exit 1
 }
-grep -Fq "grep -Eq '^(\\./)?init$'" "$RECOVERY" || {
-  echo "  [FAIL] Recovery initramfs validation does not require /init" >&2
+RECOVERY_BUILDER="${ROOT_DIR}/installer/scripts/build-recovery-initramfs.sh"
+grep -Fq '/usr/bin/shreeos-build-recovery-initramfs' "$RECOVERY" || {
+  echo "  [FAIL] Recovery menu does not call the protected initramfs builder" >&2
   exit 1
 }
-if grep -Fq '(init|sbin/init)' "$RECOVERY"; then
-  echo "  [FAIL] Recovery validation still accepts /sbin/init" >&2
+grep -Fq "grep -Eq '^\\./init$|^init$'" "$RECOVERY_BUILDER" || {
+  echo "  [FAIL] Recovery initramfs builder does not require the /init entry" >&2
   exit 1
-fi
+}
+grep -Fq 'chmod 0600' "$RECOVERY_BUILDER" || {
+  echo "  [FAIL] Recovery initramfs is not restricted to root-readable mode" >&2
+  exit 1
+}
+grep -Fq -- "-o -path './home/*' -o -path './root/*'" "$RECOVERY_BUILDER" || {
+  echo "  [FAIL] Recovery initramfs does not exclude home-directory contents" >&2
+  exit 1
+}
 [ "$(grep -Fc '    linux /boot/bzImage ' "$RECOVERY")" -eq 3 ] || {
   echo "  [FAIL] Recovery configuration does not contain three kernel entries" >&2
   exit 1

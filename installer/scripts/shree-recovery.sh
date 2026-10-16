@@ -99,43 +99,18 @@ while true; do
         read -r -p "Press Enter to return to menu..." _
         continue
       fi
-      for required in find cpio gzip; do
-        if ! command -v "$required" >/dev/null 2>&1; then
-          echo "ERROR: required recovery command is missing: $required"
-          read -r -p "Press Enter to return to menu..." _
-          continue 2
-        fi
-      done
+      INITRAMFS_BUILDER="/usr/bin/shreeos-build-recovery-initramfs"
+      if [ ! -x "$INITRAMFS_BUILDER" ]; then
+        echo "ERROR: recovery initramfs builder is missing: $INITRAMFS_BUILDER"
+        read -r -p "Press Enter to return to menu..." _
+        continue
+      fi
 
-      INITRAMFS_TMP=$(mktemp /boot/.initramfs.cpio.gz.XXXXXX)
-      echo "Packaging root filesystem into a temporary initramfs..."
-      if (
-        cd /
-        find . -mindepth 1 \
-          -not -path './proc*' \
-          -not -path './sys*' \
-          -not -path './dev*' \
-          -not -path './run*' \
-          -not -path './tmp*' \
-          -not -path './boot*' \
-          -not -path './mnt*' \
-          -not -path './media*' \
-          -print0 \
-          | cpio --null -H newc -o 2>/dev/null \
-          | gzip -9 > "$INITRAMFS_TMP"
-      ) && gzip -t "$INITRAMFS_TMP" 2>/dev/null; then
-        INIT_LIST=$(gzip -dc "$INITRAMFS_TMP" | cpio -t --quiet 2>/dev/null || true)
-        if printf '%s\n' "$INIT_LIST" | grep -Eq '^(\./)?init$'; then
-          chmod 0644 "$INITRAMFS_TMP"
-          mv -f "$INITRAMFS_TMP" "$INITRAMFS_TARGET"
-          sync
-          echo "Successfully rebuilt ${INITRAMFS_TARGET} ($(du -h "$INITRAMFS_TARGET" | cut -f1))"
-        else
-          rm -f "$INITRAMFS_TMP"
-          echo "ERROR: rebuilt initramfs does not contain an /init entry; existing archive was preserved."
-        fi
+      echo "Packaging the system while excluding user homes and mounted data..."
+      if "$INITRAMFS_BUILDER" / "$INITRAMFS_TARGET"; then
+        sync
+        echo "Successfully rebuilt ${INITRAMFS_TARGET} ($(du -h "$INITRAMFS_TARGET" | cut -f1))"
       else
-        rm -f "$INITRAMFS_TMP"
         echo "ERROR: initramfs rebuild failed; existing archive was preserved."
       fi
       read -r -p "Press Enter to return to menu..." _

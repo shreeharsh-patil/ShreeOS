@@ -58,7 +58,8 @@ verify_entry() {
     FAILED=$((FAILED + 1))
     return 0
   fi
-  if ! [[ "$expected_sha" =~ ^[a-fA-F0-9]{64}$ ]]; then
+  expected_sha="${expected_sha,,}"
+  if ! [[ "$expected_sha" =~ ^[a-f0-9]{64}$ ]] || [[ "$expected_sha" =~ ^0{64}$ ]]; then
     printf "  [INVALID] [%-11s] %-16s malformed SHA256: %s\n" "$comp" "$name" "$expected_sha"
     FAILED=$((FAILED + 1))
     return 0
