@@ -1,5 +1,11 @@
 # Architecture
 
+> **Historical experimental path.** This document describes the source-built
+> ShreeOS kernel, custom init, LPM, and X11 stack. It is not the architecture
+> used by the unified release image. For the current Debian 13 + Plasma product,
+> see [`UNIFIED-ARCHITECTURE.md`](UNIFIED-ARCHITECTURE.md) and
+> [`BUILD_GUIDE.md`](BUILD_GUIDE.md).
+
 ## Overview
 
 ShreeOS is built in seven sequential stages. Each stage consumes the

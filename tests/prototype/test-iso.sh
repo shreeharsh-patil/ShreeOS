@@ -84,6 +84,8 @@ if [ "$PROFILE" = desktop ]; then
     fi
   done
 fi
+# These are the packages shipped by the default Plasma profile. Office and
+# multimedia suites are opt-in toolsets and are checked separately.
 if [ "$PROFILE" = plasma ]; then
   for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
     sddm-theme-breeze breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
@@ -91,7 +93,6 @@ if [ "$PROFILE" = plasma ]; then
     plasma-nm plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
     fonts-inter x11-xserver-utils kdialog libnotify-bin plymouth plymouth-themes calamares calamares-settings-debian \
     plank dconf-cli kate gwenview okular kcalc \
-    libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-kf6 vlc \
     cups print-manager simple-scan orca speech-dispatcher-espeak-ng onboard \
     power-profiles-daemon systemd-zram-generator fwupd plasma-discover-backend-fwupd; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {

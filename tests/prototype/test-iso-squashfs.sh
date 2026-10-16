@@ -28,6 +28,10 @@ trap 'rm -rf -- "$TEST_DIR"' EXIT
 SQUASHFS="$TEST_DIR/filesystem.squashfs"
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.squashfs "$SQUASHFS" >/dev/null
 unsquashfs -s "$SQUASHFS" >/dev/null
+unsquashfs -t "$SQUASHFS" >/dev/null || {
+  echo 'SquashFS data-block integrity check failed' >&2
+  exit 1
+}
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.packages "$TEST_DIR/packages.txt" >/dev/null
 [ -s "$TEST_DIR/packages.txt" ] || { echo 'ISO has no live package manifest' >&2; exit 1; }
 
@@ -104,8 +108,9 @@ grep -Fxq 'ID=shreeos' <(unsquashfs -cat "$SQUASHFS" etc/os-release) || {
 firmware_policy="$(unsquashfs -cat "$SQUASHFS" etc/shreeos/firmware-policy)"
 case "$firmware_policy" in
   standard)
-    for package in firmware-iwlwifi firmware-realtek firmware-amd-graphics \
-      intel-microcode amd64-microcode; do
+    for package in firmware-amd-graphics firmware-intel-graphics \
+      firmware-iwlwifi firmware-realtek firmware-atheros firmware-brcm80211 \
+      firmware-sof-signed intel-microcode amd64-microcode; do
       have_package "$package" || { echo "Standard-firmware image is missing: $package" >&2; exit 1; }
     done
     ;;
