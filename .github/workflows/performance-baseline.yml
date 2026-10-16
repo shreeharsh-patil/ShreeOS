@@ -62,6 +62,24 @@ jobs:
         run: |
           mkdir -p baseline-evidence
           cd baseline-source
+          # Compare like-for-like by installing the current diagnostic probe
+          # and its unit into the baseline image. These files only report
+          # boot/session/resource metrics; product packages and configuration
+          # remain from the pinned baseline commit.
+          probe_path=prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe
+          unit_path=prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service
+          install -D "../measurement-harness/$probe_path" "$probe_path"
+          install -D "../measurement-harness/$unit_path" "$unit_path"
+          actual_changes="$(git status --porcelain --untracked-files=all | sed -E 's/^...//' | sort)"
+          expected_changes="$(printf '%s\n%s\n' "$probe_path" "$unit_path" | sort)"
+          [[ "$actual_changes" == "$expected_changes" ]] || {
+            printf 'Unexpected baseline source changes before build:\n%s\n' "$actual_changes" >&2
+            exit 1
+          }
+          {
+            printf 'baseline_source=9313ebb042cf71bb148441037940b130d49920d1\n'
+            sha256sum "$probe_path" "$unit_path"
+          } > ../baseline-evidence/instrumentation.txt
           # Commit 9313ebb sources /etc/os-release into the same shell as the
           # ShreeOS VERSION variable. VERSION is optional in os-release; omit
           # only that host display field so it cannot rename the baseline ISO
@@ -91,6 +109,7 @@ jobs:
       - name: Measure the untouched ISO with the current harness
         env:
           MEASURED_SOURCE_COMMIT: 9313ebb042cf71bb148441037940b130d49920d1
+          ALLOW_PERFORMANCE_INSTRUMENTATION_OVERLAY: '1'
         run: |
           iso="baseline-source/out/shreeos($(tr -d '[:space:]' < baseline-source/VERSION)).iso"
           QEMU_LOG_DIR=baseline-evidence \

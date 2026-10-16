@@ -337,11 +337,14 @@ class MeasurementProvenanceTests(unittest.TestCase):
             "size_bytes": self.iso_size,
         }
 
-    def verify(self):
+    def verify(self, allow_instrumentation_overlay=False):
         self.manifest.write_text(json.dumps(self.metadata), encoding="utf-8")
+        arguments = [sys.executable, str(ROOT / "scripts/verify-performance-manifest.py"),
+                     str(self.manifest), str(self.iso)]
+        if allow_instrumentation_overlay:
+            arguments.append("--allow-instrumentation-overlay")
         return subprocess.run(
-            [sys.executable, str(ROOT / "scripts/verify-performance-manifest.py"),
-             str(self.manifest), str(self.iso)],
+            arguments,
             capture_output=True, text=True, timeout=10,
         )
 
@@ -355,6 +358,12 @@ class MeasurementProvenanceTests(unittest.TestCase):
         result = self.verify()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("clean source commit", result.stderr)
+
+    def test_accepts_only_explicitly_authorized_instrumentation_overlay(self):
+        self.metadata["git_dirty"] = True
+        result = self.verify(allow_instrumentation_overlay=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), self.commit)
 
     def test_rejects_checksum_or_size_mismatch(self):
         for field, value, message in (
@@ -378,6 +387,16 @@ class MeasurementProvenanceTests(unittest.TestCase):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
         for tool in ("unsquashfs", "xvfb-run", "sha256sum"):
             self.assertIn(tool, report)
+
+    def test_performance_runner_rejects_a_different_embedded_probe(self):
+        report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
+        self.assertIn('cmp -s "$PROBE_SOURCE" "$TEST_DIR/probe"', report)
+        self.assertIn('cmp -s "$SERVICE_SOURCE" "$TEST_DIR/probe.service"', report)
+        self.assertIn("ALLOW_PERFORMANCE_INSTRUMENTATION_OVERLAY", report)
+        baseline = (ROOT / ".github/workflows/performance-baseline.yml").read_text(encoding="utf-8")
+        self.assertIn('install -D "../measurement-harness/$probe_path" "$probe_path"', baseline)
+        self.assertIn('install -D "../measurement-harness/$unit_path" "$unit_path"', baseline)
+        self.assertIn("expected_changes=", baseline)
 
     def test_boot_time_parser_handles_minute_and_second_values(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")

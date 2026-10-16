@@ -48,8 +48,16 @@ manifest="${ISO%.iso}-manifest.json"
   exit 2
 }
 candidate_iso_sha256="$(sha256sum "$ISO" | awk '{print $1}')"
+provenance_args=()
+if [ "${ALLOW_PERFORMANCE_INSTRUMENTATION_OVERLAY:-0}" = 1 ]; then
+  [ "${MEASURED_SOURCE_COMMIT:-}" = "$UNTOUCHED_BASELINE_COMMIT" ] || {
+    echo 'The instrumentation overlay is allowed only for the pinned untouched baseline.' >&2
+    exit 2
+  }
+  provenance_args+=(--allow-instrumentation-overlay)
+fi
 manifest_source_commit="$(python3 "$REPO_ROOT/scripts/verify-performance-manifest.py" \
-  "$manifest" "$ISO")"
+  "$manifest" "$ISO" "${provenance_args[@]}")"
 MEASURED_SOURCE_COMMIT="${MEASURED_SOURCE_COMMIT:-$manifest_source_commit}"
 [[ "$MEASURED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
   echo 'MEASURED_SOURCE_COMMIT must be a full 40-character Git commit.' >&2
@@ -79,6 +87,17 @@ if [ ! -s "$TEST_DIR/probe" ]; then
   echo 'The image does not ship usr/local/sbin/shreeos-perf-probe; cannot measure it.' >&2
   exit 1
 fi
+PROBE_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe"
+cmp -s "$PROBE_SOURCE" "$TEST_DIR/probe" || {
+  echo 'Image uses a different performance probe than the measurement harness; baseline and candidate would not be comparable.' >&2
+  exit 1
+}
+SERVICE_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service"
+unsquashfs -q -cat "$SQUASHFS" etc/systemd/system/shreeos-perf-probe.service >"$TEST_DIR/probe.service" 2>/dev/null || true
+cmp -s "$SERVICE_SOURCE" "$TEST_DIR/probe.service" || {
+  echo 'Image uses a different performance probe unit than the measurement harness; baseline and candidate would not be comparable.' >&2
+  exit 1
+}
 
 qemu-img create -q -f raw "$TARGET_DISK" 2G
 
@@ -144,6 +163,8 @@ grep 'SHREEOS_PERF ' "$SERIAL" | sed 's/^.*SHREEOS_PERF //' |
   printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
   printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
   printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network\n'
+  printf '# probe_sha256=%s\n' "$(sha256sum "$PROBE_SOURCE" | awk '{print $1}')"
+  printf '# probe_service_sha256=%s\n' "$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
   awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms)$/ {
     print $1 "\t" $2
   }' "$TEST_DIR/metrics.tsv"

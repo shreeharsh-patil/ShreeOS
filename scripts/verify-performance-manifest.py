@@ -9,11 +9,14 @@ import sys
 
 
 def main(arguments):
-    if len(arguments) != 2:
-        print("Usage: verify-performance-manifest.py MANIFEST.json IMAGE.iso", file=sys.stderr)
+    allow_instrumentation_overlay = (
+        len(arguments) == 3 and arguments[2] == "--allow-instrumentation-overlay"
+    )
+    if len(arguments) not in (2, 3) or (len(arguments) == 3 and not allow_instrumentation_overlay):
+        print("Usage: verify-performance-manifest.py MANIFEST.json IMAGE.iso [--allow-instrumentation-overlay]", file=sys.stderr)
         return 2
 
-    manifest_path, iso_path = map(Path, arguments)
+    manifest_path, iso_path = map(Path, arguments[:2])
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         iso_size = iso_path.stat().st_size
@@ -27,7 +30,9 @@ def main(arguments):
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         print("Image manifest has no valid source commit", file=sys.stderr)
         return 1
-    if manifest.get("git_dirty") is not False:
+    if manifest.get("git_dirty") is not False and not (
+        allow_instrumentation_overlay and manifest.get("git_dirty") is True
+    ):
         print("Performance measurements require an ISO built from a clean source commit", file=sys.stderr)
         return 1
     if manifest.get("sha256") != iso_sha256:
