@@ -183,7 +183,7 @@ run_boot_test() {
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
   local qemu_timeout=420
-  if [ "$PROFILE" = plasma ]; then qemu_timeout=2400; fi
+  if [ "$PROFILE" = plasma ]; then qemu_timeout=3000; fi
   local deadline=$((SECONDS + qemu_timeout))
   local memory=2048
   if [ "$PROFILE" = plasma ]; then memory=4096; fi

@@ -181,12 +181,12 @@ class SessionStartupTests(unittest.TestCase):
 
         iso_test = (ROOT / "tests/prototype/test-iso.sh").read_text(encoding="utf-8")
         self.assertIn('local qemu_timeout=420', iso_test)
-        self.assertIn('if [ "$PROFILE" = plasma ]; then qemu_timeout=2400; fi', iso_test)
+        self.assertIn('if [ "$PROFILE" = plasma ]; then qemu_timeout=3000; fi', iso_test)
         self.assertIn('local deadline=$((SECONDS + qemu_timeout))', iso_test)
         self.assertIn('timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64', iso_test)
         # In CI's TCG-backed VM, the guest clock advances far slower than the
-        # host clock. Keep enough host time for boot plus the guest-side gate.
-        self.assertGreaterEqual(2400, int(wait_limit.group(1)) * 8)
+        # host clock. Allow boot, the guest-side gate, and desktop capture.
+        self.assertGreaterEqual(3000, int(wait_limit.group(1)) * 8)
 
     def assert_backoff(self, name):
         text = (BIN / name).read_text(encoding="utf-8")
