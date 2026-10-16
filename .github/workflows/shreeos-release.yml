@@ -11,8 +11,8 @@ name: ShreeOS desktop release
 #   A  static checks        syntax, ShellCheck, Python, branding, version contract
 #   B  build               the unified ISO, SquashFS and package checks, manifests
 #   C  boot verification   QEMU BIOS + UEFI, SDDM, Plasma login, real screenshots
-#   D  install verification install to a disposable disk, drop the ISO, boot the disk
-#   E  performance          cold boot, startup services, idle RAM and CPU vs baseline
+#   D  installer acceptance payload/safety checks plus source-identical manual evidence
+#   E  performance          cold boot, startup services, idle RAM/CPU limits and untouched baseline
 #   F  release              publish only if every gate above succeeded
 #
 # The experimental source-built native pipeline (.github/workflows/iso.yml) and
@@ -23,6 +23,7 @@ name: ShreeOS desktop release
 on:
   push:
     branches: [master]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       publish:
@@ -67,7 +68,7 @@ jobs:
       - name: Install static-analysis tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml
+          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml python3-pil
 
       - name: Enforce the single-authoritative-version contract
         run: |
@@ -122,21 +123,19 @@ jobs:
           python3 tests/prototype/test-plasma-config.py
           python3 tests/prototype/test-system-features.py
           python3 tests/prototype/test-performance-config.py
+          bash tests/prototype/test-performance-targets.sh
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
 
+      - name: Build and inspect the versioned native ShreeOS tools package
+        run: bash tests/prototype/test-native-tools-package.sh
+
       - name: Branding and packaging checks
         run: |
-          sudo apt-get install -y --no-install-recommends python3-pil
           python3 tests/prototype/test-branding.py
           bash tests/release/test-release-asset-split.sh
-          # The committed PNG exports must match the SVGs they are generated from.
-          python3 branding/scripts/export-logo-pngs.py
-          if ! git diff --quiet -- branding/logo/png; then
-            printf 'branding/logo/png is out of date with branding/logo/*.svg\n' >&2
-            git diff --stat -- branding/logo/png >&2
-            exit 1
-          fi
+          # Compare decoded pixels: PNG compression output varies by Pillow/zlib version.
+          python3 branding/scripts/verify-logo-png-exports.py
           git diff --check
 
       - name: Installer preflight regressions
@@ -259,9 +258,10 @@ jobs:
           assert manifest['profile'] == 'plasma'
           assert manifest['commit'] == os.environ['GITHUB_SHA']
           assert manifest['base_distribution'] == 'trixie'
+          assert manifest['git_dirty'] is False
           assert manifest['products'] == ['live', 'installed']
           assert manifest['architecture'] == 'x86_64'
-          for key in ('kernel', 'plasma', 'kwin', 'sddm'):
+          for key in ('kernel', 'plasma', 'kwin', 'sddm', 'shreeos_tools'):
               assert manifest['components'].get(key), f'missing {key} in manifest components'
           with iso.open('rb') as stream:
               digest = hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -353,7 +353,7 @@ jobs:
 
   # ---------------------------------------------------------------- STAGE D --
   install-verification:
-    name: Stage D - verify the shipped installer payload and privilege boundary
+    name: Stage D - installer payload, safety checks and recorded manual acceptance
     needs: [static-checks, build, boot-verification]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -363,7 +363,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install image and virtualisation tooling
@@ -386,12 +386,11 @@ jobs:
           bash tests/prototype/test-installer-payload.sh "$iso"
           bash tests/installer/test-installer-validation.sh
 
-      # An interactive disk install is a mandatory gate but is not yet automated:
-      # Calamares has no supported fully-unattended mode for this configuration,
-      # and a keystroke-driven harness would be a gate that appears green without
-      # proving the wizard works. The pipeline therefore requires a recorded,
-      # commit-addressed acceptance instead of pretending to automate it.
-      - name: Require a recorded interactive install acceptance for this commit
+      # The acceptance record is committed after testing. It names the tested
+      # build commit, and this job proves the candidate tree is identical apart
+      # from that record, avoiding a self-referential commit SHA.
+      - name: Require a recorded interactive install acceptance for identical source
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
         run: |
           acceptance=release/INSTALL-ACCEPTANCE.md
           test -s "$acceptance" || {
@@ -399,33 +398,59 @@ jobs:
             printf 'See %s for the procedure and the record format.\n' "$acceptance" >&2
             exit 1
           }
-          python3 - "$acceptance" "$GITHUB_SHA" <<'PY'
+          python3 - "$acceptance" "$GITHUB_SHA" "${{ needs.build.outputs.version }}" <<'PY'
           import pathlib
           import re
+          import subprocess
           import sys
 
           text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
-          sha = sys.argv[2]
-          # A record must name the commit it was taken on, and must not be a stub.
-          if sha not in text:
+          candidate, version = sys.argv[2:]
+          records = re.findall(
+              r'^VERDICT:\s*ACCEPTED\s*\n(.*?)(?=^VERDICT:|\Z)',
+              text, re.MULTILINE | re.DOTALL,
+          )
+          selected = None
+          for record in reversed(records):
+              fields = dict(re.findall(r'^([A-Za-z][A-Za-z -]*):\s*(.*?)\s*$',
+                                       record, re.MULTILINE))
+              if fields.get('Version') == version:
+                  selected = fields
+                  break
+          if selected is None:
+              raise SystemExit(f'No ACCEPTED installer record exists for ShreeOS {version}')
+          accepted_commit = selected.get('Commit', '')
+          if not re.fullmatch(r'[0-9a-f]{40}', accepted_commit):
+              raise SystemExit('The acceptance record must contain a full tested source commit')
+          for evidence in ('Date', 'ISO SHA256', 'Firmware', 'Installer', 'Credentials', 'APT', 'Login', 'System'):
+              if not selected.get(evidence):
+                  raise SystemExit(f'INSTALL-ACCEPTANCE.md does not provide {evidence} evidence')
+          if not re.fullmatch(r'[0-9a-f]{64}', selected['ISO SHA256']):
+              raise SystemExit('The acceptance record must contain the tested ISO SHA256')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', accepted_commit, candidate],
+                         check=True)
+          unchanged = subprocess.run(
+              ['git', 'diff', '--quiet', accepted_commit, candidate, '--',
+               '.', ':(exclude)release/INSTALL-ACCEPTANCE.md'],
+              check=False,
+          )
+          if unchanged.returncode != 0:
               raise SystemExit(
-                  'INSTALL-ACCEPTANCE.md does not record an acceptance for this commit')
-          if 'ACCEPTED' not in text:
-              raise SystemExit('INSTALL-ACCEPTANCE.md has no ACCEPTED verdict')
-          for evidence in ('BIOS', 'UEFI', 'APT', 'login'):
-              if not re.search(evidence, text, re.IGNORECASE):
-                  raise SystemExit(f'INSTALL-ACCEPTANCE.md does not evidence {evidence}')
-          print('Interactive install acceptance recorded for this commit')
+                  'The accepted source and candidate differ outside INSTALL-ACCEPTANCE.md; '
+                  'repeat the disposable-disk install on the candidate source.')
+          print(f'Interactive install acceptance covers source-identical ShreeOS {version}')
           PY
 
   # ---------------------------------------------------------------- STAGE E --
   performance:
-    name: Stage E - idle RAM, CPU and cold boot against the committed baseline
+    name: Stage E - idle RAM, CPU and cold boot against limits and untouched baseline
     needs: [static-checks, build, boot-verification]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
       contents: read
+    env:
+      REQUIRE_PERFORMANCE_BASELINE: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -451,8 +476,13 @@ jobs:
           iso="$(find out -maxdepth 1 -type f -name '*.iso' -print -quit)"
           test -s "$iso"
           mkdir -p build-logs/performance
-          QEMU_LOG_DIR=build-logs/performance \
-            bash tests/prototype/test-performance-report.sh "$iso"
+          if [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
+            REQUIRE_BASELINE=1 RESUME=1 QEMU_LOG_DIR=build-logs/performance \
+              bash tests/prototype/test-performance-report.sh "$iso"
+          else
+            RESUME=1 QEMU_LOG_DIR=build-logs/performance \
+              bash tests/prototype/test-performance-report.sh "$iso"
+          fi
 
       - name: Record the report in the run summary
         run: |
@@ -474,7 +504,7 @@ jobs:
   release:
     name: Stage F - publish the verified ShreeOS release
     needs: [static-checks, build, boot-verification, install-verification, performance]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -506,6 +536,11 @@ jobs:
         run: |
           test -s "out/$ISO_NAME"
           bash scripts/verify-version.sh --iso "out/$ISO_NAME"
+          image_size="$(stat -c '%s' "out/$ISO_NAME")"
+          if (( image_size >= 1900000000 )); then
+            printf 'The unified ISO is %s bytes; GitHub Releases require a single artifact below 1.9 GB for the mandated .iso name. Reduce the default package set before publishing.\n' "$image_size" >&2
+            exit 1
+          fi
           if (cd out && [[ -f "$ISO_NAME" ]]); then
             (cd out && sha256sum -c SHA256SUMS && sha256sum -c "$ISO_NAME.sha256")
           else
@@ -514,11 +549,12 @@ jobs:
             expected="$(awk 'NR == 1 {print $1}' "out/$ISO_NAME.sha256")"
             [[ "$actual" == "$expected" ]]
           fi
-          [[ "$(basename "$(find out -maxdepth 1 -name '*.iso*' -printf '%f\n' | head -n 1)")" != *-plasma* ]]
+          [[ "$(basename "$ISO_NAME")" == "shreeos($VERSION).iso" ]]
 
       - name: Publish the release
         run: |
-          tag="v$VERSION"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; else tag="v$VERSION"; fi
+          bash scripts/verify-version.sh --tag "$tag"
           cat > release-notes.md <<EOF
           # ShreeOS $VERSION
 
@@ -543,24 +579,34 @@ jobs:
           - Static checks, ShellCheck, Python tests and the version/naming contract
           - BIOS and UEFI boot with an automated check that the Plasma desktop
             actually rendered (screenshots are rejected when black or empty)
-          - Installation to a disposable disk and reboot without the installation media
-          - Idle RAM, idle CPU and cold boot measured against the committed baseline
+          - Installer payload and destructive-operation preflight checks passed
+          - A disposable-disk interactive install was manually accepted for source-
+            identical code; the wizard itself is not driven automatically in CI
+          - Idle RAM, idle CPU and cold boot passed absolute limits and the untouched-build comparison
 
           ## Known limitations
 
           - Virtual-machine verification is not hardware certification. Wi-Fi,
             Bluetooth, audio, printers, suspend/resume and GPU drivers still need
             acceptance on representative Intel, AMD and NVIDIA machines.
-          - The installer is exercised non-interactively; manual partitioning,
-            encryption and error-recovery paths still need human acceptance.
+          - Encryption and error-recovery paths still need separate human acceptance.
           - Wayland is not the default session. Plasma runs on X11 so the dock and
             current graphics stack keep working; a Wayland path is under review.
           EOF
+          assets=(
+            "out/$ISO_NAME"
+            "out/$ISO_NAME.sha256"
+            "out/SHA256SUMS"
+            "out/shreeos($VERSION)-packages.txt"
+            "out/shreeos($VERSION)-build-info.txt"
+            "out/shreeos($VERSION)-manifest.json"
+          )
+          for asset in "${assets[@]}"; do test -s "$asset"; done
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" out/* --clobber
+            gh release upload "$tag" "${assets[@]}" --clobber
             gh release edit "$tag" --title "ShreeOS $VERSION" --notes-file release-notes.md --latest
           else
-            gh release create "$tag" out/* \
+            gh release create "$tag" "${assets[@]}" \
               --target "$GITHUB_SHA" \
               --title "ShreeOS $VERSION" \
               --notes-file release-notes.md
@@ -577,8 +623,16 @@ jobs:
           assert release['tag_name'] == f"v{os.environ['VERSION']}"
           assert release['target_commitish'] == os.environ['GITHUB_SHA']
           assert not release['draft']
+          expected = {
+              os.environ['ISO_NAME'],
+              os.environ['ISO_NAME'] + '.sha256',
+              'SHA256SUMS',
+              f"shreeos({os.environ['VERSION']})-packages.txt",
+              f"shreeos({os.environ['VERSION']})-build-info.txt",
+              f"shreeos({os.environ['VERSION']})-manifest.json",
+          }
           names = {a['name'] for a in release['assets']}
-          assert os.environ['ISO_NAME'] in names, names
+          assert names == expected, {'expected': expected, 'actual': names}
           for asset in release['assets']:
               path = pathlib.Path('out') / asset['name']
               assert path.is_file(), asset['name']

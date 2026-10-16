@@ -1,0 +1,80 @@
+name: Measure untouched ShreeOS performance baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  measure:
+    name: Build commit 9313ebb and measure under controlled QEMU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    container:
+      image: debian:trixie-slim
+      options: --privileged
+    steps:
+      - name: Check out the current measurement harness
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          path: measurement-harness
+
+      - name: Check out the untouched baseline source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 9313ebb042cf71bb148441037940b130d49920d1
+          fetch-depth: 1
+          persist-credentials: false
+          path: baseline-source
+
+      - name: Install build and QEMU dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            live-build=1:20250505+deb13u1 \
+            debootstrap xorriso squashfs-tools dpkg-dev \
+            grub-common grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
+            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
+            ca-certificates debian-archive-keyring python3 librsvg2-bin
+
+      - name: Confirm the exact baseline source commit
+        run: |
+          expected=9313ebb042cf71bb148441037940b130d49920d1
+          actual="$(git -C baseline-source rev-parse HEAD)"
+          [[ "$actual" == "$expected" ]]
+          printf 'Untouched baseline source: %s\n' "$actual"
+
+      - name: Build the untouched baseline ISO
+        run: |
+          mkdir -p baseline-evidence
+          cd baseline-source
+          bash scripts/build-shreeos.sh 2>&1 | tee ../baseline-evidence/build.log
+          iso="out/shreeos($(tr -d '[:space:]' < VERSION)).iso"
+          test -s "$iso"
+          (cd out && sha256sum -c "$(basename "$iso").sha256")
+
+      - name: Measure the untouched ISO with the current harness
+        env:
+          MEASURED_SOURCE_COMMIT: 9313ebb042cf71bb148441037940b130d49920d1
+        run: |
+          iso="baseline-source/out/shreeos($(tr -d '[:space:]' < baseline-source/VERSION)).iso"
+          QEMU_LOG_DIR=baseline-evidence \
+            bash measurement-harness/tests/prototype/test-performance-report.sh "$iso"
+          test -s baseline-evidence/performance-candidate.tsv
+          test "$(awk -F= '$1 == "# source_commit" { print $2 }' baseline-evidence/performance-candidate.tsv)" = "$MEASURED_SOURCE_COMMIT"
+
+      - name: Upload raw baseline evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-0.4.0-untouched-performance-baseline-${{ github.run_id }}
+          path: baseline-evidence/
+          if-no-files-found: error
+          retention-days: 90

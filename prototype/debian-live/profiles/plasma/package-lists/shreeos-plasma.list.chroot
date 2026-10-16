@@ -2,8 +2,6 @@
 # Debian's metapackage pulls its maintained Plasma dependencies and recommends.
 kde-plasma-desktop
 kwin-x11
-plasma-desktop
-plasma-workspace
 sddm
 sddm-theme-breeze
 breeze-gtk-theme
@@ -29,7 +27,6 @@ bluedevil
 bluez
 pipewire-audio
 wireplumber
-network-manager
 firmware-linux-free
 firefox-esr
 fonts-inter
@@ -47,11 +44,6 @@ x11-xserver-utils
 kdialog
 libnotify-bin
 # Everyday desktop capabilities, all resolved from the pinned Debian snapshot.
-libreoffice-writer
-libreoffice-calc
-libreoffice-impress
-libreoffice-kf6
-vlc
 cups
 print-manager
 simple-scan

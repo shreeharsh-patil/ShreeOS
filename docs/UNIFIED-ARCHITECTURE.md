@@ -13,7 +13,7 @@ make shreeos   ->   out/shreeos(VERSION).iso
 - **Foundation**: Debian 13 (Trixie), amd64, from the pinned snapshot in
   `prototype/debian-live/versions.conf`.
 - **Desktop**: KDE Plasma on X11, SDDM, KWin, Dolphin, Konsole, Discover.
-- **One image, two products**: the same SquashFS is the live desktop *and*, via
+- **One image, two modes**: the same SquashFS is the live desktop *and*, via
   Calamares, the installed system. There is no separate live and install media.
 - **One root filesystem, one desktop environment.** No second Linux userspace,
   no dual install, no competing session.
@@ -56,6 +56,7 @@ source-built counterpart would trade a working system for a worse one.
 | Power | `shreeos-power` maps Performance/Balanced/Battery Saver onto power-profiles-daemon plus the motion profile |
 | Software Center | `shreeos-software` drives APT for system packages, with Discover for the GUI |
 | Installer integration | `shreeos-installer` wrapper, privileged helper, scoped polkit action, and the `shreeos-sources` Calamares module that provisions signed target repositories |
+| Native ShreeOS utilities | The versioned `shreeos-tools` Debian package provides Debian-aware `shreeinfo` and `shree-doctor` commands |
 | Boot checking and measurement | `shreeos-live-boot-check` and `shreeos-perf-probe`, live-media only |
 | Compressed swap | Bounded zram (`min(ram / 2, 2048)`, lz4) via `systemd-zram-generator` |
 
@@ -66,6 +67,7 @@ source-built counterpart would trade a working system for a worse one.
 | Developer, security and creative tool sets | Build-time `SHREEOS_TOOLSETS=developer,security,creative`, installed through the ShreeOS software entry point |
 | Flatpak applications | Flathub remote is configured; no Flatpak apps are bundled |
 | Free-firmware-only image | `SHREEOS_FIRMWARE=free` |
+| Office and multimedia applications | The `office` and `multimedia` bundles can be installed through `shreeos-software`; neither suite is in the default image |
 
 Keeping these out is what holds the image size and the boot-time package graph
 down. They are installable, not shipped.
@@ -85,11 +87,15 @@ down. They are installable, not shipped.
 | Gap | Where it is tracked |
 |---|---|
 | Interactive installer acceptance on real media | `release/INSTALL-ACCEPTANCE.md`, gated by the release job |
-| Measured performance baseline | `prototype/debian-live/performance-targets.tsv` holds the limits; the first successful pipeline run publishes the measured baseline |
+| Untouched-build performance comparison | `tests/prototype/performance-baseline.tsv` must record the baseline before Stage E can pass; the candidate must improve idle RAM or CPU by at least 20%, unless the untouched build already meets both limits |
 | Real-hardware certification (Wi-Fi, Bluetooth, audio, printers, suspend/resume, GPU) | `docs/SYSTEM-READINESS.md` |
 | Encryption and dual-boot install paths | `release/INSTALL-ACCEPTANCE.md` known gaps |
 | Signed ShreeOS-authored `.deb`s and a ShreeOS package repository | `docs/SYSTEM-READINESS.md` |
 | Wayland session | matrix above |
+
+The untouched comparison source is `9313ebb042cf71bb148441037940b130d49920d1`, the pre-optimization revision used for this change. A baseline record must name that source commit, include the measured ISO SHA256, and use the same 2-vCPU, 4096-MiB, VirtIO, 1280x800, no-network conditions. The release job rejects baseline data without this provenance.
+
+To collect it, build the ISO from that source revision, run the current performance report against the ISO with `MEASURED_SOURCE_COMMIT=9313ebb042cf71bb148441037940b130d49920d1`, then review the archived `performance-candidate.tsv` and commit it as `tests/prototype/performance-baseline.tsv`. The candidate release run is measured separately and compared to this record.
 
 ## Build and release paths
 
@@ -101,10 +107,10 @@ down. They are installable, not shipped.
 
 One pipeline publishes anything:
 `.github/workflows/shreeos-release.yml`, with stages A (static checks), B
-(build), C (BIOS/UEFI boot and real desktop screenshots), D (installer payload
-and recorded interactive acceptance), E (idle RAM, CPU and cold boot against the
-baseline) and F (release). Stage F refuses to run unless every earlier stage
-succeeded.
+(build), C (BIOS/UEFI boot and real desktop screenshots), D (installer payload,
+safety checks and recorded interactive acceptance), E (idle RAM, CPU and cold
+boot against absolute limits and the untouched-build comparison) and F (release). Stage F refuses to run unless
+every earlier stage succeeded.
 
 ## Why the dock is Plank, not a Plasma panel widget
 

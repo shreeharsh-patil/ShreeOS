@@ -275,6 +275,16 @@ for required_text in \
 done
 echo "  [OK] Partition udev ordering, termination and standalone test contracts"
 
+# Credential mode and ownership preflight depends on Linux's real uid/gid and
+# permission bits. Git Bash maps chmod/stat through Windows ACLs, so it cannot
+# validate the installer's Linux 0600 security contract. Keep the portable
+# source/configuration checks above, and leave runtime checks to Linux CI.
+if [ "$(uname -s)" != Linux ]; then
+  echo "  [SKIP] Linux-only installer runtime checks (including strict credentials mode 0600) require Linux; this host reports $(uname -s)."
+  echo "==> Portable installer validation checks passed."
+  exit 0
+fi
+
 PREFLIGHT_DIR=$(mktemp -d /tmp/shreeos-installer-preflight-XXXXXX)
 trap 'rm -rf "$PREFLIGHT_DIR"' EXIT
 PREFLIGHT_STAGE="$PREFLIGHT_DIR/rootfs"
@@ -310,6 +320,10 @@ expect_preflight_failure() {
 printf 'rootpassword123\n' > "$PREFLIGHT_CREDS"
 expect_preflight_failure 'A username requires a credentials file' "$PREFLIGHT_TARGET" --username=alice
 printf 'rootpassword123\n' > "$PREFLIGHT_CREDS"
+chmod 644 "$PREFLIGHT_CREDS"
+expect_preflight_failure 'mode exactly 0600' "$PREFLIGHT_TARGET" --credentials-file="$PREFLIGHT_CREDS"
+chmod 600 "$PREFLIGHT_CREDS"
+echo "  [OK] Credentials with mode 0644 are rejected; mode 0600 remains required"
 expect_preflight_failure 'A username requires a second' "$PREFLIGHT_TARGET" --username=alice --credentials-file="$PREFLIGHT_CREDS"
 printf 'rootpassword123\n\n' > "$PREFLIGHT_CREDS"
 expect_preflight_failure 'empty user password' "$PREFLIGHT_TARGET" --username=alice --credentials-file="$PREFLIGHT_CREDS"

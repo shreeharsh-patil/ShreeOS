@@ -7,8 +7,10 @@ configuration, and a keystroke-driven harness would produce a gate that looks
 green without proving the install worked.
 
 So the interactive install is a **recorded manual acceptance** instead of a fake
-automation. The release job reads this file and refuses to publish unless it
-records an acceptance for the exact commit being released.
+automation. The record is committed after the tested build. The release job
+checks that its source commit is an ancestor of the candidate and that no source
+file other than this acceptance record changed, so the record does not need to
+contain the commit ID of the commit that contains itself.
 
 ## Status
 
@@ -19,16 +21,16 @@ Version: none
 Date:    none
 ```
 
-The pipeline is expected to fail its install gate until a real acceptance is
-recorded below. That is the intended state, not a defect.
+The pipeline fails its install gate until a real acceptance is recorded below.
+That is the intended state until the disposable-disk procedure has been run.
 
 ## Procedure
 
 Use a disposable virtual machine only. Never run these steps against physical
 disks.
 
-1. Build the image: `make shreeos`, then note `out/shreeos(VERSION).iso` and the
-   commit (`git rev-parse HEAD`).
+1. Build the image: `make shreeos`, then note `out/shreeos(VERSION).iso`, its
+   checksum, and the source commit (`git rev-parse HEAD`).
 2. Create a blank virtual disk of at least 20 GB and attach the ISO.
 3. Boot the ISO and let the live Plasma desktop appear. Confirm the ShreeOS
    wallpaper, top panel, centered dock, SDDM greeter branding and that every
@@ -56,15 +58,18 @@ disks.
 
 ## Record format
 
-Append one block per accepted build. Every field is required; the release gate
-looks for the commit, the `ACCEPTED` verdict, and evidence for `BIOS`, `UEFI`,
-`APT` and `login`.
+Append one block per accepted build. Every field is required. After testing,
+commit the record in a follow-up change that changes no other source file. The
+release gate checks the tested commit, matching ShreeOS version, firmware,
+installer, credentials, APT, login and system evidence, and verifies that the
+candidate source tree is otherwise unchanged.
 
 ```
 VERDICT: ACCEPTED
 Commit: <full 40-character commit SHA of the build that was tested>
 Version: <version from VERSION>
 Date: <ISO date>
+ISO SHA256: <full checksum of the image tested>
 Firmware: BIOS and UEFI both booted from the installed disk alone
 Installer: guided erase-disk, manual partitioning, user creation, hostname, timezone, keyboard
 Credentials: live session credentials were not reused; installed account authenticates

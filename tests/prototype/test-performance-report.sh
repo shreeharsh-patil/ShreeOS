@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stage E: measure the unified ShreeOS image in a controlled virtual machine and
-# compare it against the release targets and, once one exists, a recorded
+# compare it against the release targets and, once one is recorded, a measured
 # baseline.
 #
 # Controlled conditions, identical for baseline and candidate:
@@ -14,8 +14,10 @@
 # Usage: tests/prototype/test-performance-report.sh PATH_TO_ISO
 #
 # Environment:
-#   QEMU_LOG_DIR  directory to copy the report, serial log and screenshots into
+#   QEMU_LOG_DIR  directory to copy the report, metrics, serial log and QEMU log into
 #   RESUME        "1" to compare against tests/prototype/performance-baseline.tsv
+#   REQUIRE_BASELINE "1" to fail if no untouched-build baseline is recorded
+#   MEASURED_SOURCE_COMMIT  source commit used to build the measured ISO
 set -Eeuo pipefail
 
 if [ "$#" -ne 1 ] || [ ! -s "$1" ]; then
@@ -28,13 +30,36 @@ ISO="$(realpath "$1")"
 TARGETS="$REPO_ROOT/prototype/debian-live/performance-targets.tsv"
 BASELINE="$REPO_ROOT/tests/prototype/performance-baseline.tsv"
 REGRESSION_TOLERANCE_PCT="${REGRESSION_TOLERANCE_PCT:-20}"
+UNTOUCHED_BASELINE_COMMIT='9313ebb042cf71bb148441037940b130d49920d1'
+MEASURED_SOURCE_COMMIT="${MEASURED_SOURCE_COMMIT:-${GITHUB_SHA:-}}"
+# shellcheck source=scripts/performance-targets.sh
+source "$REPO_ROOT/scripts/performance-targets.sh"
 
-for tool in xorriso qemu-system-x86_64 qemu-img timeout python3; do
+for tool in realpath xorriso unsquashfs qemu-system-x86_64 qemu-img xvfb-run timeout sha256sum python3; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Missing performance test dependency: $tool" >&2
     exit 2
   }
 done
+
+manifest="${ISO%.iso}-manifest.json"
+[ -s "$manifest" ] || {
+  printf 'Missing image provenance manifest: %s\n' "$manifest" >&2
+  exit 2
+}
+candidate_iso_sha256="$(sha256sum "$ISO" | awk '{print $1}')"
+manifest_source_commit="$(python3 "$REPO_ROOT/scripts/verify-performance-manifest.py" \
+  "$manifest" "$ISO")"
+MEASURED_SOURCE_COMMIT="${MEASURED_SOURCE_COMMIT:-$manifest_source_commit}"
+[[ "$MEASURED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+  echo 'MEASURED_SOURCE_COMMIT must be a full 40-character Git commit.' >&2
+  exit 2
+}
+[[ "$MEASURED_SOURCE_COMMIT" == "$manifest_source_commit" ]] || {
+  printf 'Measured source %s does not match ISO manifest source %s.\n' \
+    "$MEASURED_SOURCE_COMMIT" "$manifest_source_commit" >&2
+  exit 2
+}
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_DIR"' EXIT
@@ -115,6 +140,15 @@ grep 'SHREEOS_PERF ' "$SERIAL" | sed 's/^.*SHREEOS_PERF //' |
   sort -u >"$TEST_DIR/metrics.tsv"
 [ -s "$TEST_DIR/metrics.tsv" ] || { echo 'No SHREEOS_PERF metrics were captured.' >&2; exit 1; }
 
+{
+  printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
+  printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
+  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network\n'
+  awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms)$/ {
+    print $1 "\t" $2
+  }' "$TEST_DIR/metrics.tsv"
+} >"$TEST_DIR/performance-candidate.tsv"
+
 # Persist the raw evidence before interpreting it.
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
 
@@ -141,33 +175,68 @@ REPORT="$TEST_DIR/performance-report.md"
 
 # --- Enforce the release targets --------------------------------------------
 failures=0
-while IFS=$'\t' read -r key limit comparison provenance; do
-  case "$key" in '' | '#'*) continue ;; esac
-  measured="$(metric "$key")"
-  [ -n "$measured" ] || { printf 'missing metric: %s\n' "$key" >&2; failures=$((failures + 1)); continue; }
-  if ! awk -v m="$measured" -v l="$limit" -v c="$comparison" \
-    'BEGIN { exit (c == "max" ? (m > l) : (m < l)) ? 0 : 1 }'; then
-    printf 'TARGET MISSED: %s = %s (limit %s, %s) - %s\n' \
-      "$key" "$measured" "$limit" "$comparison" "$provenance" >&2
-    failures=$((failures + 1))
-  else
-    printf 'target met: %s = %s (%s %s)\n' "$key" "$measured" "$comparison" "$limit"
-  fi
-done <"$TARGETS"
+if [ "$MEASURED_SOURCE_COMMIT" = "$UNTOUCHED_BASELINE_COMMIT" ]; then
+  for required_metric in mem_used_mib cpu_busy_pct boot_total_ms graphical_reached_ms; do
+    measured="$(metric "$required_metric")"
+    if ! [[ "$measured" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+      printf 'Untouched baseline is missing a numeric %s measurement.\n' \
+        "$required_metric" >&2
+      failures=$((failures + 1))
+    fi
+  done
+else
+  while IFS=$'\t' read -r key limit comparison provenance; do
+    case "$key" in '' | '#'*) continue ;; esac
+    measured="$(metric "$key")"
+    [ -n "$measured" ] || { printf 'missing metric: %s\n' "$key" >&2; failures=$((failures + 1)); continue; }
+    if ! performance_target_met "$measured" "$comparison" "$limit"; then
+      printf 'TARGET MISSED: %s = %s (limit %s, %s) - %s\n' \
+        "$key" "$measured" "$limit" "$comparison" "$provenance" >&2
+      failures=$((failures + 1))
+    else
+      printf 'target met: %s = %s (%s %s)\n' "$key" "$measured" "$comparison" "$limit"
+    fi
+  done <"$TARGETS"
+fi
 
-# --- Regression against a recorded baseline, when one exists -----------------
-{
-  printf '\n## Target evaluation\n\n'
-  if [ "$failures" -eq 0 ]; then
-    printf 'All release targets were met.\n'
-  else
-    printf '%s release target(s) were missed. See the step log.\n' "$failures"
-  fi
-} >>"$REPORT"
-
-if [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
+# --- Comparison against the untouched build ----------------------------------
+if [ "$MEASURED_SOURCE_COMMIT" = "$UNTOUCHED_BASELINE_COMMIT" ]; then
+  {
+    printf '\n## Untouched-build baseline capture\n\n'
+    printf 'This run measured the designated pre-optimization source. The candidate release targets are evaluated in the release build.\n'
+  } >>"$REPORT"
+elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
   printf '\n## Regression against the recorded baseline (>%s%%)\n\n' "$REGRESSION_TOLERANCE_PCT" >>"$REPORT"
   printf '| Metric | Baseline | Measured | Delta |\n| --- | --- | --- | --- |\n' >>"$REPORT"
+  baseline_valid=1
+  baseline_source_commit="$(awk -F= '$1 == "# source_commit" { print $2; exit }' "$BASELINE")"
+  baseline_iso_sha256="$(awk -F= '$1 == "# iso_sha256" { print $2; exit }' "$BASELINE")"
+  baseline_conditions="$(awk -F= '$1 == "# conditions" { print $2; exit }' "$BASELINE")"
+  if [ "$baseline_source_commit" != "$UNTOUCHED_BASELINE_COMMIT" ]; then
+    printf 'Baseline provenance must name untouched source %s.\n' \
+      "$UNTOUCHED_BASELINE_COMMIT" >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  if ! [[ "$baseline_iso_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    printf 'Baseline provenance must include the tested ISO SHA256.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,no-network' ]; then
+    printf 'Baseline was not measured under the controlled release conditions.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  for required_metric in mem_used_mib cpu_busy_pct boot_total_ms graphical_reached_ms; do
+    baseline_value="$(awk -F'\t' -v key="$required_metric" \
+      '$1 == key { print $2; exit }' "$BASELINE")"
+    if ! [[ "$baseline_value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+      printf 'Baseline is missing a numeric %s measurement.\n' "$required_metric" >&2
+      baseline_valid=0
+      failures=$((failures + 1))
+    fi
+  done
   while IFS=$'\t' read -r key baseline_value; do
     case "$key" in '' | '#'*) continue ;; esac
     measured="$(metric "$key")"
@@ -187,29 +256,58 @@ if [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
         ;;
     esac
   done <"$BASELINE"
+  baseline_memory="$(awk -F'\t' '$1 == "mem_used_mib" { print $2; exit }' "$BASELINE")"
+  baseline_cpu="$(awk -F'\t' '$1 == "cpu_busy_pct" { print $2; exit }' "$BASELINE")"
+  measured_memory="$(metric mem_used_mib)"
+  measured_cpu="$(metric cpu_busy_pct)"
+  if [ "$baseline_valid" -ne 1 ]; then
+    printf 'PERFORMANCE ACCEPTANCE FAILED: baseline provenance or required measurements are invalid.\n' >&2
+    printf '\nImprovement requirement: FAILED (baseline provenance or metrics are invalid).\n' >>"$REPORT"
+  elif ! performance_improvement_or_efficiency_met \
+      "$baseline_memory" "$measured_memory" "$baseline_cpu" "$measured_cpu"; then
+    printf 'PERFORMANCE ACCEPTANCE FAILED: need at least 20%% idle memory or CPU improvement, or an untouched baseline already within both limits (850 MiB, 2%%).\n' >&2
+    printf '\nImprovement requirement: FAILED (baseline memory=%s MiB, measured=%s MiB; baseline CPU=%s%%, measured=%s%%).\n' \
+      "$baseline_memory" "$measured_memory" "$baseline_cpu" "$measured_cpu" >>"$REPORT"
+    failures=$((failures + 1))
+  else
+    printf 'Performance improvement or efficient baseline requirement passed.\n'
+    printf '\nImprovement requirement: passed (baseline memory=%s MiB, measured=%s MiB; baseline CPU=%s%%, measured=%s%%).\n' \
+      "$baseline_memory" "$measured_memory" "$baseline_cpu" "$measured_cpu" >>"$REPORT"
+  fi
 else
   {
     printf '\n## Regression baseline\n\n'
-    printf 'No measured baseline is recorded in the repository yet, so this run\n'
-    printf 'establishes one. The metrics above are published with this run as\n'
+    printf 'No untouched-build baseline is recorded in the repository yet. This run\n'
+    printf 'produces a candidate report, but cannot establish the requested relative\n'
+    printf 'performance improvement. Review and commit an untouched-build baseline.\n'
     # Backticks are Markdown code spans here, not command substitution.
     # shellcheck disable=SC2016
-    printf '`performance-baseline.tsv`; commit them and set `RESUME=1` to start\n'
-    printf 'failing future runs on a genuine regression.\n'
+    printf 'The candidate metrics are published as `performance-candidate.tsv`.\n'
   } >>"$REPORT"
-  awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms)$/ {
-    print $1 "\t" $2
-  }' "$TEST_DIR/metrics.tsv" >"$TEST_DIR/performance-baseline.tsv"
+  if [ "${REQUIRE_BASELINE:-0}" = 1 ]; then
+    printf 'PERFORMANCE ACCEPTANCE FAILED: untouched-build baseline is missing.\n' >&2
+    printf '\nImprovement requirement: FAILED (no untouched-build baseline is committed).\n' >>"$REPORT"
+    failures=$((failures + 1))
+  fi
 fi
+
+{
+  printf '\n## Target evaluation\n\n'
+  if [ "$MEASURED_SOURCE_COMMIT" = "$UNTOUCHED_BASELINE_COMMIT" ] && [ "$failures" -eq 0 ]; then
+    printf 'Untouched-build baseline measurements are complete.\n'
+  elif [ "$failures" -eq 0 ]; then
+    printf 'All absolute and comparative performance release targets were met.\n'
+  else
+    printf '%s performance release target(s) were missed. See the step log.\n' "$failures"
+  fi
+} >>"$REPORT"
 
 if [ -n "$QEMU_LOG_DIR" ]; then
   # The report and the raw metrics are the evidence the gate is based on, so a
   # failure to archive them fails the run instead of being swallowed.
   cp -f "$REPORT" "$QEMU_LOG_DIR/performance-report.md"
   cp -f "$TEST_DIR/metrics.tsv" "$QEMU_LOG_DIR/metrics.tsv"
-  if [ -s "$TEST_DIR/performance-baseline.tsv" ]; then
-    cp -f "$TEST_DIR/performance-baseline.tsv" "$QEMU_LOG_DIR/performance-baseline.tsv"
-  fi
+  cp -f "$TEST_DIR/performance-candidate.tsv" "$QEMU_LOG_DIR/performance-candidate.tsv"
   # The emulator's own log is diagnostic only: a missing one must not hide the
   # performance result, but a present one is always archived.
   if [ -s "$TEST_DIR/qemu.log" ]; then

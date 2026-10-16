@@ -47,8 +47,8 @@ for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm 
   plasma-discover packagekit flatpak pipewire-audio network-manager \
   papirus-icon-theme fonts-inter plank dconf-cli kcalc kate gwenview okular \
   calamares calamares-settings-debian pkexec plymouth plymouth-themes \
-  libreoffice-writer vlc cups print-manager simple-scan orca onboard \
-  power-profiles-daemon systemd-zram-generator fwupd; do
+  cups print-manager simple-scan orca onboard power-profiles-daemon \
+  systemd-zram-generator fwupd shreeos-tools; do
   have_package "$package" || { echo "ISO is missing desktop package: $package" >&2; exit 1; }
 done
 

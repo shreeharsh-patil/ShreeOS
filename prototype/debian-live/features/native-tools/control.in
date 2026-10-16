@@ -1,0 +1,12 @@
+Package: shreeos-tools
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: all
+Depends: apt, coreutils, dpkg, grep, hostname, iproute2,
+ mawk | gawk, procps, sed, systemd, util-linux
+Maintainer: ShreeOS Project <shreeos@example.invalid>
+Description: ShreeOS system information and health diagnostics
+ Debian-native utilities for inspecting the running ShreeOS system. They use
+ Debian package, systemd and NetworkManager interfaces and do not replace or
+ modify the system package manager, init system, or network stack.

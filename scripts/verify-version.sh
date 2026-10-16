@@ -104,6 +104,21 @@ if [ -s "$os_release" ]; then
   fi
 fi
 
+calamares_branding="$REPO_ROOT/prototype/debian-live/profiles/desktop/includes.chroot/etc/calamares/branding/shreeos/branding.desc"
+if [ -s "$calamares_branding" ]; then
+  grep -Fq 'version: @VERSION@' "$calamares_branding" ||
+    fail 'Calamares branding must derive version from the @VERSION@ placeholder'
+  grep -Fq 'shortVersion: @VERSION@' "$calamares_branding" ||
+    fail 'Calamares short version must derive from the @VERSION@ placeholder'
+  grep -Fq 'versionedName: ShreeOS @VERSION@' "$calamares_branding" ||
+    fail 'Calamares versioned product name must derive from the @VERSION@ placeholder'
+  grep -Fq 'shortVersionedName: ShreeOS @VERSION@' "$calamares_branding" ||
+    fail 'Calamares short product name must derive from the @VERSION@ placeholder'
+  if grep -Eq '^[[:space:]]*(version|shortVersion):[[:space:]]*[0-9]' "$calamares_branding"; then
+    fail 'Calamares branding hardcodes a version instead of using @VERSION@'
+  fi
+fi
+
 # --- No second version literal may reappear ---------------------------------
 # A hardcoded *previous* version anywhere in the tree is exactly the drift this
 # contract exists to prevent, so the scan covers the whole repository rather

@@ -123,16 +123,20 @@ plasma_packages="$CONFIG_DIR/profiles/plasma/package-lists/shreeos-plasma.list.c
 plasma_actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$plasma_packages" | sort)"
 plasma_unique="$(printf '%s\n' "$plasma_actual" | uniq)"
 test "$plasma_actual" = "$plasma_unique"
-for required in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm sddm-theme-breeze \
+for required in kde-plasma-desktop kwin-x11 sddm sddm-theme-breeze \
   breeze-gtk-theme breeze-cursor-theme dolphin konsole ark kde-spectacle \
   plasma-discover plasma-discover-backend-flatpak flatpak packagekit plasma-nm \
-  plasma-pa powerdevil bluedevil pipewire-audio network-manager papirus-icon-theme \
+  plasma-pa powerdevil bluedevil pipewire-audio papirus-icon-theme \
   fonts-inter x11-xserver-utils kdialog libnotify-bin plank dconf-cli kate gwenview okular kcalc; do
   grep -Fxq "$required" "$plasma_packages" || {
     echo "Plasma profile is missing: $required" >&2
     exit 1
   }
 done
+if grep -Fxq network-manager "$plasma_packages"; then
+  echo 'network-manager is already provided by the shared base package list.' >&2
+  exit 1
+fi
 plasma_includes="$CONFIG_DIR/profiles/plasma/includes.chroot"
 grep -Fq 'Current=shreeos' "$plasma_includes/etc/sddm.conf.d/10-shreeos.conf"
 grep -Fq 'Session=plasmax11.desktop' "$plasma_includes/etc/sddm.conf.d/20-shreeos-live-autologin.conf"
@@ -280,5 +284,20 @@ test -s "$plasma_includes/usr/share/applications/shreeos-power.desktop"
 grep -Fq 'Exec=/usr/local/bin/shreeos-power' \
   "$plasma_includes/usr/share/applications/shreeos-power.desktop"
 grep -Fq 'power-saver' "$plasma_includes/usr/local/bin/shreeos-power"
+test -s "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/calamares/branding/shreeos/branding.desc"
+grep -Fq 'version: @VERSION@' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/calamares/branding/shreeos/branding.desc"
+grep -Fq 'shortVersionedName: ShreeOS @VERSION@' \
+  "$CONFIG_DIR/profiles/desktop/includes.chroot/etc/calamares/branding/shreeos/branding.desc"
+grep -Fq 'Version: @VERSION@' "$CONFIG_DIR/features/native-tools/control.in"
+test -s "$CONFIG_DIR/features/native-tools/shreeinfo"
+test -s "$CONFIG_DIR/features/native-tools/shree-doctor"
+test -s "$CONFIG_DIR/features/native-tools/shree-netdiag"
+test -s "$CONFIG_DIR/features/native-tools/shree-audit"
+test -s "$REPO_ROOT/scripts/build-shreeos-tools-package.sh"
+for bundle in office multimedia; do
+  test -s "$CONFIG_DIR/features/toolsets/$bundle.list.chroot"
+  grep -Fq "$bundle" "$CONFIG_DIR/features/includes.chroot/usr/local/bin/shreeos-software"
+done
 grep -Fq '/run/live/medium' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
 printf 'Debian prototype configuration contract passed.\n'

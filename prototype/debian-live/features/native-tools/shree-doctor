@@ -1,0 +1,72 @@
+#!/bin/sh
+set -u
+
+issues=0
+pass() { printf '  [PASS] %s\n' "$1"; }
+warn() { printf '  [WARN] %s\n' "$1"; issues=$((issues + 1)); }
+fail() { printf '  [FAIL] %s\n' "$1"; issues=$((issues + 1)); }
+
+printf '\nShreeOS system health\n\n'
+
+if [ "$(uname -s 2>/dev/null)" = Linux ]; then
+  pass "Linux kernel $(uname -r) ($(uname -m))"
+else
+  fail 'Linux kernel is not available'
+fi
+
+init_name="$(ps -p 1 -o comm= 2>/dev/null | tr -d ' ' || true)"
+if [ "$init_name" = systemd ]; then
+  pass 'systemd is running as PID 1'
+else
+  warn "PID 1 is ${init_name:-unknown}; this is not the installed Debian systemd session"
+fi
+
+for path in /proc /sys /dev /run; do
+  if mountpoint -q "$path" 2>/dev/null; then
+    pass "$path is mounted"
+  else
+    warn "$path is not a mount point"
+  fi
+done
+
+if [ -f /etc/shadow ]; then
+  shadow_mode="$(stat -c '%a' /etc/shadow 2>/dev/null || printf 'unknown')"
+  case "$shadow_mode" in
+    600|400|000) pass '/etc/shadow permissions are restricted' ;;
+    *) warn "/etc/shadow permissions are $shadow_mode (expected 0600 or stricter)" ;;
+  esac
+else
+  warn '/etc/shadow is not present (expected in a live container or recovery environment)'
+fi
+
+if command -v dpkg >/dev/null 2>&1; then
+  audit="$(dpkg --audit 2>&1 || true)"
+  if [ -z "$audit" ]; then pass 'dpkg reports no incomplete package configuration';
+  else warn "dpkg reports pending package work: $(printf '%s' "$audit" | tr '\n' ' ')"; fi
+else
+  fail 'dpkg is unavailable'
+fi
+
+if command -v apt-get >/dev/null 2>&1 && apt-get check >/dev/null 2>&1; then
+  pass 'APT dependency state is consistent'
+else
+  warn 'APT reports a dependency problem or is unavailable'
+fi
+
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager.service; then
+  pass 'NetworkManager is active'
+else
+  warn 'NetworkManager is not active'
+fi
+if command -v ip >/dev/null 2>&1 && ip route show default 2>/dev/null | grep -q '^default '; then
+  pass 'a default network route is configured'
+else
+  warn 'no default network route is available'
+fi
+
+printf '\n'
+if [ "$issues" -eq 0 ]; then
+  printf 'All checked subsystems passed.\n'
+else
+  printf '%s check(s) need attention.\n' "$issues"
+fi

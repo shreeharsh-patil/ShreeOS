@@ -1,0 +1,70 @@
+#!/bin/sh
+set -u
+
+pass_count=0
+warn_count=0
+fail_count=0
+section() { printf '\n== %s ==\n' "$1"; }
+ok() { printf '[PASS] %s\n' "$1"; pass_count=$((pass_count + 1)); }
+warn() { printf '[WARN] %s\n' "$1"; warn_count=$((warn_count + 1)); }
+fail() { printf '[FAIL] %s\n' "$1"; fail_count=$((fail_count + 1)); }
+
+section 'Identity'
+printf 'Host: %s\n' "$(hostname 2>/dev/null || printf unknown)"
+printf 'Kernel: %s\n' "$(uname -r 2>/dev/null || printf unknown)"
+if [ -r /etc/os-release ]; then grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release || true; fi
+
+section 'Critical permissions'
+check_mode() {
+  path="$1"
+  expected="$2"
+  if [ ! -e "$path" ]; then warn "$path is missing"; return; fi
+  mode="$(stat -c '%a' "$path" 2>/dev/null || printf unknown)"
+  if [ "$mode" = "$expected" ]; then ok "$path mode is $mode";
+  else warn "$path mode is $mode (expected $expected)"; fi
+}
+check_mode /etc/passwd 644
+check_mode /etc/group 644
+if [ -e /etc/shadow ]; then check_mode /etc/shadow 600; fi
+
+section 'Privileged executables'
+if command -v find >/dev/null 2>&1; then
+  suid_count="$(find /bin /sbin /usr/bin /usr/sbin -xdev -type f -perm /6000 2>/dev/null | wc -l | tr -d ' ')"
+  printf 'SUID/SGID executables: %s\n' "$suid_count"
+  find /bin /sbin /usr/bin /usr/sbin -xdev -type f -perm /6000 2>/dev/null | sort || true
+else warn 'find is unavailable; skipped SUID/SGID inventory'; fi
+
+section 'Network exposure'
+if command -v ss >/dev/null 2>&1; then ss -lntup 2>/dev/null || ss -lntu 2>/dev/null || true;
+else warn 'ss is unavailable'; fi
+
+section 'Accounts'
+if [ -r /etc/passwd ]; then
+  awk -F: '$3 == 0 {print "UID 0 account: " $1}' /etc/passwd
+  uid0="$(awk -F: '$3 == 0 {c++} END {print c+0}' /etc/passwd)"
+  if [ "$uid0" -eq 1 ]; then ok 'exactly one UID 0 account';
+  else warn "$uid0 UID 0 accounts found"; fi
+else fail '/etc/passwd is unavailable'; fi
+
+section 'Package integrity'
+if command -v dpkg >/dev/null 2>&1; then
+  audit="$(dpkg --audit 2>&1 || true)"
+  if [ -z "$audit" ]; then ok 'no incomplete dpkg configuration';
+  else fail "dpkg reports incomplete packages: $(printf '%s' "$audit" | tr '\n' ' ')"; fi
+  verify="$(dpkg --verify 2>&1 || true)"
+  if [ -z "$verify" ]; then ok 'dpkg file verification found no reported changes';
+  else warn "dpkg file verification reported changes: $(printf '%s' "$verify" | tr '\n' ' ')"; fi
+else fail 'dpkg is unavailable'; fi
+if command -v apt-get >/dev/null 2>&1 && apt-get check >/dev/null 2>&1; then
+  ok 'APT dependency state is consistent'
+else fail 'APT reports a dependency problem or is unavailable'; fi
+
+section 'Service health'
+if command -v systemctl >/dev/null 2>&1; then
+  failed_units="$(systemctl --failed --no-legend --no-pager 2>/dev/null || true)"
+  if [ -z "$failed_units" ]; then ok 'systemd reports no failed units';
+  else warn "failed systemd units: $(printf '%s' "$failed_units" | tr '\n' ' ')"; fi
+else warn 'systemctl is unavailable'; fi
+
+printf '\nSummary: %s passed, %s warning(s), %s failure(s)\n' "$pass_count" "$warn_count" "$fail_count"
+[ "$fail_count" -eq 0 ]

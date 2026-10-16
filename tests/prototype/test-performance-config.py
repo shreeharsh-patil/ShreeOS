@@ -8,11 +8,14 @@ actual resource measurements can only be taken inside a booted QEMU guest
 """
 
 import configparser
+import hashlib
+import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -117,6 +120,14 @@ class SessionStartupTests(unittest.TestCase):
     def test_first_login_records_the_default_power_profile_without_polling(self):
         text = (BIN / "shreeos-plasma-first-login").read_text(encoding="utf-8")
         self.assertIn("--key PowerProfile balanced", text)
+
+    def test_performance_probe_waits_for_a_ready_desktop_and_reports_pss(self):
+        probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
+        self.assertIn("DESKTOP_WAIT_SECONDS=180", probe)
+        self.assertIn("plasma-defaults-applied", probe)
+        self.assertIn('emit desktop_ready "$ready"', probe)
+        self.assertIn("smaps_rollup", probe)
+        self.assertIn('emit pss_available "$pss_supported"', probe)
 
 
 class PowerProfileTests(unittest.TestCase):
@@ -242,6 +253,17 @@ class PackageManifestTests(unittest.TestCase):
         for competing in ("latte-dock", "kdeplasma-addons-applets-latte", "docky", "cairo-dock"):
             self.assertNotIn(competing, entries, f"{competing} competes with the ShreeOS dock")
 
+    def test_large_office_and_media_suites_stay_optional(self):
+        entries = set(package_entries())
+        for package in ("libreoffice-writer", "libreoffice-calc", "libreoffice-impress",
+                        "libreoffice-kf6", "vlc"):
+            self.assertNotIn(package, entries, f"{package} should be optional")
+        for bundle in ("office", "multimedia"):
+            self.assertTrue((ROOT / f"prototype/debian-live/features/toolsets/{bundle}.list.chroot").is_file())
+
+    def test_shared_base_services_are_not_redeclared_in_the_plasma_manifest(self):
+        self.assertNotIn("network-manager", package_entries())
+
     def test_power_and_compression_stack_is_present(self):
         entries = set(package_entries())
         for required in ("power-profiles-daemon", "systemd-zram-generator",
@@ -288,6 +310,74 @@ class ResourceBoundTests(unittest.TestCase):
             if re.search(r"while\s+(true|:)\s*;", text):
                 offenders.append(script.name)
         self.assertEqual(offenders, [], f"Unbounded waits: {offenders}")
+
+
+class MeasurementProvenanceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.folder = Path(self.temporary.name)
+        self.iso = self.folder / "image.iso"
+        self.iso.write_bytes(b"ShreeOS fixture image")
+        self.manifest = self.folder / "image-manifest.json"
+        self.commit = "9313ebb042cf71bb148441037940b130d49920d1"
+        self.iso_sha256 = hashlib.sha256(self.iso.read_bytes()).hexdigest()
+        self.iso_size = self.iso.stat().st_size
+        self.metadata = {
+            "commit": self.commit,
+            "git_dirty": False,
+            "sha256": self.iso_sha256,
+            "size_bytes": self.iso_size,
+        }
+
+    def verify(self):
+        self.manifest.write_text(json.dumps(self.metadata), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, str(ROOT / "scripts/verify-performance-manifest.py"),
+             str(self.manifest), str(self.iso)],
+            capture_output=True, text=True, timeout=10,
+        )
+
+    def test_accepts_clean_image_with_matching_checksum_and_size(self):
+        result = self.verify()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), self.commit)
+
+    def test_rejects_dirty_source(self):
+        self.metadata["git_dirty"] = True
+        result = self.verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("clean source commit", result.stderr)
+
+    def test_rejects_checksum_or_size_mismatch(self):
+        for field, value, message in (
+            ("sha256", "0" * 64, "SHA256 does not match"),
+            ("size_bytes", self.iso_size + 1, "size does not match"),
+        ):
+            with self.subTest(field=field):
+                self.metadata[field] = value
+                result = self.verify()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.metadata[field] = self.iso_sha256 if field == "sha256" else self.iso_size
+
+    def test_rejects_invalid_commit(self):
+        self.metadata["commit"] = "not-a-commit"
+        result = self.verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("valid source commit", result.stderr)
+
+    def test_performance_runner_checks_required_tools(self):
+        report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
+        for tool in ("unsquashfs", "xvfb-run", "sha256sum"):
+            self.assertIn(tool, report)
+
+    def test_boot_time_parser_handles_minute_and_second_values(self):
+        probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
+        minutes_case = probe.index("    *min*)")
+        seconds_case = probe.index("    *s) awk")
+        self.assertLess(minutes_case, seconds_case,
+                        "Minute durations must be parsed before the generic seconds suffix")
 
 
 if __name__ == "__main__":

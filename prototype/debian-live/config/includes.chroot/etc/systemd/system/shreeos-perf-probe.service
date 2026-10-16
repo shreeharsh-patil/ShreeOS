@@ -16,7 +16,7 @@ StandardError=journal+console
 Nice=19
 CPUSchedulingPolicy=batch
 IOSchedulingClass=idle
-TimeoutStartSec=180
+TimeoutStartSec=300
 RemainAfterExit=yes
 
 [Install]

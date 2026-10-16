@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ShreeOS System Information
+Comment=Show system version, hardware and resource information
+Exec=shreeinfo
+Icon=computer
+Terminal=true
+Categories=System;Utility;
+Keywords=system;hardware;memory;kernel;shreeos;

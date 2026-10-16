@@ -143,7 +143,7 @@ inputs_hash() {
       printf 'firmware=%s\n' "${SHREEOS_FIRMWARE:-standard}"
       printf 'toolsets=%s\n' "${SHREEOS_TOOLSETS:-}"
       find prototype/debian-live desktop/plasma themes/plasma branding scripts/build-shreeos.sh \
-        scripts/build-debian-prototype.sh -type f -print0 |
+        scripts/build-debian-prototype.sh scripts/build-shreeos-tools-package.sh -type f -print0 |
         sort -z | xargs -0 sha256sum
     } | sha256sum | awk '{print $1}'
   )
@@ -213,7 +213,9 @@ sha256="$(awk 'NR == 1 {print $1}' "$CHECKSUM_PATH")"
 size_bytes="$(stat -c '%s' "$ISO_PATH")"
 commit="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 dirty=0
-if ! git -C "$REPO_ROOT" diff --quiet --ignore-submodules HEAD 2>/dev/null; then dirty=1; fi
+if [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null || true)" ]; then
+  dirty=1
+fi
 
 manifest_value() {
   # $1: package name, $2: awk field of "name version" in live-build's manifest
@@ -239,6 +241,7 @@ manifest_value() {
   printf 'plasma=%s\n' "$(manifest_value plasma-workspace)"
   printf 'kwin=%s\n' "$(manifest_value kwin-x11)"
   printf 'sddm=%s\n' "$(manifest_value sddm)"
+  printf 'shreeos_tools=%s\n' "$(manifest_value shreeos-tools)"
 } >>"$BUILD_INFO_PATH"
 
 ISO_NAME="$ISO_NAME" ISO_PATH="$ISO_PATH" ISO_SHA256="$sha256" ISO_SIZE="$size_bytes" \
@@ -275,7 +278,7 @@ out["built_at"] = next(
 out["components"] = {
     line.split("=", 1)[0]: line.split("=", 1)[1]
     for line in Path(os.environ["BUILD_INFO"]).read_text().splitlines()
-    if line.split("=", 1)[0] in {"kernel", "plasma", "kwin", "sddm"}
+    if line.split("=", 1)[0] in {"kernel", "plasma", "kwin", "sddm", "shreeos_tools"}
 }
 # The manifest must describe the bytes actually on disk.
 iso = Path(os.environ["ISO_PATH"])

@@ -36,6 +36,8 @@ the system. Installation requires administrator authorization, refreshes
 metadata, and preserves APT's confirmation and signature checks. Live-session
 installation is refused because it would be lost at restart; use build-time
 toolsets for live media. Bundles add no ShreeOS autostart entries or listeners.
+`office` and `multimedia` are separate optional bundles so large suites do not
+inflate the standard desktop image.
 
 ## Installed update sources
 

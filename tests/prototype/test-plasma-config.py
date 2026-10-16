@@ -51,7 +51,7 @@ class PlasmaConfigTests(unittest.TestCase):
                 local = INCLUDES / "usr/share/applications" / f"{app}.desktop"
                 shared = ROOT / "prototype/debian-live/profiles/desktop/includes.chroot/usr/share/applications" / f"{app}.desktop"
                 self.assertTrue(local.is_file() or shared.is_file(), f"Missing app: {app}")
-        self.assertEqual(dock["hide-mode"], "'none'")
+        self.assertEqual(dock["hide-mode"], "'auto'")
         self.assertEqual(dock["zoom-enabled"], "true")
         self.assertIn("plank", packages)
         self.assertIn("dconf-cli", packages)

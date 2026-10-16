@@ -122,11 +122,12 @@ for the repository audit, component matrix, and current scope.
 
 ## Everyday desktop and system features
 
-Plasma now selects an office suite, media player, printing/scanning,
-accessibility tools, firmware updates in Discover, power profiles and capped
-compressed swap. Desktop Motion offers balanced, performance and reduced
-animation preferences. Developer, security and creative software sets can be
-selected for an ISO or installed later through signed APT.
+The desktop includes printing/scanning, accessibility tools, firmware updates
+in Discover, power profiles and capped compressed swap. Desktop Motion offers
+balanced, performance and reduced animation preferences. Developer, security,
+creative, office and multimedia software sets can be selected for an ISO or
+installed later through signed APT; office and multimedia applications are not
+bundled in the default image.
 
 See [features and commands](features/README.md) and the current
 [readiness audit](../../docs/SYSTEM-READINESS.md) for implemented fixes,

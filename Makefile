@@ -181,10 +181,12 @@ test-prototype-config:
 	bash scripts/verify-version.sh
 	bash tests/release/test-version-contract.sh
 	bash tests/prototype/test-config.sh
+	bash tests/prototype/test-native-tools-package.sh
 	python3 tests/prototype/test-plasma-config.py
 	python3 tests/prototype/test-desktop-config.py
 	python3 tests/prototype/test-system-features.py
 	python3 tests/prototype/test-performance-config.py
+	bash tests/prototype/test-performance-targets.sh
 	python3 tests/prototype/test-search-calculator.py
 	python3 tests/prototype/test-workspace-overview.py
 	python3 tests/prototype/test-branding.py

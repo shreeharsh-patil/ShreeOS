@@ -1,4 +1,33 @@
-# Desktop component integration matrix
+# Native ShreeOS integration matrix
+
+This is the decision record for bringing the source-built ShreeOS project into
+the Debian 13 + KDE Plasma product. The source-built init, kernel, package
+manager and DWM desktop are retained for research and historical tests; they
+are not installed alongside Debian's corresponding system components.
+
+| Native component | Decision | Product integration / boundary |
+|---|---|---|
+| Original ShreeOS logo, wallpapers, icons and Plasma color schemes | Reuse directly | Shipped by the unified Plasma profile and used by SDDM, Calamares, Plymouth, GRUB and the desktop. |
+| Plasma layout, ShreeOS launcher, appearance and power tools | Adapt | Use Plasma/KWin, NetworkManager, PipeWire and power-profiles-daemon interfaces already in Debian. |
+| `shreeinfo`, `shree-doctor`, `shree-netdiag` and `shree-audit` | Adapt and package | `shreeos-tools` is a versioned `Architecture: all` Debian package. Its commands report dpkg/systemd/network state and do not assume LPM, a custom PID 1, or a custom root filesystem. |
+| Native `lpm` and its package database | Keep experimental | It is not installed. APT/dpkg exclusively own Debian-managed system files and transactions. |
+| Native init, service supervisor, authentication and root filesystem | Keep experimental | Debian systemd, PAM, udev, glibc and the Debian root filesystem remain authoritative. |
+| Native source-built kernel, initramfs and GRUB scripts | Keep experimental | Debian kernel, initramfs-tools/live-boot and GRUB provide the supported boot path. ShreeOS retains its source and tests. |
+| Native DWM, Xorg configuration and standalone compositor | Keep experimental | Plasma and KWin on X11 are the only installed desktop session. No second panel or dock session is started. |
+| Native Wi-Fi wrapper using wpa_supplicant directly | Exclude from the desktop image | It would bypass/conflict with NetworkManager's connection ownership and credential store. The Plasma NetworkManager applet provides the supported UI. |
+| Native audio wrapper using ALSA `amixer` | Exclude from the desktop image | PipeWire/WirePlumber and Plasma Audio are authoritative; the old wrapper assumes direct ALSA control and root access. |
+| Native Bluetooth wrapper that directly powers BlueZ | Keep optional for future adaptation | BlueDevil owns pairing and Plasma integration. No ShreeOS background Bluetooth controller is installed. |
+| Source-built security, developer and creative tools | Optional | Existing Debian toolsets remain selectable at build time; office and multimedia suites are separate optional bundles. |
+| Native `shree-sysmon`, `shree-settings`, `shree-pkgmanager` and DWM launchers | Keep experimental | These front ends invoke legacy LPM/DWM tools or APIs and have not been ported to Plasma/APT. They are not exposed as dead menu entries. |
+
+The Debian-native tools package is assembled from
+`prototype/debian-live/features/native-tools/` by
+`scripts/build-shreeos-tools-package.sh`; the package version derives from the
+repository-root `VERSION`. CI inspects its control metadata and payload. The
+package is included only in the Plasma build as a local `packages.chroot`
+package, and the generated image package manifest confirms it was installed.
+
+## Upstream desktop architecture comparison
 
 This review compares elementary OS's GTK/Vala components with the KDE Plasma
 stack selected for the Debian Live profile. The elementary GitHub organization
@@ -19,7 +48,7 @@ components are not mixed into the Plasma session.
 
 | ShreeOS feature | elementary source reviewed | KDE source reviewed | Selected ShreeOS approach | Compatibility and license decision |
 |---|---|---|---|---|
-| Dock, pinned apps, running windows | [elementary/dock](https://github.com/elementary/dock), `src/AppSystem/Launcher.vala`, `src/ItemManager.vala`, `src/WindowSystem/*` | [plasma-desktop](https://invent.kde.org/plasma/plasma-desktop), `applets/taskmanager/qml/Task.qml`, `TaskList.qml` | Plasma `org.kde.plasma.icontasks` panel widget, configured with pinned ShreeOS launchers | elementary/dock is Vala + GTK 4 + libadwaita + Granite 7; running-window and workspace tracking call Gala's `org.pantheon.gala` D-Bus API. Its Wayland panel/blur path uses the Pantheon shell protocol; its X11 path sets Mutter hints. These are not KWin integrations. KDE's task manager is native to Plasma. Repository license metadata: elementary GPL-3.0; inspected KDE task QML file SPDX: GPL-2.0-or-later. Use packages/configuration; no source copied. |
+| Dock, pinned apps, running windows | [elementary/dock](https://github.com/elementary/dock), `src/AppSystem/Launcher.vala`, `src/ItemManager.vala`, `src/WindowSystem/*` | [plasma-desktop](https://invent.kde.org/plasma/plasma-desktop), `applets/taskmanager/qml/Task.qml`, `TaskList.qml` | Plank is the single dock provider, centered at the bottom with pinned launchers, running-app indicators, magnification and auto-hide | elementary/dock is Vala + GTK 4 + libadwaita + Granite 7; running-window and workspace tracking call Gala's `org.pantheon.gala` D-Bus API. Its Wayland panel/blur path uses the Pantheon shell protocol; its X11 path sets Mutter hints. These are not KWin integrations. KDE's task manager is native to Plasma. Repository license metadata: elementary GPL-3.0; inspected KDE task QML file SPDX: GPL-2.0-or-later. Use packages/configuration; no source copied. |
 | Top panel, status area | [elementary/wingpanel](https://github.com/elementary/wingpanel), [elementary/panel-network](https://github.com/elementary/panel-network), [elementary/panel-sound](https://github.com/elementary/panel-sound), [elementary/panel-bluetooth](https://github.com/elementary/panel-bluetooth) | Plasma panels, system tray, `plasma-nm`, `plasma-pa`, BlueDevil | Plasma panel with Kickoff, active-app menu, spacer, system tray and date clock | Wingpanel indicators are built for Pantheon/GTK and its indicator protocols. Plasma applets use the same session services as the selected shell. Repo metadata: Wingpanel GPL-3.0; panel-network LGPL-2.1; panel-bluetooth LGPL-2.1; panel-sound has no repository-level SPDX assertion. |
 | App launcher and search | [elementary/applications-menu](https://github.com/elementary/applications-menu) | Plasma Kickoff and KRunner | Kickoff menu; Meta+Space invokes KRunner | Keep launcher, desktop-file discovery and runner integrations in Plasma instead of adding a second GTK launcher. Repo metadata: applications-menu GPL-3.0. |
 | Quick settings and indicators | [elementary/quick-settings](https://github.com/elementary/quick-settings), panel network/sound/Bluetooth projects | Plasma system tray, `plasma-nm`, `plasma-pa`, PowerDevil, BlueDevil | Native tray applets and their NetworkManager, PipeWire and BlueZ services | Pantheon quick-settings is GTK/Vala and expects Wingpanel/its indicators. Plasma tray modules are already wired to KDE services. Repo metadata: quick-settings GPL-3.0. |

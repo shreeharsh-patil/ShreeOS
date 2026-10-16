@@ -34,7 +34,7 @@ if [ -n "$TOOLSETS" ]; then
   IFS=, read -r -a selected_toolsets <<< "$TOOLSETS"
   for bundle in "${selected_toolsets[@]}"; do
     case "$bundle" in
-      developer|security|creative) ;;
+      developer|security|creative|office|multimedia) ;;
       *) echo "Unknown software bundle: $bundle" >&2; exit 2 ;;
     esac
   done
@@ -44,7 +44,7 @@ if [ "$(id -u)" -ne 0 ]; then
   echo "The Debian Live prototype must be built as root; use Debian 13 or CI." >&2
   exit 2
 fi
-for tool in lb debootstrap xorriso unsquashfs grub-mkrescue sha256sum dpkg-query; do
+for tool in lb debootstrap xorriso unsquashfs grub-mkrescue sha256sum dpkg-query dpkg-deb; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Missing prototype build dependency: $tool" >&2
     exit 2
@@ -170,11 +170,25 @@ if [ "$LIVE_PROFILE" = plasma ]; then
   PROFILE_SOURCE="$CONFIG_SOURCE/profiles/plasma"
   cp "$PROFILE_SOURCE/package-lists/shreeos-plasma.list.chroot" \
     "$BUILD_DIR/config/package-lists/"
+  mkdir -p "$BUILD_DIR/config/packages.chroot"
+  bash "$REPO_ROOT/scripts/build-shreeos-tools-package.sh" \
+    "$BUILD_DIR/config/packages.chroot"
   cp -a "$PROFILE_SOURCE/includes.chroot/." \
     "$BUILD_DIR/config/includes.chroot/"
   mkdir -p "$BUILD_DIR/config/includes.chroot/etc/calamares"
   cp -a "$CONFIG_SOURCE/profiles/desktop/includes.chroot/etc/calamares/." \
     "$BUILD_DIR/config/includes.chroot/etc/calamares/"
+  calamares_branding="$BUILD_DIR/config/includes.chroot/etc/calamares/branding/shreeos/branding.desc"
+  [ -s "$calamares_branding" ] || {
+    echo "Missing ShreeOS Calamares branding: $calamares_branding" >&2; exit 2;
+  }
+  grep -Fq '@VERSION@' "$calamares_branding" || {
+    echo 'Calamares branding lost its version placeholder.' >&2; exit 2;
+  }
+  sed -i "s|@VERSION@|$PROTOTYPE_VERSION|g" "$calamares_branding"
+  grep -Fq "version: $PROTOTYPE_VERSION" "$calamares_branding" || {
+    echo 'Generated Calamares branding has the wrong ShreeOS version.' >&2; exit 2;
+  }
   mkdir -p \
     "$BUILD_DIR/config/includes.chroot/usr/local/bin" \
     "$BUILD_DIR/config/includes.chroot/usr/local/libexec" \
@@ -329,7 +343,7 @@ for package in apt live-boot live-config-systemd network-manager systemd-sysv; d
 done
 if [ "$LIVE_PROFILE" = plasma ]; then
   for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
-    dolphin konsole ark kde-spectacle plasma-nm plasma-pa powerdevil bluedevil; do
+    dolphin konsole ark kde-spectacle plasma-nm plasma-pa powerdevil bluedevil shreeos-tools; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$PACKAGES_SOURCE" || {
       echo "Plasma package manifest is missing required package: $package" >&2
       exit 1
