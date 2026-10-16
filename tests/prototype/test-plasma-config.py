@@ -147,7 +147,7 @@ class PlasmaConfigTests(unittest.TestCase):
             self.assertEqual(custom.read_text(), "user-owned layout")
             self.assertEqual(marker.read_text(), "existing profile")
 
-    def test_first_login_waits_for_the_restarted_shell_before_setting_wallpaper(self):
+    def test_first_login_handles_restarted_and_in_place_shell_layout_updates(self):
         shell = shutil.which("sh")
         if os.name == "nt":
             shell = str(Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/bin/bash.exe")
@@ -164,7 +164,8 @@ class PlasmaConfigTests(unittest.TestCase):
                     'count=0; [ ! -f "$count_file" ] || count="$(cat "$count_file")"\n'
                     'count=$((count + 1)); printf "%s\\n" "$count" > "$count_file"\n'
                     'printf "pgrep:%s\\n" "$count" >> "$CALLS"\n'
-                    'case "$count" in 1|2) echo 4321 ;; 4|6|7) echo 5678 ;; *) exit 1 ;; esac\n'
+                    '[ "${PGREP_MODE:-restart}" != stable ] || { echo 4321; exit 0; }\n'
+                    'case "$count" in 1|2) echo 4321 ;; 4|5|6) echo 5678 ;; *) exit 1 ;; esac\n'
                 ),
                 "plasma-apply-lookandfeel": (
                     '#!/bin/sh\nprintf "lookandfeel\\n" >> "$CALLS"\n'
@@ -203,9 +204,20 @@ class PlasmaConfigTests(unittest.TestCase):
             self.assertLess(trace.index("pgrep:2"), trace.index("pgrep:3"))
             self.assertLess(trace.index("pgrep:3"), trace.index("pgrep:4"))
             self.assertLess(trace.index("pgrep:4"), trace.index("pgrep:5"))
-            self.assertLess(trace.index("pgrep:5"), trace.index("pgrep:6"))
-            self.assertLess(trace.index("pgrep:6"), trace.index("pgrep:7"))
-            self.assertLess(trace.index("pgrep:7"), trace.index("wallpaper"))
+            self.assertLess(trace.index("pgrep:5"), trace.index("wallpaper"))
+
+            # Plasma may update the applet layout without replacing its shell.
+            # That must still finish first-login setup and release dock startup.
+            marker = config_home / "shreeos/plasma-defaults-applied"
+            marker.unlink()
+            calls.write_text("")
+            Path(f"{calls}.pgrep-count").unlink()
+            stable_env = dict(env, PGREP_MODE="stable")
+            result = subprocess.run([shell, script.as_posix()],
+                                    env=stable_env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(marker.is_file())
+            self.assertIn("wallpaper", calls.read_text().splitlines())
 
 
 if __name__ == "__main__":
