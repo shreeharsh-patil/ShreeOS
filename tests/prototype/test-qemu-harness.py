@@ -35,6 +35,19 @@ class QemuHarnessTests(unittest.TestCase):
         self.assertLess(boot_marker, screenshot_guard)
         self.assertLess(screenshot_guard, screenshot_read)
 
+    def test_successful_desktop_capture_stops_the_live_qemu_group(self):
+        script = HARNESS.read_text(encoding="utf-8")
+        screenshot = script.index("screenshot_captured=1")
+        cleanup = script.index('kill -TERM -- "-$emulator_pid"', screenshot)
+        wait = script.index('wait "$emulator_pid"', cleanup)
+        normalize = script.index('if (( cleanup_signal_sent ))', wait)
+
+        self.assertIn("local screenshot_captured=0 cleanup_signal_sent=0", script)
+        self.assertLess(screenshot, cleanup)
+        self.assertLess(cleanup, wait)
+        self.assertLess(wait, normalize)
+        self.assertIn('[[ "$status" -eq 143 ]]', script)
+
     def test_performance_timeout_preserves_live_serial_and_guest_diagnostics(self):
         script = PERFORMANCE_HARNESS.read_text(encoding="utf-8")
         self.assertIn("setsid xvfb-run", script)

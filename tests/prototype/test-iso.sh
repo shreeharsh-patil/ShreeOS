@@ -182,6 +182,7 @@ run_boot_test() {
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
+  local screenshot_captured=0 cleanup_signal_sent=0
   local qemu_timeout=420
   if [ "$PROFILE" = plasma ]; then qemu_timeout=5400; fi
   local deadline=$((SECONDS + qemu_timeout))
@@ -292,7 +293,7 @@ PY
     sleep 1
   done
   if grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-    if ! python3 - "$monitor_socket" "$screen_dump" >>"$emulator_log" 2>&1 <<'PY'
+    if python3 - "$monitor_socket" "$screen_dump" >>"$emulator_log" 2>&1 <<'PY'
 import socket
 import sys
 import time
@@ -339,7 +340,7 @@ try:
         raise RuntimeError(f"QEMU did not create desktop screenshot: {output}")
     client.sendall(b"quit\n")
 except Exception:
-    # Avoid leaving QEMU alive until its one-hour safety timeout after a capture error.
+    # Avoid leaving QEMU alive until its long safety timeout after a capture error.
     try:
         client.sendall(b"quit\n")
     except OSError:
@@ -348,12 +349,23 @@ except Exception:
 finally:
     client.close()
 PY
-  then
-    printf 'QEMU desktop screenshot capture failed; stopping the guest.\n' >>"$emulator_log"
-    kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+    then
+      screenshot_captured=1
+    else
+      printf 'QEMU desktop screenshot capture failed; stopping the guest.\n' >>"$emulator_log"
+      kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+    fi
   fi
+  # A live desktop has no reason to exit by itself. Stop the disposable QEMU
+  # guest after a successful capture so the long safety timeout does not turn a
+  # valid boot into a failed CI job. Only normalize the status for this explicit
+  # harness shutdown; timeouts and other QEMU failures still fail the test.
+  if (( screenshot_captured )) && kill -0 -- "-$emulator_pid" 2>/dev/null; then
+    kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+    cleanup_signal_sent=1
   fi
   wait "$emulator_pid" || status=$?
+  if (( cleanup_signal_sent )) && [[ "$status" -eq 143 ]]; then status=0; fi
 
   if [ -n "$QEMU_LOG_DIR" ]; then
     if [ -f "$log" ]; then
