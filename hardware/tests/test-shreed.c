@@ -92,6 +92,10 @@ static int wait_for_path(const char *path, bool present) {
 static pid_t start_daemon(const char *daemon, const char *socket_path, const char *log_path) {
     pid_t child = fork();
     if (child == 0) {
+        if (geteuid() == 0) {
+            struct group *hardware = getgrnam("shree-hardware");
+            if (!hardware || setgid(hardware->gr_gid) != 0) _exit(126);
+        }
         execl(daemon, daemon, "--foreground", "--socket", socket_path, "--log", log_path, (char *)NULL);
         _exit(127);
     }
@@ -254,7 +258,18 @@ int main(int argc, char **argv) {
     /* Start with no other authenticated peers so only these idle sockets hit the UID limit. */
     TEST("per-UID rejection flood produces one bounded log record",
          per_uid_rejection_log_is_coalesced(socket_path, log_path));
-    TEST("socket has public read-only IPC mode", lstat(socket_path, &status) == 0 && (status.st_mode & 0777) == 0666);
+    {
+        struct group *hardware = getgrnam("shree-hardware");
+        gid_t expected_gid = getegid();
+        int group_expectation_available = 1;
+        if (geteuid() == 0) {
+            if (hardware) expected_gid = hardware->gr_gid;
+            else group_expectation_available = 0;
+        }
+        TEST("socket mode and service group ownership",
+             group_expectation_available && lstat(socket_path, &status) == 0 &&
+             (status.st_mode & 0777) == 0660 && status.st_gid == expected_gid);
+    }
     TEST("ping response", exchange(socket_path, "{\"action\":\"ping\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"pong\":true") != NULL);
     TEST("status response", exchange(socket_path, "{\"action\":\"status\"}", response, sizeof(response)) == 0 &&

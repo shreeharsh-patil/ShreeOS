@@ -70,7 +70,7 @@ jobs:
       - name: Install static-analysis and installer test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml python3-pil cpio
+          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml python3-pil cpio build-essential
 
       - name: Enforce the single-authoritative-version contract
         run: |
@@ -129,11 +129,18 @@ jobs:
           python3 tests/prototype/test-system-features.py
           python3 tests/prototype/test-performance-config.py
           bash tests/prototype/test-performance-targets.sh
+          python3 tests/release/test-performance-aggregation.py
+          python3 tests/release/test-performance-comparison.py
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
 
       - name: Build and inspect the versioned native ShreeOS tools package
-        run: bash tests/prototype/test-native-tools-package.sh
+        run: |
+          bash tests/prototype/test-native-tools-package.sh
+          if ! getent group shree-hardware >/dev/null 2>&1; then
+            sudo groupadd --system shree-hardware
+          fi
+          sudo make -C hardware test
 
       - name: Branding and packaging checks
         run: |
@@ -273,7 +280,7 @@ jobs:
           assert manifest['git_dirty'] is False
           assert manifest['products'] == ['live', 'installed']
           assert manifest['architecture'] == 'x86_64'
-          for key in ('kernel', 'plasma', 'kwin', 'sddm', 'shreeos_tools'):
+          for key in ('kernel', 'plasma', 'kwin', 'sddm', 'shreeos_tools', 'shreeos_native_tools'):
               assert manifest['components'].get(key), f'missing {key} in manifest components'
           with iso.open('rb') as stream:
               digest = hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -458,24 +465,35 @@ jobs:
     name: Stage E - idle RAM, CPU and cold boot against limits and untouched baseline
     needs: [static-checks, build, boot-verification]
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
     permissions:
       contents: read
+    container:
+      image: debian:trixie-slim
     env:
       REQUIRE_PERFORMANCE_BASELINE: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
     steps:
+      - name: Install Git before checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Install image and virtualisation tooling
+      - name: Install pinned QEMU, SeaBIOS and measurement tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils util-linux \
-            ovmf xvfb xauth python3 ca-certificates unzip gh
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            qemu-system-x86=1:10.0.13+ds-0+deb13u1 \
+            qemu-system-gui=1:10.0.13+ds-0+deb13u1 \
+            qemu-utils=1:10.0.13+ds-0+deb13u1 \
+            seabios=1.16.3-2 \
+            xorriso squashfs-tools util-linux ovmf xvfb xauth python3 unzip gh
+          dpkg-query -W qemu-system-x86 qemu-system-gui qemu-utils seabios
 
       - name: Recover the built ISO
         env:
@@ -488,19 +506,45 @@ jobs:
           iso="$(find out -maxdepth 1 -type f -name '*.iso' -print -quit)"
           test -s "$iso"
           mkdir -p build-logs/performance
-          if [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
-            REQUIRE_BASELINE=1 RESUME=1 QEMU_LOG_DIR=build-logs/performance \
-              bash tests/prototype/test-performance-report.sh "$iso"
-          else
-            RESUME=1 QEMU_LOG_DIR=build-logs/performance \
-              bash tests/prototype/test-performance-report.sh "$iso"
+          capture_failed=0
+          for sample in 1 2 3; do
+            if ! CAPTURE_ONLY=1 QEMU_LOG_DIR="build-logs/performance/run-$sample" \
+              bash tests/prototype/test-performance-report.sh "$iso"; then
+              printf 'Performance capture %s failed; retaining its diagnostics and continuing to remaining samples.\n' "$sample" >&2
+              capture_failed=1
+            fi
+          done
+          if (( capture_failed )); then
+            printf 'At least one sample was invalid; aggregate acceptance cannot run.\n' >&2
+            exit 1
           fi
+          python3 scripts/aggregate-performance-runs.py \
+            --output build-logs/performance/performance-summary.tsv \
+            --report-output build-logs/performance/performance-summary.md \
+            build-logs/performance/run-1/performance-candidate.tsv \
+            build-logs/performance/run-2/performance-candidate.tsv \
+            build-logs/performance/run-3/performance-candidate.tsv
+          comparison_args=(
+            --candidate build-logs/performance/performance-summary.tsv
+            --targets prototype/debian-live/performance-targets.tsv
+            --report-output build-logs/performance/performance-report.md
+          )
+          if [[ -s tests/prototype/performance-baseline.tsv ]]; then
+            comparison_args+=(--baseline tests/prototype/performance-baseline.tsv)
+          fi
+          if [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
+            comparison_args+=(--require-baseline)
+          fi
+          python3 scripts/compare-performance-runs.py "${comparison_args[@]}"
 
       - name: Record the report in the run summary
         run: |
-          report=build-logs/performance/performance-report.md
-          test -s "$report"
-          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          for report in \
+            build-logs/performance/performance-summary.md \
+            build-logs/performance/performance-report.md; do
+            test -s "$report"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Upload benchmark reports
         if: always()

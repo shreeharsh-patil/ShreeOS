@@ -215,6 +215,91 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(annotations["org.freedesktop.policykit.exec.allow_gui"], "true")
         self.assertEqual(actions[0].findtext("defaults/allow_inactive"), "no")
 
+    def test_calamares_3314_guided_layout_uses_supported_gpt_partition_options(self):
+        partition = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                     / "etc/calamares/modules/partition.conf").read_text(encoding="utf-8")
+        self.assertNotIn("createHybridBootloaderLayout", partition)
+        self.assertIn("defaultPartitionTableType: gpt", partition)
+        self.assertIn("requiredPartitionTableType: gpt", partition)
+        self.assertIn("mountPoint: /boot/efi", partition)
+        self.assertIn("recommendedSize: 512MiB", partition)
+        self.assertRegex(partition, r"(?s)partitionLayout:.*?type: \"21686148-6449-6E6F-744E-656564454649\".*?filesystem: unformatted.*?mountPoint: /.*?size: 100%")
+        self.assertIn("efi:", partition)
+
+    def test_calamares_3314_runs_validated_bios_grub_install_after_efi_install(self):
+        bootloader = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                     / "etc/calamares/modules/bootloader.conf").read_text(encoding="utf-8")
+        settings = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                    / "etc/calamares/settings.conf").read_text(encoding="utf-8")
+        shellprocess = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                        / "etc/calamares/modules/shellprocess.conf").read_text(encoding="utf-8")
+        helper = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                  / "usr/local/libexec/shreeos-install-bios-grub").read_text(encoding="utf-8")
+        self.assertIn("efiBootLoader: grub", bootloader)
+        self.assertIn("efiBootloaderId: debian", bootloader)
+        self.assertIn("installEFIFallback: true", bootloader)
+        self.assertNotIn("installHybridGRUB", bootloader)
+        self.assertRegex(settings, r"(?s)- bootloader\s+- packages\s+- shellprocess")
+        self.assertIn("dontChroot: true", shellprocess)
+        self.assertIn("/usr/local/libexec/shreeos-install-bios-grub", shellprocess)
+        self.assertIn("${ROOT}", shellprocess)
+        self.assertIn("${gs[firmwareType]}", shellprocess)
+        self.assertIn('findmnt --noheadings --raw --output SOURCE --target "$target_root/boot/efi"', helper)
+        self.assertIn('"$#" -eq 2', helper)
+        self.assertIn('"$firmware_type" = efi', helper)
+        self.assertIn('findmnt --noheadings --raw --output SOURCE --target "$target_root"', helper)
+        self.assertIn('"$root_disk" = "$disk"', helper)
+        self.assertIn("c12a7328-f81f-11d2-ba4b-00a0c93ec93b", helper)
+        self.assertIn("21686148-6449-6e6f-744e-656564454649", helper)
+        self.assertIn('chroot "$target_root" grub-install --target=i386-pc --recheck', helper)
+        self.assertIn("grub-pc-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
+                                      / "shreeos-plasma.list.chroot").read_text(encoding="utf-8"))
+        self.assertIn("grub-efi-amd64-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
+                                             / "shreeos-plasma.list.chroot").read_text(encoding="utf-8"))
+
+    def test_installer_docs_require_uefi_origin_and_define_crossboot_matrix(self):
+        acceptance = (ROOT / "release/INSTALL-ACCEPTANCE.md").read_text(encoding="utf-8")
+        normalized = " ".join(acceptance.split())
+        self.assertIn("boot the ISO in **UEFI mode** for both the guided", normalized)
+        self.assertIn("boot on each installed disk in legacy BIOS mode", normalized)
+
+    def test_dolphin_smb_kio_worker_is_explicit_when_recommends_are_disabled(self):
+        package_list = (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
+                        / "shreeos-plasma.list.chroot").read_text(encoding="utf-8")
+        builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+        self.assertRegex(package_list, r"(?m)^kio-extras$")
+        self.assertIn("kio-extras", builder)
+        self.assertIn('if [ "$SHREEOS_UNIFIED" = 1 ]; then APT_RECOMMENDS=false; fi', builder)
+
+    def test_native_hardware_daemon_runs_without_root_and_uses_group_socket(self):
+        package_builder = (ROOT / "scripts/package-unified-native.sh").read_text(encoding="utf-8")
+        daemon = (ROOT / "hardware/daemon/shreed.c").read_text(encoding="utf-8")
+        test_source = (ROOT / "hardware/tests/test-shreed.c").read_text(encoding="utf-8")
+        header = (ROOT / "hardware/include/shreed.h").read_text(encoding="utf-8")
+        network_script = (ROOT / "hardware/scripts/shree-network").read_text(encoding="utf-8")
+        hardware_readme = (ROOT / "hardware/README.md").read_text(encoding="utf-8")
+        self.assertIn("User=shreed", package_builder)
+        self.assertIn("Group=shree-hardware", package_builder)
+        self.assertIn("CapabilityBoundingSet=", package_builder)
+        self.assertIn("ProtectSystem=strict", package_builder)
+        self.assertIn("adduser --system --quiet --no-create-home", package_builder)
+        self.assertIn("chmod(socket_path, 0660)", daemon)
+        self.assertNotIn("chmod(socket_path, 0666)", daemon)
+        self.assertIn('#define SHREED_SOCKET_PATH "/run/shreeos/shreed.sock"', header)
+        self.assertIn('/run/shreeos/shreed.sock', network_script)
+        self.assertIn('`0660`', hardware_readme)
+        self.assertNotIn('`0666`', hardware_readme)
+        self.assertIn('setgid(hardware->gr_gid)', test_source)
+        self.assertIn('status.st_gid == expected_gid', test_source)
+
+    def test_manual_cross_firmware_layout_names_the_required_gpt_types(self):
+        docs = (ROOT / "docs/UNIFIED-IMAGE.md").read_text(encoding="utf-8")
+        acceptance = (ROOT / "release/INSTALL-ACCEPTANCE.md").read_text(encoding="utf-8")
+        for source in (docs, acceptance):
+            normalized = " ".join(source.split())
+            self.assertIn("21686148-6449-6e6f-744e-656564454649", normalized)
+            self.assertIn("c12a7328-f81f-11d2-ba4b-00a0c93ec93b", normalized)
+
     def test_shortcuts_have_valid_kconfig_lists(self):
         config = configparser.RawConfigParser()
         config.read(PLASMA / "etc/skel/.config/kglobalshortcutsrc")

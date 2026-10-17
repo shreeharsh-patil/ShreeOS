@@ -25,6 +25,17 @@ test -x "$dir/extracted/usr/libexec/shreeos/shreed"
 test -f "$dir/extracted/usr/lib/systemd/system/shreeos-hardware.service"
 test -f "$dir/extracted/usr/lib/systemd/system-preset/60-shreeos-native.preset"
 grep -Fq 'addgroup --system --quiet shree-hardware' "$dir/control/postinst"
+grep -Fq 'adduser --system --quiet --no-create-home --home /nonexistent' "$dir/control/postinst"
+grep -Fq -- '--ingroup shree-hardware shreed' "$dir/control/postinst"
+grep -Fqx '#define SHREED_SOCKET_PATH "/run/shreeos/shreed.sock"' "$root/hardware/include/shreed.h"
+grep -Fqx 'SHREED_SOCK="${SHREED_SOCK:-/run/shreeos/shreed.sock}"' "$root/hardware/scripts/shree-network"
+service="$dir/extracted/usr/lib/systemd/system/shreeos-hardware.service"
+for directive in \
+  'User=shreed' 'Group=shree-hardware' 'RuntimeDirectory=shreeos' \
+  'LogsDirectory=shreeos' 'ProtectSystem=strict' 'CapabilityBoundingSet=' \
+  'AmbientCapabilities=' 'RestrictAddressFamilies=AF_UNIX AF_NETLINK'; do
+  grep -Fxq "$directive" "$service"
+done
 "$dir/extracted/usr/libexec/shreeos/shreed" --unknown >/dev/null 2>&1 && {
   echo "Native daemon accepted invalid argument" >&2; exit 1;
 }
