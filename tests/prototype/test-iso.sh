@@ -29,7 +29,7 @@ qemu-img create -q -f raw "$TARGET_DISK" 2G
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.squashfs "$SQUASHFS" >/dev/null
 unsquashfs -s "$SQUASHFS" >/dev/null
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.packages "$TEST_DIR/packages.txt" >/dev/null
-for package in apt live-boot live-config-systemd network-manager systemd-sysv; do
+for package in apt live-boot live-config-systemd user-setup network-manager systemd-sysv; do
   grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
     echo "ISO package manifest is missing required package: $package" >&2
     exit 1

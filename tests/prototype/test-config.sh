@@ -16,7 +16,7 @@ packages="$CONFIG_DIR/config/package-lists/shreeos-base.list.chroot"
 actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$packages" | sort)"
 unique="$(printf '%s\n' "$actual" | uniq)"
 test "$actual" = "$unique"
-for required in apt ca-certificates live-boot live-config-systemd \
+for required in apt ca-certificates live-boot live-config-systemd user-setup \
   linux-image-amd64 network-manager systemd-sysv passwd; do
   grep -Fxq "$required" "$packages" || {
     echo "Prototype package list is missing: $required" >&2
