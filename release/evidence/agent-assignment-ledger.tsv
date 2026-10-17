@@ -139,7 +139,7 @@ slot	division	logical_assignment	status	executor	evidence	notes
 138	Security, permissions and hardware daemon auditing	Review security scan output at exact PR head	queued	unassigned		Queued; no result claimed yet.
 139	Security, permissions and hardware daemon auditing	Run hardware daemon test suite and preserve results	queued	unassigned		Queued; no result claimed yet.
 140	Security, permissions and hardware daemon auditing	Repeat final security audit on merged release candidate	queued	unassigned		Queued; no result claimed yet.
-141	CI/CD, workflows, caching and reproducibility	Check Stage A static workflow contracts and tests	running	coordinator	GitHub Actions runs 39018652791/52801/52802/52812/52842	These runs are for edf9f09 and will be superseded by the next pushed source SHA.
+141	CI/CD, workflows, caching and reproducibility	Check Stage A static workflow contracts and tests	running	coordinator	exact PR head ece9f1e6cfc27d87ae9f3d184211a739ccc762ce; lint run 39027164104 failed permission audit	The audit found the new regression script tracked 100644 instead of 100755; an executable-mode correction is being pushed for fresh checks.
 142	CI/CD, workflows, caching and reproducibility	Audit Stage B build job manifest assertion contract	queued	unassigned		Queued; no result claimed yet.
 143	CI/CD, workflows, caching and reproducibility	Verify products manifest field emitted and validated	queued	unassigned		Queued; no result claimed yet.
 144	CI/CD, workflows, caching and reproducibility	Review artifact cache fingerprint input completeness	queued	unassigned		Queued; no result claimed yet.
