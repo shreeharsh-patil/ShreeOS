@@ -243,6 +243,9 @@ int main(int argc, char **argv) {
     unlink(log_path);
     daemon = start_daemon(argv[1], socket_path, log_path);
     TEST("daemon starts", daemon > 0 && wait_for_path(socket_path, true) == 0);
+    /* Start with no other authenticated peers so only these idle sockets hit the UID limit. */
+    TEST("per-UID rejection flood produces one bounded log record",
+         per_uid_rejection_log_is_coalesced(socket_path, log_path));
     TEST("socket has public read-only IPC mode", lstat(socket_path, &status) == 0 && (status.st_mode & 0777) == 0666);
     TEST("ping response", exchange(socket_path, "{\"action\":\"ping\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"pong\":true") != NULL);
@@ -270,8 +273,6 @@ int main(int argc, char **argv) {
         }
         TEST("rejected peer flood produces one bounded log record",
              rejected_peer_flood_is_coalesced(socket_path, log_path));
-        TEST("per-UID rejection flood produces one bounded log record",
-             per_uid_rejection_log_is_coalesced(socket_path, log_path));
     } else {
         printf("SKIP: nonmember local peer authorization test requires root\n");
     }
