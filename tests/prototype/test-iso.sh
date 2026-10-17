@@ -182,9 +182,9 @@ run_boot_test() {
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
-  local screenshot_captured=0 cleanup_signal_sent=0
+  local screenshot_captured=0 cleanup_signal_sent=0 boot_check_failed=0
   local qemu_timeout=420
-  if [ "$PROFILE" = plasma ]; then qemu_timeout=5400; fi
+  if [ "$PROFILE" = plasma ]; then qemu_timeout=1800; fi
   local deadline=$((SECONDS + qemu_timeout))
   local memory=2048
   if [ "$PROFILE" = plasma ]; then memory=4096; fi
@@ -287,6 +287,13 @@ PY
   fi
 
   while ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; do
+    if grep -Fq 'SHREEOS_BOOT_CHECK: FAIL:' "$log" 2>/dev/null; then
+      printf 'The live boot service reported a validation failure; stopping QEMU.\n' >>"$emulator_log"
+      boot_check_failed=1
+      kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+      cleanup_signal_sent=1
+      break
+    fi
     if ! kill -0 "$emulator_pid" 2>/dev/null || (( SECONDS >= deadline )); then
       break
     fi
@@ -366,6 +373,7 @@ PY
   fi
   wait "$emulator_pid" || status=$?
   if (( cleanup_signal_sent )) && [[ "$status" -eq 143 ]]; then status=0; fi
+  if (( boot_check_failed )); then status=1; fi
 
   if [ -n "$QEMU_LOG_DIR" ]; then
     if [ -f "$log" ]; then
