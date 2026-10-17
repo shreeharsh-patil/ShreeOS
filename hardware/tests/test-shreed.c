@@ -287,15 +287,24 @@ int main(int argc, char **argv) {
     TEST("invalid JSON produces structured error", exchange(socket_path, "{\"secret\":\"do-not-log\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"code\":\"INVALID_REQUEST") != NULL);
     if (geteuid() == 0) {
-        TEST("nonmember local peer is denied", reject_unprivileged_peer(socket_path));
+        /* Temporarily open the test socket so the daemon, rather than the
+         * kernel socket mode, exercises its peer authorization check. */
+        bool test_socket_open = chmod(socket_path, 0666) == 0;
+        TEST("nonmember local peer is denied",
+             test_socket_open && reject_unprivileged_peer(socket_path));
+        TEST("socket permissions restored after authorization test",
+             chmod(socket_path, 0660) == 0);
         if (getgrnam("shree-hardware")) {
             TEST("supplementary shree-hardware group member is authorized",
                  allow_supplementary_hardware_group_peer(socket_path));
         } else {
             printf("SKIP: supplementary group authorization requires shree-hardware group\n");
         }
+        test_socket_open = chmod(socket_path, 0666) == 0;
         TEST("rejected peer flood produces one bounded log record",
-             rejected_peer_flood_is_coalesced(socket_path, log_path));
+             test_socket_open && rejected_peer_flood_is_coalesced(socket_path, log_path));
+        TEST("socket permissions restored after rejection flood",
+             chmod(socket_path, 0660) == 0);
     } else {
         printf("SKIP: nonmember local peer authorization test requires root\n");
     }
