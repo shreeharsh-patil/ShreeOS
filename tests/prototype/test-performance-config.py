@@ -77,13 +77,16 @@ class CompositingTests(unittest.TestCase):
                          "Blur cannot be enabled while compositing is forced off")
 
     def test_live_media_is_the_only_place_that_disables_compositing(self):
-        first_login = (BIN / "shreeos-plasma-first-login").read_text(encoding="utf-8")
-        self.assertIn("/run/live/medium", first_login)
-        self.assertRegex(first_login, r"Compositing[^\n]*Enabled false")
-        # The guard must be the live-medium test, not an unconditional write.
+        hook = (ROOT / "prototype/debian-live/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user").read_text(encoding="utf-8")
+        self.assertIn("/run/live/medium", hook)
+        self.assertIn('"${root}/etc/shreeos/image-profile")" = plasma', hook)
+        self.assertRegex(hook, r"--group Compositing --key Enabled false")
+        # Set the live-only option before SDDM starts; avoid runtime KWin reconfigure.
         guarded = re.search(
-            r"if \[ -d /run/live/medium \][^\n]*\n(?:.*\n)*?fi\n", first_login)
+            r"if \[ -e \"\$\{root\}/run/live/medium\" \][^\n]*\n(?:.*\n)*?fi\n", hook)
         self.assertIsNotNone(guarded, "Live compositing change must be inside its guard")
+        first_login = (BIN / "shreeos-plasma-first-login").read_text(encoding="utf-8")
+        self.assertNotIn("org.kde.KWin reconfigure", first_login)
 
     def test_desktop_still_gets_four_workspaces_and_left_window_controls(self):
         kwinrc = read_ini(INCLUDES / "etc/skel/.config/kwinrc")
