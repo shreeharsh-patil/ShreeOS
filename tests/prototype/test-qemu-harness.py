@@ -36,7 +36,7 @@ class QemuHarnessTests(unittest.TestCase):
         nonzero_exit = script.index('if [ "$status" -ne 0 ]', wait)
         boot_marker = script.index("if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK'", nonzero_exit)
         screenshot_guard = script.index('if [ ! -s "$screen_dump" ]', boot_marker)
-        screenshot_read = script.index("data = path.read_bytes()", screenshot_guard)
+        screenshot_read = script.index("data = image_path.read_bytes()", screenshot_guard)
 
         self.assertLess(boot_wait, boot_failure)
         self.assertLess(boot_failure, wait)
@@ -57,6 +57,20 @@ class QemuHarnessTests(unittest.TestCase):
         self.assertLess(cleanup, wait)
         self.assertLess(wait, normalize)
         self.assertIn('[[ "$status" -eq 143 ]]', script)
+
+    def test_screenshot_reveals_and_checks_the_auto_hidden_dock(self):
+        script = HARNESS.read_text(encoding="utf-8")
+
+        self.assertIn('command("mouse_move 0 10000")', script)
+        self.assertIn('screen-before-dock.ppm', script)
+        self.assertIn('changed_dock_pixels < max(256, width * 4)', script)
+        self.assertIn('"unknown command"', script)
+        capture_before = script.index('command(f"screendump {before_dock}")')
+        move_pointer = script.index('command("mouse_move 0 10000")')
+        capture_after = script.index('command(f"screendump {output}")', move_pointer)
+
+        self.assertLess(capture_before, move_pointer)
+        self.assertLess(move_pointer, capture_after)
 
     def test_performance_timeout_preserves_live_serial_and_guest_diagnostics(self):
         script = PERFORMANCE_HARNESS.read_text(encoding="utf-8")
