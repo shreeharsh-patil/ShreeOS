@@ -40,7 +40,7 @@ mkdir -p "$extract_dir"
 # Extract only the installer payload; the full root is hundreds of megabytes.
 for path in etc/calamares usr/local/bin/shreeos-installer \
   usr/local/libexec/shreeos-installer-privileged \
-  usr/local/libexec/shreeos-install-bios-grub usr/lib/calamares; do
+  usr/lib/calamares; do
   unsquashfs -q -d "$extract_dir" "$SQUASHFS" "$path" >/dev/null 2>&1 || true
 done
 
@@ -52,7 +52,11 @@ fail() {
 settings="$extract_dir/etc/calamares/settings.conf"
 [ -s "$settings" ] || fail "the image ships no Calamares settings.conf"
 [ -s "$extract_dir/etc/calamares/modules/shellprocess.conf" ] || fail 'the image ships no ShreeOS hybrid GRUB shellprocess config'
-[ -s "$extract_dir/usr/local/libexec/shreeos-install-bios-grub" ] || fail 'the image ships no hybrid BIOS GRUB helper'
+helper="$extract_dir/usr/local/libexec/shreeos-install-bios-grub"
+if ! unsquashfs -q -cat "$SQUASHFS" usr/local/libexec/shreeos-install-bios-grub >"$helper" 2>/dev/null ||
+  [ ! -s "$helper" ]; then
+  fail 'the image ships no hybrid BIOS GRUB helper'
+fi
 
 # --- Sequence integrity: each configured module must have a config file ------
 # Calamares' own built-ins ship inside libcalamares and need no config, so the
