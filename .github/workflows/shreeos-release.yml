@@ -118,6 +118,7 @@ jobs:
         run: |
           bash tests/prototype/test-config.sh
           bash tests/release/test-version-contract.sh
+          python3 tests/release/test-unified-workflow-triggers.py
           python3 tests/release/test-unified-artifact-cache.py
           python3 tests/release/test-install-acceptance-artifact.py
           bash tests/smoke/test-verify-stage.sh
@@ -780,8 +781,9 @@ jobs:
             Bluetooth, audio, printers, suspend/resume and GPU drivers still need
             acceptance on representative Intel, AMD and NVIDIA machines.
           - Encryption and error-recovery paths still need separate human acceptance.
-          - Wayland is not the default session. Plasma runs on X11 so the dock and
-            current graphics stack keep working; a Wayland path is under review.
+          - The live desktop starts Plasma on X11 so the Plank dock works. The
+            installed image also includes a Wayland Plasma session; Plank remains
+            available in X11 sessions only.
           EOF
           assets=(
             "out/$ISO_NAME"

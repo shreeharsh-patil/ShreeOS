@@ -12,7 +12,8 @@ make shreeos   ->   out/shreeos(VERSION).iso
 
 - **Foundation**: Debian 13 (Trixie), amd64, from the pinned snapshot in
   `prototype/debian-live/versions.conf`.
-- **Desktop**: KDE Plasma on X11, SDDM, KWin, Dolphin, Konsole, Discover.
+- **Desktop**: KDE Plasma with X11 and Wayland sessions, SDDM, KWin, Dolphin,
+  Konsole and Discover. The live desktop starts X11 so Plank is available.
 - **One image, two modes**: the same SquashFS is the live desktop *and*, via
   Calamares, the installed system. There is no separate live and install media.
 - **One root filesystem, one desktop environment.** No second Linux userspace,
@@ -40,7 +41,7 @@ source-built counterpart would trade a working system for a worse one.
 | NetworkManager, BlueZ, PipeWire/WirePlumber | Wi-Fi, Bluetooth and audio, including the Plasma tray applets wired to them |
 | KDE Plasma, KWin, SDDM, KDE applications | The shell; ShreeOS configures it rather than reimplementing it |
 | Calamares | The graphical installer |
-| Mesa and the X11 stack | Graphics; the session stays on X11 so the dock and driver behaviour keep working |
+| Mesa and the X11 stack | Graphics and X11 support; the live desktop starts X11 so Plank is available |
 
 ### Adapted or packaged for ShreeOS
 
@@ -80,7 +81,7 @@ down. They are installable, not shipped.
 | A second dock provider alongside Plank | Two docks claim the same screen edge and both keep a window-tracking service resident |
 | The native `lpm` package manager alongside APT | It would compete with APT over Debian-managed files. It stays in the tree as experimental source and is not installed into the image |
 | The native source-built root filesystem as a second userspace | Two inits, two libc lineages and two boot paths in one ISO is a dual-boot arrangement, not a distribution |
-| Wayland as the default session (for now) | Plank is not a Wayland dock; forcing Wayland would regress the dock and the current graphics path. X11 stays the default and Wayland remains under review |
+| Wayland in the live session | Plank is X11-only, so the live desktop starts X11. The installed image includes both sessions; users can choose at the SDDM login screen |
 
 ### Still missing
 
