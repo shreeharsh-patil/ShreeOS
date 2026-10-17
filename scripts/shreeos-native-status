@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Safe, read-only native/Plasma integration diagnostic.
+set -Eeuo pipefail
+case "${1:-status}" in
+  status)
+    printf 'ShreeOS native integration\n'
+    if [ -r /etc/shreeos/unified-image ]; then
+      cat /etc/shreeos/unified-image
+    else
+      printf 'edition=legacy-or-non-unified\n'
+    fi
+    if command -v dpkg-query >/dev/null 2>&1; then
+      dpkg-query -W -f='native_tools=${Version}\n' shreeos-native-tools 2>/dev/null || \
+        printf 'native_tools=not-installed\n'
+      printf 'system_package_manager=apt/dpkg\n'
+    else
+      printf 'system_package_manager=other\n'
+    fi
+    if [ -d /run/systemd/system ]; then
+      printf 'service_manager=systemd\n'
+    else
+      printf 'service_manager=unknown\n'
+    fi
+    printf 'desktop=%s\n' "${XDG_CURRENT_DESKTOP:-unknown}"
+    ;;
+  packages)
+    if command -v dpkg-query >/dev/null 2>&1; then
+      dpkg-query -W -f='${binary:Package} ${Version}\n'
+    else
+      echo 'dpkg is not available' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo 'Usage: shreeos-native-status [status|packages]' >&2
+    exit 2
+    ;;
+esac

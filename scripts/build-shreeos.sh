@@ -152,8 +152,8 @@ inputs_hash() {
       printf 'toolsets=%s\n' "${SHREEOS_TOOLSETS:-}"
       printf 'architecture=%s\n' "$SHREEOS_ARCH"
       sha256sum build.conf
-      find prototype/debian-live desktop/plasma themes/plasma branding scripts/build-shreeos.sh \
-        scripts/build-debian-prototype.sh scripts/build-shreeos-tools-package.sh -type f -print0 |
+      find prototype/debian-live desktop hardware pkgmanager themes/plasma branding scripts \
+        docs/UNIFIED-IMAGE.md LICENSE -type f -print0 |
         sort -z | xargs -0 sha256sum
     } | sha256sum | awk '{print $1}'
   )
@@ -166,10 +166,16 @@ verify_existing_artifact() {
   [ -s "$BUILD_INFO_PATH" ] || return 1
   [ -s "$MANIFEST_PATH" ] || return 1
   (cd "$OUT_DIR" && sha256sum --check --status "$ISO_NAME.sha256") || return 1
+  local expected_source_commit="${GITHUB_SHA:-}"
+  if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    expected_source_commit="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  fi
+  [[ "$expected_source_commit" =~ ^[0-9a-f]{40}$ ]] || return 1
   python3 "$REPO_ROOT/scripts/verify-unified-artifact.py" \
     "$ISO_PATH" "$CHECKSUM_PATH" "$PACKAGES_PATH" "$BUILD_INFO_PATH" \
     "$MANIFEST_PATH" "$VERSION" "$UNIFIED_PROFILE" "$SHREEOS_ARCH" \
-    "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" || return 1
+    "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" \
+    "$expected_source_commit" || return 1
   # A file that is not a bootable hybrid image is not a valid cached artifact.
   xorriso -indev "$ISO_PATH" -toc >/dev/null 2>&1 || return 1
   xorriso -osirrox on -indev "$ISO_PATH" -extract /live/filesystem.squashfs /dev/null >/dev/null 2>&1 || return 1
@@ -207,6 +213,7 @@ mkdir -p "$OUT_DIR" "$(dirname "$INPUT_MARKER")"
 build_started="$(date +%s)"
 log "Building the unified ShreeOS desktop image ($UNIFIED_PROFILE profile)"
 
+SHREEOS_UNIFIED=1 \
 SHREEOS_LIVE_PROFILE="$UNIFIED_PROFILE" \
   SHREEOS_OUTPUT_BASENAME="shreeos(${VERSION})" \
   SHREEOS_FIRMWARE="${SHREEOS_FIRMWARE:-standard}" \
@@ -242,32 +249,11 @@ else
   if [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then dirty=0; else dirty=1; fi
 fi
 
-manifest_value() {
-  # $1: package name, $2: awk field of "name version" in live-build's manifest
-  awk -v pkg="$1" '$1 == pkg { print $2; exit }' "$PACKAGES_PATH"
-}
-
-{
-  printf 'version=%s\n' "$VERSION"
-  printf 'artifact=%s\n' "$ISO_NAME"
-  printf 'profile=%s\n' "$UNIFIED_PROFILE"
-  printf 'architecture=%s\n' "$SHREEOS_ARCH"
-  printf 'debian_suite=%s\n' "$DEBIAN_SUITE"
-  printf 'debian_snapshot=%s\n' "$DEBIAN_SNAPSHOT"
-  printf 'live_build=%s\n' "$LIVE_BUILD_VERSION"
-  printf 'firmware=%s\n' "${SHREEOS_FIRMWARE:-standard}"
-  printf 'toolsets=%s\n' "${SHREEOS_TOOLSETS:-}"
-  printf 'git_commit=%s\n' "$commit"
-  printf 'git_dirty=%s\n' "$dirty"
-  printf 'built_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'sha256=%s\n' "$sha256"
-  printf 'size_bytes=%s\n' "$size_bytes"
-  printf 'kernel=%s\n' "$(manifest_value linux-image-amd64)"
-  printf 'plasma=%s\n' "$(manifest_value plasma-workspace)"
-  printf 'kwin=%s\n' "$(manifest_value kwin-x11)"
-  printf 'sddm=%s\n' "$(manifest_value sddm)"
-  printf 'shreeos_tools=%s\n' "$(manifest_value shreeos-tools)"
-} >>"$BUILD_INFO_PATH"
+test "$(awk -F= '$1 == "git_commit" { print $2; exit }' "$BUILD_INFO_PATH")" = "$commit"
+test "$(awk -F= '$1 == "git_dirty" { print $2; exit }' "$BUILD_INFO_PATH")" = "$dirty"
+test "$(awk -F= '$1 == "sha256" { print $2; exit }' "$BUILD_INFO_PATH")" = "$sha256"
+test "$(awk -F= '$1 == "size_bytes" { print $2; exit }' "$BUILD_INFO_PATH")" = "$size_bytes"
+test -n "$(awk -F= '$1 == "built_at" { print $2; exit }' "$BUILD_INFO_PATH")"
 
 ISO_NAME="$ISO_NAME" ISO_PATH="$ISO_PATH" ISO_SHA256="$sha256" ISO_SIZE="$size_bytes" \
   VERSION="$VERSION" PROFILE="$UNIFIED_PROFILE" ARCH="$SHREEOS_ARCH" \
@@ -303,7 +289,9 @@ out["built_at"] = next(
 out["components"] = {
     line.split("=", 1)[0]: line.split("=", 1)[1]
     for line in Path(os.environ["BUILD_INFO"]).read_text().splitlines()
-    if line.split("=", 1)[0] in {"kernel", "plasma", "kwin", "sddm", "shreeos_tools"}
+    if line.split("=", 1)[0] in {
+        "kernel", "plasma", "kwin", "sddm", "shreeos_tools", "shreeos_native_tools"
+    }
 }
 # The manifest must describe the bytes actually on disk.
 iso = Path(os.environ["ISO_PATH"])
@@ -317,6 +305,10 @@ Path(sys.argv[1]).write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
 print(f"Manifest written for {out['iso']} ({out['size_bytes']} bytes)")
 PY
 
+python3 "$REPO_ROOT/scripts/verify-unified-artifact.py" \
+  "$ISO_PATH" "$CHECKSUM_PATH" "$PACKAGES_PATH" "$BUILD_INFO_PATH" \
+  "$MANIFEST_PATH" "$VERSION" "$UNIFIED_PROFILE" "$SHREEOS_ARCH" \
+  "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION"
 bash scripts/verify-version.sh --iso "$ISO_PATH"
 printf '%s\n' "$current_hash" >"$INPUT_MARKER"
 

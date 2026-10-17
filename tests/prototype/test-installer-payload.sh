@@ -38,10 +38,11 @@ unsquashfs -s "$SQUASHFS" >/dev/null
 extract_dir="$TEST_DIR/root"
 mkdir -p "$extract_dir"
 # Extract only the installer payload; the full root is hundreds of megabytes.
-for path in etc/calamares usr/local/bin/shreeos-installer \
-  usr/local/libexec/shreeos-installer-privileged usr/lib/calamares; do
-  unsquashfs -q -d "$extract_dir" "$SQUASHFS" "$path" >/dev/null 2>&1 || true
-done
+# Keep paths with shared parents in one invocation. Repeated unsquashfs calls
+# can reject an already-created parent directory, and ignoring that error can
+# silently leave later installer files out of the verification tree.
+unsquashfs -q -d "$extract_dir" "$SQUASHFS" \
+  etc/calamares usr/local/bin usr/local/libexec usr/lib/calamares >/dev/null
 
 fail() {
   printf 'INSTALLER PAYLOAD FAILED: %s\n' "$*" >&2
@@ -50,6 +51,9 @@ fail() {
 
 settings="$extract_dir/etc/calamares/settings.conf"
 [ -s "$settings" ] || fail "the image ships no Calamares settings.conf"
+[ -s "$extract_dir/etc/calamares/modules/shellprocess.conf" ] || fail 'the image ships no ShreeOS hybrid GRUB shellprocess config'
+[ -s "$extract_dir/usr/local/libexec/shreeos-install-bios-grub" ] ||
+  fail 'the image ships no hybrid BIOS GRUB helper'
 
 # --- Sequence integrity: each configured module must have a config file ------
 # Calamares' own built-ins ship inside libcalamares and need no config, so the
@@ -60,10 +64,24 @@ import re
 import sys
 
 text = open(sys.argv[1]).read()
-# The YAML sequence lists module names under "sequence:"; pull every list item.
+# The YAML sequence lists module names under "sequence:". Scope the match to
+# that block so the document marker ("---") and list keys such as "- show:"
+# cannot be mistaken for module names.
 names = []
+in_sequence = False
 for line in text.splitlines():
-    match = re.match(r"\s*-\s*([A-Za-z0-9_.-]+)\s*$", line)
+    if not in_sequence:
+        if re.fullmatch(r"sequence:\s*", line):
+            in_sequence = True
+        continue
+    if (
+        line
+        and not line[0].isspace()
+        and not line.startswith("-")
+        and not line.lstrip().startswith("#")
+    ):
+        break
+    match = re.match(r"\s*-\s+([A-Za-z0-9_.@-]+)\s*$", line)
     if match:
         names.append(match.group(1))
 print("\n".join(names))
@@ -74,6 +92,11 @@ PY
 
 missing=()
 for module in "${sequence_modules[@]}"; do
+  if [ "$module" = shellprocess@storage-preflight ]; then
+    [ -s "$extract_dir/etc/calamares/modules/shellprocess-storage-preflight.conf" ] ||
+      fail 'the installer sequence has no storage preflight config'
+    continue
+  fi
   # Modules known to be provided by the local overrides or shipped in the image.
   if [ -s "$extract_dir/etc/calamares/modules/$module.conf" ]; then
     continue
@@ -88,7 +111,7 @@ for module in "${sequence_modules[@]}"; do
     | networkcfg | hwclock | bootloader | grubcfg | packages | plymouthcfg \
     | initramfs | initramfscfg | luksbootkeyfile | dpkg-unsafe-io \
     | dpkg-unsafe-io-undo | sources-media | sources-media-unmount \
-    | services-systemd | bootloader-config | umount)
+    | services-systemd | bootloader-config | shellprocess | umount)
       continue
       ;;
   esac
@@ -114,15 +137,14 @@ grep -Fq 'productIcon: shreeos-app.svg' "$branding/branding.desc" ||
 
 # --- The unlock source must be the real live medium -------------------------
 unpack="$extract_dir/etc/calamares/modules/unpackfs.conf"
-if [ -s "$unpack" ]; then
-  grep -Fq '/run/live/medium' "$unpack" ||
-    fail 'unpackfs does not install from the live medium mount'
-fi
+[ -s "$unpack" ] || fail 'Calamares unpackfs.conf is not packaged'
+grep -Fq '/run/live/medium' "$unpack" ||
+  fail 'unpackfs does not install from the live medium mount'
 
 # --- Credentials: the live account must not become the installed account ----
 users="$extract_dir/etc/calamares/modules/users.conf"
-if [ -s "$users" ]; then
-  python3 - "$users" <<'PY' || fail 'the installer would reuse the live session credentials'
+[ -s "$users" ] || fail 'Calamares users.conf is not packaged'
+python3 - "$users" <<'PY' || fail 'the installer would reuse the live session credentials'
 import re
 import sys
 
@@ -138,7 +160,6 @@ if not re.search(r"^\s*setRootPassword\s*:", text, re.MULTILINE):
 if not re.search(r"^\s*passwordRequirements\s*:", text, re.MULTILINE):
     raise SystemExit("users.conf sets no password strength requirements")
 PY
-fi
 
 # --- Privilege boundary -----------------------------------------------------
 wrapper="$extract_dir/usr/local/bin/shreeos-installer"
@@ -149,15 +170,16 @@ privileged="$extract_dir/usr/local/libexec/shreeos-installer-privileged"
 policy="$TEST_DIR/policy.xml"
 unsquashfs -q -cat "$SQUASHFS" usr/share/polkit-1/actions/org.shreeos.installer.policy \
   >"$policy" 2>/dev/null || fail 'the installer polkit policy is not packaged'
-python3 - "$policy" "$privileged" <<'PY' || fail 'the installer polkit policy is not scoped to the privileged helper'
+python3 - "$policy" "$privileged" "$extract_dir" <<'PY' || fail 'the installer polkit policy is not scoped to the privileged helper'
 import sys
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 actions = ET.parse(sys.argv[1]).findall("action")
 if len(actions) != 1:
     raise SystemExit(f"expected exactly one polkit action, found {len(actions)}")
 annotations = {node.get("key"): node.text for node in actions[0].findall("annotate")}
-expected = sys.argv[2].replace("/root/", "/")
+expected = "/" + Path(sys.argv[2]).relative_to(sys.argv[3]).as_posix()
 if annotations.get("org.freedesktop.policykit.exec.path") != expected:
     raise SystemExit("polkit action is not scoped to the packaged privileged helper")
 if annotations.get("org.freedesktop.policykit.exec.allow_gui") != "true":

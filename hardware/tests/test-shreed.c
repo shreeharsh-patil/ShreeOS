@@ -1,8 +1,11 @@
+#define _GNU_SOURCE
 #include "shreed.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,6 +92,10 @@ static int wait_for_path(const char *path, bool present) {
 static pid_t start_daemon(const char *daemon, const char *socket_path, const char *log_path) {
     pid_t child = fork();
     if (child == 0) {
+        if (geteuid() == 0) {
+            struct group *hardware = getgrnam("shree-hardware");
+            if (!hardware || setgid(hardware->gr_gid) != 0) _exit(126);
+        }
         execl(daemon, daemon, "--foreground", "--socket", socket_path, "--log", log_path, (char *)NULL);
         _exit(127);
     }
@@ -115,6 +122,117 @@ static void test_concurrent_connections(const char *socket_path) {
     TEST("concurrent client requests", statuses == 12);
 }
 
+static int reject_unprivileged_peer(const char *socket_path) {
+    struct passwd *nobody = getpwnam("nobody");
+    pid_t child;
+    int status;
+
+    if (!nobody) return 0;
+    child = fork();
+    if (child < 0) return 0;
+    if (child == 0) {
+        char response[SHREED_RESPONSE_MAX + 1];
+        if (setgroups(0, NULL) != 0 || setgid(nobody->pw_gid) != 0 ||
+            setuid(nobody->pw_uid) != 0) {
+            _exit(2);
+        }
+        _exit(exchange(socket_path, "{\"action\":\"ping\"}", response,
+                       sizeof(response)) != 0 ? 0 : 1);
+    }
+    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 0;
+    return WEXITSTATUS(status) == 0;
+}
+
+static int allow_supplementary_hardware_group_peer(const char *socket_path) {
+    struct passwd *nobody = getpwnam("nobody");
+    struct group *hardware = getgrnam("shree-hardware");
+    pid_t child;
+    int status;
+
+    if (!nobody || !hardware) return 0;
+    child = fork();
+    if (child < 0) return 0;
+    if (child == 0) {
+        gid_t groups[] = {hardware->gr_gid};
+        char response[SHREED_RESPONSE_MAX + 1];
+        if (setgroups(1, groups) != 0 || setgid(nobody->pw_gid) != 0 ||
+            setuid(nobody->pw_uid) != 0) {
+            _exit(2);
+        }
+        _exit(exchange(socket_path, "{\"action\":\"ping\"}", response,
+                       sizeof(response)) == 0 && strstr(response, "\"pong\":true") != NULL ? 0 : 1);
+    }
+    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 0;
+    return WEXITSTATUS(status) == 0;
+}
+
+static int rejected_peer_flood_is_coalesced(const char *socket_path, const char *log_path) {
+    char line[512];
+    int rejection_records = 0;
+    FILE *log_file;
+
+    for (int attempt = 0; attempt < 64; attempt++) {
+        if (!reject_unprivileged_peer(socket_path)) return 0;
+    }
+    usleep(100000);
+    log_file = fopen(log_path, "r");
+    if (!log_file) return 0;
+    while (fgets(line, sizeof(line), log_file)) {
+        if (strstr(line, "rejected unauthenticated local peer")) rejection_records++;
+    }
+    fclose(log_file);
+    return rejection_records == 1;
+}
+
+static int connect_and_hold(const char *socket_path) {
+    int fd;
+
+    /* An idle authenticated socket occupies a daemon client slot until closed. */
+    for (int attempt = 0; attempt < 100; attempt++) {
+        fd = connect_socket(socket_path);
+        if (fd >= 0) return fd;
+        if (errno != ECONNREFUSED && errno != ENOENT) return -1;
+        usleep(10000);
+    }
+    return -1;
+}
+
+static int per_uid_rejection_log_is_coalesced(const char *socket_path, const char *log_path) {
+    int held[SHREED_MAX_CLIENTS_PER_UID];
+    char line[512];
+    int rejection_records = 0;
+    int log_opened = 0;
+    FILE *log_file;
+
+    for (size_t index = 0; index < SHREED_MAX_CLIENTS_PER_UID; index++) {
+        held[index] = connect_and_hold(socket_path);
+        if (held[index] < 0) {
+            while (index > 0) close(held[--index]);
+            return 0;
+        }
+    }
+    for (int attempt = 0; attempt < 64; attempt++) {
+        char response[SHREED_RESPONSE_MAX + 1];
+        if (exchange(socket_path, "{\"action\":\"ping\"}", response,
+                     sizeof(response)) == 0) {
+            for (size_t index = 0; index < SHREED_MAX_CLIENTS_PER_UID; index++) close(held[index]);
+            return 0;
+        }
+    }
+    usleep(100000);
+    log_file = fopen(log_path, "r");
+    if (log_file) {
+        log_opened = 1;
+        while (fgets(line, sizeof(line), log_file)) {
+            if (strstr(line, "rejected peer exceeding per-UID IPC limit")) rejection_records++;
+        }
+        fclose(log_file);
+    }
+    for (size_t index = 0; index < SHREED_MAX_CLIENTS_PER_UID; index++) close(held[index]);
+    usleep(100000);
+    return log_opened && rejection_records == 1;
+}
+
 int main(int argc, char **argv) {
     char socket_path[108];
     char log_path[108];
@@ -130,13 +248,28 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Usage: test-shreed <daemon-path>\n");
         return 2;
     }
+    signal(SIGPIPE, SIG_IGN);
     snprintf(socket_path, sizeof(socket_path), "/tmp/shreed-test-%ld.sock", (long)getpid());
     snprintf(log_path, sizeof(log_path), "/tmp/shreed-test-%ld.log", (long)getpid());
     unlink(socket_path);
     unlink(log_path);
     daemon = start_daemon(argv[1], socket_path, log_path);
     TEST("daemon starts", daemon > 0 && wait_for_path(socket_path, true) == 0);
-    TEST("socket has public read-only IPC mode", lstat(socket_path, &status) == 0 && (status.st_mode & 0777) == 0666);
+    /* Start with no other authenticated peers so only these idle sockets hit the UID limit. */
+    TEST("per-UID rejection flood produces one bounded log record",
+         per_uid_rejection_log_is_coalesced(socket_path, log_path));
+    {
+        struct group *hardware = getgrnam("shree-hardware");
+        gid_t expected_gid = getegid();
+        int group_expectation_available = 1;
+        if (geteuid() == 0) {
+            if (hardware) expected_gid = hardware->gr_gid;
+            else group_expectation_available = 0;
+        }
+        TEST("socket mode and service group ownership",
+             group_expectation_available && lstat(socket_path, &status) == 0 &&
+             (status.st_mode & 0777) == 0660 && status.st_gid == expected_gid);
+    }
     TEST("ping response", exchange(socket_path, "{\"action\":\"ping\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"pong\":true") != NULL);
     TEST("status response", exchange(socket_path, "{\"action\":\"status\"}", response, sizeof(response)) == 0 &&
@@ -153,6 +286,28 @@ int main(int argc, char **argv) {
          strstr(response, "\"subscription\":\"hardware") != NULL);
     TEST("invalid JSON produces structured error", exchange(socket_path, "{\"secret\":\"do-not-log\"}", response, sizeof(response)) == 0 &&
          strstr(response, "\"code\":\"INVALID_REQUEST") != NULL);
+    if (geteuid() == 0) {
+        /* Temporarily open the test socket so the daemon, rather than the
+         * kernel socket mode, exercises its peer authorization check. */
+        bool test_socket_open = chmod(socket_path, 0666) == 0;
+        TEST("nonmember local peer is denied",
+             test_socket_open && reject_unprivileged_peer(socket_path));
+        TEST("socket permissions restored after authorization test",
+             chmod(socket_path, 0660) == 0);
+        if (getgrnam("shree-hardware")) {
+            TEST("supplementary shree-hardware group member is authorized",
+                 allow_supplementary_hardware_group_peer(socket_path));
+        } else {
+            printf("SKIP: supplementary group authorization requires shree-hardware group\n");
+        }
+        test_socket_open = chmod(socket_path, 0666) == 0;
+        TEST("rejected peer flood produces one bounded log record",
+             test_socket_open && rejected_peer_flood_is_coalesced(socket_path, log_path));
+        TEST("socket permissions restored after rejection flood",
+             chmod(socket_path, 0660) == 0);
+    } else {
+        printf("SKIP: nonmember local peer authorization test requires root\n");
+    }
 
     malformed_fd = connect_socket(socket_path);
     malformed_length = htonl(SHREED_MAX_MESSAGE + 1);

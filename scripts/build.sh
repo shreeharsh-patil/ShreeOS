@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Reliable ShreeOS build entry point shared by WSL/local development.
+# Legacy source-built ISO pipeline retained for the original desktop experiment.
+# The canonical Debian-based ShreeOS image is built by scripts/build-shreeos.sh.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,9 +15,8 @@ if [ -z "${SHREEOS_MAKE_JOBS:-}" ]; then
   export SHREEOS_MAKE_JOBS="$jobs"
 fi
 
-# The graphical desktop edition is the primary ShreeOS product. Minimal and
-# server remain explicit profiles, while security extends the graphical stack
-# with ShreeOS-native audit/diagnostic tooling for administration and labs.
+# This legacy pipeline can build desktop/security/minimal/server profiles, but
+# its source-built ISO is not the canonical ShreeOS 0.4.0 release image.
 profile="${1:-desktop}"
 case "$profile" in
   desktop|security|minimal|server) ;;
@@ -26,7 +26,7 @@ case "$profile" in
     ;;
 esac
 
-printf '==> ShreeOS reliable build: PROFILE=%s\n' "$profile"
+printf '==> ShreeOS legacy source-built ISO: PROFILE=%s\n' "$profile"
 bash scripts/doctor.sh --strict
 
 for component in toolchain kernel base-system; do

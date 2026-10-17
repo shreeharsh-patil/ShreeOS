@@ -5,7 +5,7 @@ health and hardware inventory interfaces; it performs no device control.
 
 ## IPC
 
-The daemon listens on `/run/shreed.sock`.  Each request and response is a
+The daemon listens on `/run/shreeos/shreed.sock`. Each request and response is a
 length-prefixed JSON object: a four-byte network-byte-order payload length,
 followed by UTF-8 JSON.  Payloads are capped at 1024 bytes.
 
@@ -57,10 +57,10 @@ The hardware requests read kernel-provided `/proc` and `/sys` data only. They
 return `null`, empty lists, or zero counts when an interface or device is not
 available; no values are inferred from external command output.
 
-The socket mode is `0666` because every implemented operation is read-only and
-contains no sensitive data.  The daemon limits active clients, validates peer
-credentials, validates every frame and JSON object, and never logs request
-payloads.
+The socket mode is `0660` and its group is `shree-hardware`. The live user and
+installed users in that group can connect; the daemon also validates peer
+credentials before serving a request. It limits active clients, validates each
+frame and JSON object, and never logs request payloads.
 
 ## Build and test
 

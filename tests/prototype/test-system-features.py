@@ -28,6 +28,15 @@ def shell():
     return shutil.which("bash")
 
 
+def shell_path(path):
+    if os.name != "nt":
+        return str(path)
+    cygpath = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/usr/bin/cygpath.exe"
+    result = subprocess.run([str(cygpath), "-u", str(path)],
+                            check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
 class RepositoryTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -117,7 +126,7 @@ class CommandTests(unittest.TestCase):
             with self.subTest(values=values):
                 env = dict(os.environ, SHREEOS_FIRMWARE="free", SHREEOS_TOOLSETS="")
                 env.update(values)
-                result = subprocess.run([shell(), (ROOT / "scripts/build-debian-prototype.sh").as_posix()],
+                result = subprocess.run([shell(), shell_path(ROOT / "scripts/build-debian-prototype.sh")],
                                         env=env, capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertNotIn("must be built as root", result.stderr)
@@ -131,8 +140,9 @@ class CommandTests(unittest.TestCase):
             marker.write_text("existing")
             layout = config / "plasma-org.kde.plasma.desktop-appletsrc"
             layout.write_text("custom layout")
-            env = dict(os.environ, HOME=(folder / "home").as_posix(), XDG_CONFIG_HOME=config.as_posix())
-            result = subprocess.run([shell(), (PLASMA / "usr/local/bin/shreeos-plasma-first-login").as_posix()],
+            env = dict(os.environ, HOME=shell_path(folder / "home"),
+                       XDG_CONFIG_HOME=shell_path(config))
+            result = subprocess.run([shell(), shell_path(PLASMA / "usr/local/bin/shreeos-plasma-first-login")],
                                     env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(layout.read_text(), "custom layout")
@@ -149,13 +159,27 @@ class CommandTests(unittest.TestCase):
                 stub.write_text('#!/bin/sh\nprintf "%s" "${0##*/}" >> "$CALLS"\n'
                                 'printf " <%s>" "$@" >> "$CALLS"\nprintf "\\n" >> "$CALLS"\n')
                 stub.chmod(0o755)
-            env = dict(os.environ, PATH=folder.as_posix() + (";" if os.name == "nt" else ":") + os.environ["PATH"],
-                       CALLS=log.as_posix())
+            if os.name == "nt":
+                stub_paths = [shell_path(stub) for stub in folder.iterdir()]
+                subprocess.run([shell(), "-c", 'chmod +x "$@"', "sh", *stub_paths],
+                               check=True, capture_output=True, text=True)
+                env = dict(os.environ, SHREEOS_TEST_BIN=shell_path(folder),
+                           CALLS=shell_path(log))
+                path_setup = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; '
+            else:
+                env = dict(os.environ, PATH=f'{folder.as_posix()}{os.pathsep}{os.environ["PATH"]}',
+                           CALLS=log.as_posix())
             for mode, factor, blur in (("balanced", "0.8", "true"), ("performance", "0.5", "false"),
                                        ("reduced", "0", "false")):
                 if log.exists():
                     log.unlink()
-                result = subprocess.run([shell(), (PLASMA / "usr/local/bin/shreeos-motion").as_posix(), mode],
+                if os.name == "nt":
+                    invocation = [shell(), "-c", path_setup + 'exec "$SHREEOS_TEST_SCRIPT" "$1"',
+                                  "sh", mode]
+                    env["SHREEOS_TEST_SCRIPT"] = shell_path(PLASMA / "usr/local/bin/shreeos-motion")
+                else:
+                    invocation = [shell(), shell_path(PLASMA / "usr/local/bin/shreeos-motion"), mode]
+                result = subprocess.run(invocation,
                                         env=env, text=True, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 text = log.read_text()
@@ -177,7 +201,7 @@ class CommandTests(unittest.TestCase):
         ]
         for script, arguments in cases:
             with self.subTest(script=script, arguments=arguments):
-                result = subprocess.run([shell(), script.as_posix(), *arguments],
+                result = subprocess.run([shell(), shell_path(script), *arguments],
                                         capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 2, result.stderr)
 
@@ -190,6 +214,191 @@ class CommandTests(unittest.TestCase):
                          "/usr/local/libexec/shreeos-installer-privileged")
         self.assertEqual(annotations["org.freedesktop.policykit.exec.allow_gui"], "true")
         self.assertEqual(actions[0].findtext("defaults/allow_inactive"), "no")
+
+    def test_calamares_3314_guided_layout_uses_supported_gpt_partition_options(self):
+        partition = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                     / "etc/calamares/modules/partition.conf").read_text(encoding="utf-8")
+        self.assertNotIn("createHybridBootloaderLayout", partition)
+        self.assertIn("defaultPartitionTableType: gpt", partition)
+        self.assertIn("requiredPartitionTableType: gpt", partition)
+        self.assertIn("enableLuksAutomatedPartitioning: false", partition)
+        self.assertRegex(partition, r"(?m)^lvm:\s*\n\s+enable: false$")
+        self.assertRegex(partition, r"(?s)directoryFilesystemRestrictions:.*?directory: \"/\".*?allowedFilesystemTypes: \[\"ext4\"\]")
+        self.assertRegex(partition, r"(?s)mountpoint: \"efi\".*?allowedFilesystemTypes: \[\"fat32\"\]")
+        self.assertIn("mountPoint: /boot/efi", partition)
+        self.assertIn("recommendedSize: 512MiB", partition)
+        self.assertRegex(partition, r"(?s)partitionLayout:.*?type: \"21686148-6449-6E6F-744E-656564454649\".*?filesystem: unformatted.*?mountPoint: /.*?size: 100%")
+        self.assertIn("efi:", partition)
+
+    def test_installer_rejects_bios_mode_before_starting_calamares(self):
+        includes = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot")
+        launcher = (includes / "usr/local/bin/shreeos-installer").read_text(encoding="utf-8")
+        privileged = (includes / "usr/local/libexec/shreeos-installer-privileged").read_text(
+            encoding="utf-8"
+        )
+        guard = "/sys/firmware/efi"
+        self.assertIn(guard, launcher)
+        self.assertIn(guard, privileged)
+        self.assertLess(launcher.index(guard), launcher.index("exec /usr/local/libexec/shreeos-installer-privileged"))
+        self.assertLess(privileged.index(guard), privileged.index("/usr/bin/calamares"))
+
+    def test_calamares_3314_runs_validated_bios_grub_install_after_efi_install(self):
+        bootloader = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                     / "etc/calamares/modules/bootloader.conf").read_text(encoding="utf-8")
+        settings = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                    / "etc/calamares/settings.conf").read_text(encoding="utf-8")
+        preflight_config = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                            / "etc/calamares/modules/shellprocess-storage-preflight.conf").read_text(
+                                encoding="utf-8"
+                            )
+        shellprocess = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                        / "etc/calamares/modules/shellprocess.conf").read_text(encoding="utf-8")
+        helper = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                  / "usr/local/libexec/shreeos-install-bios-grub").read_text(encoding="utf-8")
+        storage_checks = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                          / "usr/local/libexec/shreeos-installer-storage-checks.sh").read_text(
+                              encoding="utf-8"
+                          )
+        self.assertIn("efiBootLoader: grub", bootloader)
+        self.assertIn("efiBootloaderId: debian", bootloader)
+        self.assertIn("installEFIFallback: true", bootloader)
+        self.assertNotIn("installHybridGRUB", bootloader)
+        self.assertRegex(settings, r"(?s)- mount\s+- shellprocess@storage-preflight\s+- unpackfs")
+        self.assertRegex(settings, r"(?s)- bootloader\s+- packages\s+- shellprocess")
+        self.assertIn("id: storage-preflight", settings)
+        self.assertIn("config: shellprocess-storage-preflight.conf", settings)
+        self.assertIn("dontChroot: true", preflight_config)
+        self.assertIn("--validate-only", preflight_config)
+        self.assertNotIn("-/bin/sh", preflight_config)
+        self.assertIn("dontChroot: true", shellprocess)
+        self.assertIn("/usr/local/libexec/shreeos-install-bios-grub", shellprocess)
+        self.assertIn("${ROOT}", shellprocess)
+        self.assertIn("${gs[firmwareType]}", shellprocess)
+        self.assertIn('findmnt --noheadings --raw --output SOURCE --target "$target_root/boot/efi"', helper)
+        self.assertIn('[ "$#" -eq 2 ] || [ "$#" -eq 3 ]', helper)
+        self.assertIn("--validate-only", helper)
+        self.assertIn('"$esp_filesystem" = vfat', helper)
+        self.assertIn('shreeos_require_fat32 "$esp"', helper)
+        self.assertIn("fsck.fat -b -v", storage_checks)
+        self.assertIn('LC_ALL=C fsck.fat', storage_checks)
+        self.assertIn('"$data_clusters" -lt 65525', storage_checks)
+        self.assertIn('"$root_filesystem" = ext4', helper)
+        self.assertIn('"$firmware_type" = efi', helper)
+        self.assertIn('findmnt --noheadings --raw --output SOURCE --target "$target_root"', helper)
+        self.assertIn('"$root_disk" = "$disk"', helper)
+        self.assertIn("c12a7328-f81f-11d2-ba4b-00a0c93ec93b", helper)
+        self.assertIn("21686148-6449-6e6f-744e-656564454649", helper)
+        self.assertIn('chroot "$target_root" grub-install --target=i386-pc --recheck', helper)
+        builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+        self.assertRegex(
+            builder,
+            r'install -Dm0755 \\\s+"\$CONFIG_SOURCE/profiles/desktop/includes\.chroot/usr/local/libexec/shreeos-install-bios-grub" \\\s+"\$BUILD_DIR/config/includes\.chroot/usr/local/libexec/shreeos-install-bios-grub"',
+        )
+        self.assertIn("shreeos-installer-storage-checks.sh", builder)
+        self.assertIn("grub-pc-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
+                                      / "shreeos-plasma.list.chroot").read_text(encoding="utf-8"))
+        self.assertIn("grub-efi-amd64-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
+                                             / "shreeos-plasma.list.chroot").read_text(encoding="utf-8"))
+
+    def test_efi_preflight_accepts_only_valid_fat32_subtypes(self):
+        checks = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                  / "usr/local/libexec/shreeos-installer-storage-checks.sh")
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            stub_bin = directory / "bin"
+            stub_bin.mkdir()
+            report_file = directory / "fsck-report.txt"
+            args_file = directory / "fsck-args.txt"
+            fsck = stub_bin / "fsck.fat"
+            fsck.write_text(
+                "#!/bin/sh\n"
+                "printf 'LC_ALL=%s\\n' \"$LC_ALL\" > \"$FSCK_TEST_ARGS\"\n"
+                "printf '%s\\n' \"$@\" >> \"$FSCK_TEST_ARGS\"\n"
+                "cat \"$FSCK_TEST_REPORT\"\n"
+                "exit \"${FSCK_TEST_STATUS:-0}\"\n",
+                encoding="utf-8",
+            )
+            if os.name == "nt":
+                subprocess.run([shell(), "-c", 'chmod +x "$1"', "sh", shell_path(fsck)],
+                               check=True, capture_output=True, text=True)
+                env = dict(
+                    os.environ,
+                    SHREEOS_TEST_BIN=shell_path(stub_bin),
+                    FSCK_TEST_ARGS=shell_path(args_file),
+                    FSCK_TEST_REPORT=shell_path(report_file),
+                )
+                command = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; . "$1"; shreeos_require_fat32 "$2"'
+            else:
+                fsck.chmod(0o755)
+                env = dict(
+                    os.environ,
+                    PATH=f'{stub_bin.as_posix()}{os.pathsep}{os.environ["PATH"]}',
+                    FSCK_TEST_ARGS=args_file.as_posix(),
+                    FSCK_TEST_REPORT=report_file.as_posix(),
+                )
+                command = '. "$1"; shreeos_require_fat32 "$2"'
+
+            cases = (
+                ("FAT16", "2 FATs, 16 bit entries\\n70000 data clusters\\n", False),
+                ("undersized FAT32", "2 FATs, 32 bit entries\\n65524 data clusters\\n", False),
+                ("valid FAT32", "2 FATs, 32 bit entries\\n65525 data clusters\\n", True),
+            )
+            for label, report, accepted in cases:
+                with self.subTest(filesystem=label):
+                    report_file.write_text(report.replace("\\n", "\n"), encoding="utf-8")
+                    invocation = [shell(), "-c", command, "sh", shell_path(checks), "/dev/test-esp"]
+                    result = subprocess.run(invocation, env=env, capture_output=True,
+                                            text=True, timeout=10)
+                    self.assertEqual(result.returncode == 0, accepted, result.stderr)
+                    self.assertEqual(
+                        args_file.read_text(encoding="utf-8").splitlines(),
+                        ["LC_ALL=C", "-b", "-v", "/dev/test-esp"],
+                    )
+
+    def test_installer_docs_require_uefi_origin_and_define_crossboot_matrix(self):
+        acceptance = (ROOT / "release/INSTALL-ACCEPTANCE.md").read_text(encoding="utf-8")
+        normalized = " ".join(acceptance.split())
+        self.assertIn("boot the ISO in **UEFI mode** for both the guided", normalized)
+        self.assertIn("boot on each installed disk in legacy BIOS mode", normalized)
+
+    def test_dolphin_smb_kio_worker_is_explicit_when_recommends_are_disabled(self):
+        package_list = (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
+                        / "shreeos-plasma.list.chroot").read_text(encoding="utf-8")
+        builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+        self.assertRegex(package_list, r"(?m)^kio-extras$")
+        self.assertIn("kio-extras", builder)
+        self.assertIn('if [ "$SHREEOS_UNIFIED" = 1 ]; then APT_RECOMMENDS=false; fi', builder)
+
+    def test_native_hardware_daemon_runs_without_root_and_uses_group_socket(self):
+        package_builder = (ROOT / "scripts/package-unified-native.sh").read_text(encoding="utf-8")
+        daemon = (ROOT / "hardware/daemon/shreed.c").read_text(encoding="utf-8")
+        test_source = (ROOT / "hardware/tests/test-shreed.c").read_text(encoding="utf-8")
+        header = (ROOT / "hardware/include/shreed.h").read_text(encoding="utf-8")
+        network_script = (ROOT / "hardware/scripts/shree-network").read_text(encoding="utf-8")
+        hardware_readme = (ROOT / "hardware/README.md").read_text(encoding="utf-8")
+        self.assertIn("User=shreed", package_builder)
+        self.assertIn("Group=shree-hardware", package_builder)
+        self.assertIn("CapabilityBoundingSet=", package_builder)
+        self.assertIn("ProtectSystem=strict", package_builder)
+        self.assertIn("adduser --system --quiet --no-create-home", package_builder)
+        self.assertIn("chmod(socket_path, 0660)", daemon)
+        self.assertNotIn("chmod(socket_path, 0666)", daemon)
+        self.assertIn('#define SHREED_SOCKET_PATH "/run/shreeos/shreed.sock"', header)
+        self.assertIn('/run/shreeos/shreed.sock', network_script)
+        self.assertIn('`0660`', hardware_readme)
+        self.assertNotIn('`0666`', hardware_readme)
+        self.assertIn('setgid(hardware->gr_gid)', test_source)
+        self.assertIn('status.st_gid == expected_gid', test_source)
+        self.assertIn('bool test_socket_open = chmod(socket_path, 0666) == 0;', test_source)
+        self.assertIn('chmod(socket_path, 0660) == 0', test_source)
+
+    def test_manual_cross_firmware_layout_names_the_required_gpt_types(self):
+        docs = (ROOT / "docs/UNIFIED-IMAGE.md").read_text(encoding="utf-8")
+        acceptance = (ROOT / "release/INSTALL-ACCEPTANCE.md").read_text(encoding="utf-8")
+        for source in (docs, acceptance):
+            normalized = " ".join(source.split())
+            self.assertIn("21686148-6449-6e6f-744e-656564454649", normalized)
+            self.assertIn("c12a7328-f81f-11d2-ba4b-00a0c93ec93b", normalized)
 
     def test_shortcuts_have_valid_kconfig_lists(self):
         config = configparser.RawConfigParser()

@@ -12,7 +12,8 @@ make shreeos   ->   out/shreeos(VERSION).iso
 
 - **Foundation**: Debian 13 (Trixie), amd64, from the pinned snapshot in
   `prototype/debian-live/versions.conf`.
-- **Desktop**: KDE Plasma on X11, SDDM, KWin, Dolphin, Konsole, Discover.
+- **Desktop**: KDE Plasma with X11 and Wayland sessions, SDDM, KWin, Dolphin,
+  Konsole and Discover. The live desktop starts X11 so Plank is available.
 - **One image, two modes**: the same SquashFS is the live desktop *and*, via
   Calamares, the installed system. There is no separate live and install media.
 - **One root filesystem, one desktop environment.** No second Linux userspace,
@@ -40,7 +41,7 @@ source-built counterpart would trade a working system for a worse one.
 | NetworkManager, BlueZ, PipeWire/WirePlumber | Wi-Fi, Bluetooth and audio, including the Plasma tray applets wired to them |
 | KDE Plasma, KWin, SDDM, KDE applications | The shell; ShreeOS configures it rather than reimplementing it |
 | Calamares | The graphical installer |
-| Mesa and the X11 stack | Graphics; the session stays on X11 so the dock and driver behaviour keep working |
+| Mesa and the X11 stack | Graphics and X11 support; the live desktop starts X11 so Plank is available |
 
 ### Adapted or packaged for ShreeOS
 
@@ -80,7 +81,7 @@ down. They are installable, not shipped.
 | A second dock provider alongside Plank | Two docks claim the same screen edge and both keep a window-tracking service resident |
 | The native `lpm` package manager alongside APT | It would compete with APT over Debian-managed files. It stays in the tree as experimental source and is not installed into the image |
 | The native source-built root filesystem as a second userspace | Two inits, two libc lineages and two boot paths in one ISO is a dual-boot arrangement, not a distribution |
-| Wayland as the default session (for now) | Plank is not a Wayland dock; forcing Wayland would regress the dock and the current graphics path. X11 stays the default and Wayland remains under review |
+| Wayland in the live session | Plank is X11-only, so the live desktop starts X11. The installed image includes both sessions; users can choose at the SDDM login screen |
 
 ### Still missing
 
@@ -93,9 +94,9 @@ down. They are installable, not shipped.
 | Signed ShreeOS-authored `.deb`s and a ShreeOS package repository | `docs/SYSTEM-READINESS.md` |
 | Wayland session | matrix above |
 
-The untouched comparison source is `9313ebb042cf71bb148441037940b130d49920d1`, the pre-optimization revision used for this change. A baseline record must name that source commit, include the measured ISO SHA256, and use the same 2-vCPU, 4096-MiB, VirtIO, 1280x800, no-network conditions. The release job rejects baseline data without this provenance.
+The untouched comparison source is `9313ebb042cf71bb148441037940b130d49920d1`, the pre-optimization revision used for this change. The baseline workflow builds that source separately, overlays only the identical measurement probe, service, and duration helper, then records three valid QEMU samples. A baseline record must name the untouched source commit, include the measured ISO SHA-256, and use the same 2-vCPU, 4096-MiB, VirtIO, 1280x800, no-network conditions, pinned QEMU/SeaBIOS packages, and BIOS ROM hash. The release job rejects missing or mismatched provenance and evaluates absolute targets and regressions on the candidate median. Every raw sample must report a ready desktop, available PSS instrumentation, no failed system units, zero visible-ancestor `memory.events.local` deltas for `low`, `high`, `max`, and OOM events, and no sustained CPU throttling. CPU local throttling uses the kernel's `cpu.stat.local` counter, which includes throttling inherited from ancestor bandwidth limits where available. The reported capacity percentage is an estimate normalized by visible CPU capacity over the full QEMU capture interval. QEMU security fields and cgroup membership are read from the live QEMU process. Cgroup limits and memory events describe only the visible hierarchy; a container or cgroup namespace can hide ancestors outside the mount. The report records whether `/proc` shows a root or non-root path and whether mountinfo reports the cgroup mount root as `/` or another path. These observations and the visible limits must match between baseline and candidate, but they do not prove that hidden ancestors are identical. The reusable evidence manifest is signed by the baseline workflow and the verifier checks that the signature's invocation ID matches the recorded run attempt. The verifier also requires that run to come from the repository's default branch. Default-branch governance, including review of workflow changes, remains the trust anchor for workflow contents and must be protected accordingly. Storage throughput remains informational because hosted-runner backing storage varies.
 
-To collect it, build the ISO from that source revision, run the current performance report against the ISO with `MEASURED_SOURCE_COMMIT=9313ebb042cf71bb148441037940b130d49920d1`, then review the archived `performance-candidate.tsv` and commit it as `tests/prototype/performance-baseline.tsv`. The candidate release run is measured separately and compared to this record.
+To collect it, dispatch `.github/workflows/performance-baseline.yml` from the repository's default branch. Inspect all three samples, their QEMU/serial logs, and the aggregate summary. The 90-day `shreeos-0.4.0-untouched-performance-baseline-<run>-<attempt>` evidence artifact now includes the aggregate, provenance, three top-level sample TSVs, `raw-evidence/run-*`, checksum manifest, and signed attestation. Copy the aggregate to `tests/prototype/performance-baseline.tsv`, provenance to `tests/prototype/performance-baseline-provenance.json`, and the three samples, `raw-evidence/`, `performance-baseline.sha256`, and `performance-baseline.attestation.json` into `tests/prototype/performance-baseline-evidence/`. The reusable `shreeos-performance-baseline-<run>-<attempt>` artifact contains the same verifier inputs plus the aggregate and provenance if that is more convenient. This checked-in evidence keeps the gate usable after GitHub's artifact retention expires. While the workflow artifact is available, CI also verifies its bytes against the committed copy. Candidate measurements are captured separately, all samples are retained, and the median is compared with that reviewed baseline.
 
 ## Build and release paths
 

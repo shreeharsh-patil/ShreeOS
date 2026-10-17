@@ -192,8 +192,13 @@ def main() -> int:
     root_installer = INCLUDES / "usr/local/libexec/shreeos-installer-privileged"
     require(installer.is_file() and 'pkexec /usr/local/libexec/shreeos-installer-privileged' in installer.read_text(encoding="utf-8"),
             "ShreeOS installer does not use the scoped PolicyKit entry point")
+    installer_source = installer.read_text(encoding="utf-8")
+    require("/sys/firmware/efi" in installer_source
+            and installer_source.index("/sys/firmware/efi") < installer_source.index("exec /usr/local/libexec/shreeos-installer-privileged"),
+            "graphical installer does not reject BIOS mode before authorization")
     root_installer_source = root_installer.read_text(encoding="utf-8")
     require("[ \"$#\" -ne 0 ]" in root_installer_source
+            and "/sys/firmware/efi" in root_installer_source
             and "/usr/bin/calamares" in root_installer_source
             and "/run/live/medium/live/filesystem.squashfs" in root_installer_source
             and "fstab_backup" in root_installer_source,

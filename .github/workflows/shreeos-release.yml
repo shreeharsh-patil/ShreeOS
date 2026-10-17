@@ -11,7 +11,7 @@ name: ShreeOS desktop release
 #   A  static checks        syntax, ShellCheck, Python, branding, version contract
 #   B  build               the unified ISO, SquashFS and package checks, manifests
 #   C  boot verification   QEMU BIOS + UEFI, SDDM, Plasma login, real screenshots
-#   D  installer acceptance payload/safety checks plus source-identical manual evidence
+#   D  installer acceptance payload/safety checks plus exact-artifact manual evidence
 #   E  performance          cold boot, startup services, idle RAM/CPU limits and untouched baseline
 #   F  release              publish only if every gate above succeeded
 #
@@ -70,7 +70,7 @@ jobs:
       - name: Install static-analysis and installer test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml python3-pil cpio
+          sudo apt-get install -y --no-install-recommends shellcheck python3-yaml python3-pil cpio build-essential
 
       - name: Enforce the single-authoritative-version contract
         run: |
@@ -118,21 +118,34 @@ jobs:
         run: |
           bash tests/prototype/test-config.sh
           bash tests/release/test-version-contract.sh
+          python3 tests/release/test-unified-workflow-triggers.py
           python3 tests/release/test-unified-artifact-cache.py
+          python3 tests/release/test-capture-native-package-evidence.py
+          python3 tests/release/test-install-acceptance-artifact.py
           bash tests/smoke/test-verify-stage.sh
 
       - name: Desktop, Plasma, calculator and overview configuration tests
         run: |
           python3 tests/prototype/test-desktop-config.py
           python3 tests/prototype/test-plasma-config.py
+          python3 tests/prototype/test-qemu-harness.py
           python3 tests/prototype/test-system-features.py
           python3 tests/prototype/test-performance-config.py
           bash tests/prototype/test-performance-targets.sh
+          python3 tests/release/test-performance-aggregation.py
+          python3 tests/release/test-performance-comparison.py
+          python3 tests/release/test-performance-environment.py
+          python3 tests/release/test-performance-baseline-provenance.py
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
 
       - name: Build and inspect the versioned native ShreeOS tools package
-        run: bash tests/prototype/test-native-tools-package.sh
+        run: |
+          bash tests/prototype/test-native-tools-package.sh
+          if ! getent group shree-hardware >/dev/null 2>&1; then
+            sudo groupadd --system shree-hardware
+          fi
+          sudo make -C hardware test
 
       - name: Branding and packaging checks
         run: |
@@ -142,7 +155,7 @@ jobs:
           python3 branding/scripts/verify-logo-png-exports.py
           git diff --check
 
-      - name: Installer and recovery regressions
+      - name: Legacy installer and recovery regressions
         run: |
           bash tests/installer/test-recovery-initramfs.sh
           bash tests/installer/test-installer-validation.sh
@@ -181,6 +194,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     permissions:
+      actions: read
       contents: read
     container:
       image: debian:trixie-slim
@@ -190,6 +204,10 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       iso_name: ${{ steps.version.outputs.iso_name }}
       artifact: ${{ steps.upload.outputs.artifact-id }}
+      source_commit: ${{ steps.build_identity.outputs.source_commit }}
+      accepted_iso_sha256: ${{ steps.accepted_artifact.outputs.iso_sha256 }}
+      accepted_workflow_run_id: ${{ steps.accepted_artifact.outputs.workflow_run_id }}
+      accepted_artifact_id: ${{ steps.accepted_artifact.outputs.artifact_id }}
     steps:
       - name: Install Git before checkout so the image records its source commit
         run: |
@@ -207,10 +225,11 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             live-build=1:20250505+deb13u1 \
+            gcc make libc6-dev \
             debootstrap xorriso squashfs-tools \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
-            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
-            ca-certificates debian-archive-keyring shellcheck python3 librsvg2-bin git
+            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync util-linux \
+            ca-certificates debian-archive-keyring shellcheck python3 librsvg2-bin git gh
 
       - name: Resolve the release version
         id: version
@@ -221,7 +240,50 @@ jobs:
           echo "iso_name=shreeos($version).iso" >> "$GITHUB_OUTPUT"
           echo "SHREEOS_VERSION=$version" >> "$GITHUB_ENV"
 
+      - name: Read the accepted workflow artifact reference
+        id: acceptance_reference
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
+        run: |
+          python3 scripts/verify-install-acceptance-artifact.py \
+            --record release/INSTALL-ACCEPTANCE.md \
+            --version "${{ steps.version.outputs.version }}" \
+            --reference-only > "$RUNNER_TEMP/accepted-artifact-reference.json"
+          python3 - "$RUNNER_TEMP/accepted-artifact-reference.json" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+
+          reference = json.load(open(sys.argv[1], encoding="utf-8"))
+          with open(sys.argv[2], "a", encoding="utf-8") as output:
+              for key in ("source_commit", "iso_sha256", "workflow_run_id", "artifact_id"):
+                  output.write(f"{key}={reference[key]}\n")
+          PY
+
+      - name: Recover and verify the exact accepted ISO artifact
+        id: accepted_artifact
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          artifact_id="${{ steps.acceptance_reference.outputs.artifact_id }}"
+          workflow_run_id="${{ steps.acceptance_reference.outputs.workflow_run_id }}"
+          [[ "$artifact_id" =~ ^[0-9]+$ && "$workflow_run_id" =~ ^[0-9]+$ ]]
+          gh api "/repos/$GH_REPO/actions/artifacts/$artifact_id" \
+            > "$RUNNER_TEMP/accepted-artifact.json"
+          gh api "/repos/$GH_REPO/actions/runs/$workflow_run_id" \
+            > "$RUNNER_TEMP/accepted-workflow-run.json"
+          bash scripts/fetch-release-assets.sh "$artifact_id" out
+          python3 scripts/verify-install-acceptance-artifact.py \
+            --record release/INSTALL-ACCEPTANCE.md \
+            --version "${{ steps.version.outputs.version }}" \
+            --repository "$GH_REPO" \
+            --workflow-run-json "$RUNNER_TEMP/accepted-workflow-run.json" \
+            --artifact-json "$RUNNER_TEMP/accepted-artifact.json" \
+            --output-dir out \
+            --github-output "$GITHUB_OUTPUT"
+
       - name: Build the unified image
+        if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag')) }}
         run: |
           mkdir -p build-logs
           bash scripts/build-shreeos.sh 2>&1 | tee build-logs/build.log
@@ -254,10 +316,24 @@ jobs:
           iso="out/${{ steps.version.outputs.iso_name }}"
           bash tests/prototype/test-iso-squashfs.sh "$iso"
 
+      - name: Inspect and capture Debian package evidence
+        if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag')) }}
+        run: |
+          python3 scripts/capture-native-package-evidence.py \
+            --packages-dir build/debian-live-prototype/config/packages.chroot \
+            --admindir build/debian-live-prototype/chroot/var/lib/dpkg \
+            --iso "out/${{ steps.version.outputs.iso_name }}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --output-dir "$RUNNER_TEMP/shreeos-package-evidence"
+
       - name: Assert the manifest matches the tree and the artifact
         run: |
+          expected_source_commit="${{ steps.accepted_artifact.outputs.source_commit }}"
+          if [[ -z "$expected_source_commit" ]]; then
+            expected_source_commit="$GITHUB_SHA"
+          fi
           VERSION="${{ steps.version.outputs.version }}" \
-            GITHUB_SHA="$GITHUB_SHA" \
+            EXPECTED_SOURCE_COMMIT="$expected_source_commit" \
             python3 - "${{ steps.version.outputs.iso_name }}" <<'PY'
           import hashlib, json, os, pathlib, sys
 
@@ -267,12 +343,12 @@ jobs:
           assert manifest['version'] == os.environ['VERSION']
           assert manifest['iso'] == iso.name
           assert manifest['profile'] == 'plasma'
-          assert manifest['commit'] == os.environ['GITHUB_SHA']
+          assert manifest['commit'] == os.environ['EXPECTED_SOURCE_COMMIT']
           assert manifest['base_distribution'] == 'trixie'
           assert manifest['git_dirty'] is False
           assert manifest['products'] == ['live', 'installed']
           assert manifest['architecture'] == 'x86_64'
-          for key in ('kernel', 'plasma', 'kwin', 'sddm', 'shreeos_tools'):
+          for key in ('kernel', 'plasma', 'kwin', 'sddm', 'shreeos_tools', 'shreeos_native_tools'):
               assert manifest['components'].get(key), f'missing {key} in manifest components'
           with iso.open('rb') as stream:
               digest = hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -280,6 +356,14 @@ jobs:
           assert manifest['size_bytes'] == iso.stat().st_size
           print(f"Manifest verified for {iso.name} ({manifest['size_bytes']} bytes)")
           PY
+
+      - name: Record the ISO source identity for downstream gates
+        id: build_identity
+        run: |
+          source_commit="${{ steps.accepted_artifact.outputs.source_commit }}"
+          if [[ -z "$source_commit" ]]; then source_commit="$GITHUB_SHA"; fi
+          [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]]
+          echo "source_commit=$source_commit" >> "$GITHUB_OUTPUT"
 
       - name: Assemble the release bundle exactly once
         run: |
@@ -304,7 +388,17 @@ jobs:
           path: release-assets/
           if-no-files-found: error
           overwrite: true
-          retention-days: 14
+          retention-days: 90
+
+      - name: Upload Debian package inspection evidence
+        if: ${{ always() && !((github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag')) }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-debian-package-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shreeos-package-evidence/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 90
 
       - name: Upload build logs on failure
         if: failure()
@@ -323,6 +417,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
+      actions: read
       contents: read
     steps:
       - name: Check out source
@@ -335,7 +430,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            xorriso squashfs-tools            qemu-system-x86 qemu-system-gui qemu-utils \
+            xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils util-linux \
+            fdisk dosfstools e2fsprogs cpio grub2-common \
             ovmf xvfb xauth python3 ca-certificates unzip gh
 
       - name: Recover the built ISO
@@ -369,6 +465,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
+      actions: read
       contents: read
     steps:
       - name: Check out source
@@ -381,7 +478,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils \
+            xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils util-linux \
             ovmf xvfb xauth python3 ca-certificates unzip gh
 
       - name: Recover the built ISO
@@ -397,10 +494,10 @@ jobs:
           bash tests/prototype/test-installer-payload.sh "$iso"
           bash tests/installer/test-installer-validation.sh
 
-      # The acceptance record is committed after testing. It names the tested
-      # build commit, and this job proves the candidate tree is identical apart
-      # from that record, avoiding a self-referential commit SHA.
-      - name: Require a recorded interactive install acceptance for identical source
+      # The acceptance record points to the immutable development-workflow ISO.
+      # Stage B recovers that exact artifact; this step cross-checks its digest
+      # and confines post-test source changes to the two metadata records.
+      - name: Require exact interactive install acceptance for the release artifact
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
         run: |
           acceptance=release/INSTALL-ACCEPTANCE.md
@@ -409,21 +506,30 @@ jobs:
             printf 'See %s for the procedure and the record format.\n' "$acceptance" >&2
             exit 1
           }
-          python3 - "$acceptance" "$GITHUB_SHA" "${{ needs.build.outputs.version }}" <<'PY'
+          python3 - \
+            "$acceptance" \
+            "$GITHUB_SHA" \
+            "${{ needs.build.outputs.version }}" \
+            "${{ needs.build.outputs.source_commit }}" \
+            "${{ needs.build.outputs.accepted_iso_sha256 }}" \
+            "${{ needs.build.outputs.accepted_workflow_run_id }}" \
+            "${{ needs.build.outputs.accepted_artifact_id }}" <<'PY'
+          import hashlib
+          import json
           import pathlib
           import re
           import subprocess
           import sys
 
           text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
-          candidate, version = sys.argv[2:]
+          candidate, version, expected_commit, expected_sha, expected_run, expected_artifact = sys.argv[2:]
           records = re.findall(
               r'^VERDICT:\s*ACCEPTED\s*\n(.*?)(?=^VERDICT:|\Z)',
               text, re.MULTILINE | re.DOTALL,
           )
           selected = None
           for record in reversed(records):
-              fields = dict(re.findall(r'^([A-Za-z][A-Za-z -]*):\s*(.*?)\s*$',
+              fields = dict(re.findall(r'^([A-Za-z][A-Za-z 0-9/-]*):\s*(.*?)\s*$',
                                        record, re.MULTILINE))
               if fields.get('Version') == version:
                   selected = fields
@@ -433,23 +539,48 @@ jobs:
           accepted_commit = selected.get('Commit', '')
           if not re.fullmatch(r'[0-9a-f]{40}', accepted_commit):
               raise SystemExit('The acceptance record must contain a full tested source commit')
-          for evidence in ('Date', 'ISO SHA256', 'Firmware', 'Installer', 'Credentials', 'APT', 'Login', 'System'):
+          if accepted_commit != expected_commit:
+              raise SystemExit('The recovered ISO source commit differs from the install acceptance record')
+          if selected.get('ISO SHA256') != expected_sha:
+              raise SystemExit('The recovered ISO SHA256 differs from the install acceptance record')
+          if selected.get('Workflow run ID') != expected_run:
+              raise SystemExit('The recovered workflow run differs from the install acceptance record')
+          if selected.get('Artifact ID') != expected_artifact:
+              raise SystemExit('The recovered artifact ID differs from the install acceptance record')
+          for evidence in ('Date', 'ISO SHA256', 'Workflow run ID', 'Artifact ID', 'Firmware', 'Installer', 'Credentials', 'APT', 'Login', 'System', 'Limitations'):
               if not selected.get(evidence):
                   raise SystemExit(f'INSTALL-ACCEPTANCE.md does not provide {evidence} evidence')
           if not re.fullmatch(r'[0-9a-f]{64}', selected['ISO SHA256']):
               raise SystemExit('The acceptance record must contain the tested ISO SHA256')
+
+          iso = pathlib.Path('out') / f'shreeos({version}).iso'
+          # Keep the filename exact and verify the downloaded bytes, not only a sidecar.
+          if not iso.is_file():
+              raise SystemExit('The recovered accepted ISO is missing')
+          with iso.open('rb') as stream:
+              actual_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
+          if actual_sha != selected['ISO SHA256']:
+              raise SystemExit('The recovered ISO bytes do not match the install acceptance SHA256')
+          manifest_path = iso.with_name(iso.name.replace('.iso', '-manifest.json'))
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          if manifest.get('commit') != accepted_commit or manifest.get('sha256') != actual_sha:
+              raise SystemExit('The recovered ISO manifest does not match the accepted source and bytes')
           subprocess.run(['git', 'merge-base', '--is-ancestor', accepted_commit, candidate],
                          check=True)
-          unchanged = subprocess.run(
-              ['git', 'diff', '--quiet', accepted_commit, candidate, '--',
-               '.', ':(exclude)release/INSTALL-ACCEPTANCE.md'],
-              check=False,
-          )
-          if unchanged.returncode != 0:
+          changed = subprocess.run(
+              ['git', 'diff', '--name-only', accepted_commit, candidate, '--'],
+              check=True, capture_output=True, text=True,
+          ).stdout.splitlines()
+          allowed_metadata = {
+              'release/INSTALL-ACCEPTANCE.md',
+              'release/ENGINEERING-ASSIGNMENT-LEDGER-0.4.0.csv',
+          }
+          unexpected = sorted(set(changed) - allowed_metadata)
+          if unexpected:
               raise SystemExit(
-                  'The accepted source and candidate differ outside INSTALL-ACCEPTANCE.md; '
-                  'repeat the disposable-disk install on the candidate source.')
-          print(f'Interactive install acceptance covers source-identical ShreeOS {version}')
+                  'The accepted source and candidate differ outside the acceptance record and '
+                  f'engineering ledger: {unexpected}; repeat the disposable-disk install.')
+          print(f'Interactive install acceptance covers the exact ShreeOS {version} ISO artifact')
           PY
 
   # ---------------------------------------------------------------- STAGE E --
@@ -457,24 +588,36 @@ jobs:
     name: Stage E - idle RAM, CPU and cold boot against limits and untouched baseline
     needs: [static-checks, build, boot-verification]
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
     permissions:
+      actions: read
       contents: read
+    container:
+      image: debian:trixie-slim
     env:
       REQUIRE_PERFORMANCE_BASELINE: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag') }}
     steps:
+      - name: Install Git before checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Install image and virtualisation tooling
+      - name: Install pinned QEMU, SeaBIOS and measurement tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils \
-            ovmf xvfb xauth python3 ca-certificates unzip gh
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            qemu-system-x86=1:10.0.13+ds-0+deb13u1 \
+            qemu-system-gui=1:10.0.13+ds-0+deb13u1 \
+            qemu-utils=1:10.0.13+ds-0+deb13u1 \
+            seabios=1.16.3-2 \
+            xorriso squashfs-tools util-linux ovmf xvfb xauth python3 unzip gh
+          dpkg-query -W qemu-system-x86 qemu-system-gui qemu-utils seabios
 
       - name: Recover the built ISO
         env:
@@ -482,24 +625,68 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: bash scripts/fetch-release-assets.sh "${{ needs.build.outputs.artifact }}"
 
+      - name: Verify the committed performance baseline against its successful workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ -s tests/prototype/performance-baseline.tsv ]]; then
+            python3 scripts/verify-performance-baseline.py \
+              --repository "$GH_REPO" \
+              --baseline tests/prototype/performance-baseline.tsv \
+              --provenance tests/prototype/performance-baseline.provenance.json \
+              --evidence-dir tests/prototype/performance-baseline-evidence \
+              --download-dir "$RUNNER_TEMP/shreeos-performance-baseline"
+          elif [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
+            printf 'A measured untouched-build baseline is required for this release run.\n' >&2
+            exit 1
+          fi
+
       - name: Measure the controlled 2 vCPU / 4 GiB idle footprint
         run: |
           iso="$(find out -maxdepth 1 -type f -name '*.iso' -print -quit)"
           test -s "$iso"
           mkdir -p build-logs/performance
-          if [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
-            REQUIRE_BASELINE=1 RESUME=1 QEMU_LOG_DIR=build-logs/performance \
-              bash tests/prototype/test-performance-report.sh "$iso"
-          else
-            RESUME=1 QEMU_LOG_DIR=build-logs/performance \
-              bash tests/prototype/test-performance-report.sh "$iso"
+          capture_failed=0
+          for sample in 1 2 3; do
+            if ! MEASURED_SOURCE_COMMIT="${{ needs.build.outputs.source_commit }}" \
+              CAPTURE_ONLY=1 QEMU_LOG_DIR="build-logs/performance/run-$sample" \
+              bash tests/prototype/test-performance-report.sh "$iso"; then
+              printf 'Performance capture %s failed; retaining its diagnostics and continuing to remaining samples.\n' "$sample" >&2
+              capture_failed=1
+            fi
+          done
+          if (( capture_failed )); then
+            printf 'At least one sample was invalid; aggregate acceptance cannot run.\n' >&2
+            exit 1
           fi
+          python3 scripts/aggregate-performance-runs.py \
+            --output build-logs/performance/performance-summary.tsv \
+            --report-output build-logs/performance/performance-summary.md \
+            build-logs/performance/run-1/performance-candidate.tsv \
+            build-logs/performance/run-2/performance-candidate.tsv \
+            build-logs/performance/run-3/performance-candidate.tsv
+          comparison_args=(
+            --candidate build-logs/performance/performance-summary.tsv
+            --targets prototype/debian-live/performance-targets.tsv
+            --report-output build-logs/performance/performance-report.md
+          )
+          if [[ -s tests/prototype/performance-baseline.tsv ]]; then
+            comparison_args+=(--baseline tests/prototype/performance-baseline.tsv)
+          fi
+          if [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
+            comparison_args+=(--require-baseline)
+          fi
+          python3 scripts/compare-performance-runs.py "${comparison_args[@]}"
 
       - name: Record the report in the run summary
         run: |
-          report=build-logs/performance/performance-report.md
-          test -s "$report"
-          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          for report in \
+            build-logs/performance/performance-summary.md \
+            build-logs/performance/performance-report.md; do
+            test -s "$report"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Upload benchmark reports
         if: always()
@@ -526,19 +713,24 @@ jobs:
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.build.outputs.version }}
       ISO_NAME: ${{ needs.build.outputs.iso_name }}
+      ISO_SOURCE_COMMIT: ${{ needs.build.outputs.source_commit }}
+      ACCEPTED_ISO_SHA256: ${{ needs.build.outputs.accepted_iso_sha256 }}
+      ACCEPTED_WORKFLOW_RUN_ID: ${{ needs.build.outputs.accepted_workflow_run_id }}
+      ACCEPTED_ARTIFACT_ID: ${{ needs.build.outputs.accepted_artifact_id }}
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 1
-          persist-credentials: false
+          fetch-depth: 0
 
       - name: Require every gate to have succeeded
         run: |
           bash scripts/verify-version.sh
           [[ "$(tr -d '[:space:]' < VERSION)" == "$VERSION" ]]
           [[ "$ISO_NAME" == "shreeos($VERSION).iso" ]]
-          printf 'All gates passed for ShreeOS %s\n' "$VERSION"
+          [[ "$ACCEPTED_ISO_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$ISO_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          printf 'All gates passed for ShreeOS %s ISO source %s\n' "$VERSION" "$ISO_SOURCE_COMMIT"
 
       - name: Download the verified bundle
         run: bash scripts/fetch-release-assets.sh "${{ needs.build.outputs.artifact }}"
@@ -561,6 +753,12 @@ jobs:
             [[ "$actual" == "$expected" ]]
           fi
           [[ "$(basename "$ISO_NAME")" == "shreeos($VERSION).iso" ]]
+          actual_iso_sha="$(sha256sum "out/$ISO_NAME" | awk '{print $1}')"
+          [[ "$actual_iso_sha" == "$ACCEPTED_ISO_SHA256" ]] || {
+            printf 'Release ISO SHA256 %s differs from installed-acceptance SHA256 %s.\n' \
+              "$actual_iso_sha" "$ACCEPTED_ISO_SHA256" >&2
+            exit 1
+          }
 
       - name: Publish the release
         run: |
@@ -575,7 +773,10 @@ jobs:
           installed system.
 
           - **Image**: \`$ISO_NAME\`
-          - **Source commit**: \`$GITHUB_SHA\`
+          - **ISO source commit**: \`$ISO_SOURCE_COMMIT\`
+          - **Release record commit**: \`$GITHUB_SHA\`
+          - **Install-accepted ISO SHA256**: \`$ACCEPTED_ISO_SHA256\`
+          - **Install-accepted workflow run/artifact**: \`$ACCEPTED_WORKFLOW_RUN_ID\` / \`$ACCEPTED_ARTIFACT_ID\`
           - **Build**: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID
           - **Architecture**: x86_64
           - **Boot**: BIOS and UEFI
@@ -591,8 +792,8 @@ jobs:
           - BIOS and UEFI boot with an automated check that the Plasma desktop
             actually rendered (screenshots are rejected when black or empty)
           - Installer payload and destructive-operation preflight checks passed
-          - A disposable-disk interactive install was manually accepted for source-
-            identical code; the wizard itself is not driven automatically in CI
+          - The exact ISO above passed a disposable-disk interactive install and
+            detached-media reboot acceptance
           - Idle RAM, idle CPU and cold boot passed absolute limits and the untouched-build comparison
 
           ## Known limitations
@@ -601,8 +802,9 @@ jobs:
             Bluetooth, audio, printers, suspend/resume and GPU drivers still need
             acceptance on representative Intel, AMD and NVIDIA machines.
           - Encryption and error-recovery paths still need separate human acceptance.
-          - Wayland is not the default session. Plasma runs on X11 so the dock and
-            current graphics stack keep working; a Wayland path is under review.
+          - The live desktop starts Plasma on X11 so the Plank dock works. The
+            installed image also includes a Wayland Plasma session; Plank remains
+            available in X11 sessions only.
           EOF
           assets=(
             "out/$ISO_NAME"
@@ -614,8 +816,23 @@ jobs:
           )
           for asset in "${assets[@]}"; do test -s "$asset"; done
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "${assets[@]}" --clobber
-            gh release edit "$tag" --title "ShreeOS $VERSION" --notes-file release-notes.md --latest
+            expected_names="$(printf '%s\n' "${assets[@]##*/}" | sort)"
+            existing_names="$(gh release view "$tag" --json assets --jq '.assets[].name' | sort)"
+            [[ "$existing_names" == "$expected_names" ]] || {
+              printf 'Release %s already exists with a different asset set; refusing to replace it.\n' "$tag" >&2
+              exit 1
+            }
+            existing_dir="$(mktemp -d)"
+            trap 'rm -rf -- "$existing_dir"' EXIT
+            gh release download "$tag" --dir "$existing_dir"
+            for asset in "${assets[@]}"; do
+              existing_asset="$existing_dir/$(basename "$asset")"
+              cmp -s -- "$asset" "$existing_asset" || {
+                printf 'Existing release asset %s differs; refusing to replace it.\n' "$(basename "$asset")" >&2
+                exit 1
+              }
+            done
+            printf 'Existing release %s already contains the exact verified assets; leaving it unchanged.\n' "$tag"
           else
             gh release create "$tag" "${assets[@]}" \
               --target "$GITHUB_SHA" \
@@ -626,14 +843,19 @@ jobs:
       - name: Verify the published assets
         run: |
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; else tag="v$VERSION"; fi
+          if ! git rev-parse "$tag^{commit}" >/dev/null 2>&1; then
+            git fetch --no-tags origin "refs/tags/$tag:refs/tags/$tag"
+          fi
+          tag_commit="$(git rev-parse "$tag^{commit}")"
+          git merge-base --is-ancestor "$tag_commit" "$GITHUB_SHA"
           gh api "$(gh release view "$tag" --json apiUrl --jq .apiUrl)" > published.json
-          VERSION="$VERSION" ISO_NAME="$ISO_NAME" RELEASE_TAG="$tag" GITHUB_SHA="$GITHUB_SHA" \
+          VERSION="$VERSION" ISO_NAME="$ISO_NAME" RELEASE_TAG="$tag" \
+            ACCEPTED_ISO_SHA256="$ACCEPTED_ISO_SHA256" \
             python3 - <<'PY'
           import hashlib, json, os, pathlib
 
           release = json.load(open('published.json'))
           assert release['tag_name'] == os.environ['RELEASE_TAG']
-          assert release['target_commitish'] == os.environ['GITHUB_SHA']
           assert not release['draft']
           expected = {
               os.environ['ISO_NAME'],
@@ -650,6 +872,8 @@ jobs:
               assert path.is_file(), asset['name']
               with path.open('rb') as stream:
                   digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              if asset['name'] == os.environ['ISO_NAME']:
+                  assert digest == os.environ['ACCEPTED_ISO_SHA256']
               assert asset['state'] == 'uploaded'
               assert asset['size'] == path.stat().st_size
               assert asset['digest'] == f'sha256:{digest}'

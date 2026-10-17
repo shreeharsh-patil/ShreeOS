@@ -23,8 +23,10 @@ mkdir -p "${marker%/*}"
 # applying the layout. Resetting the layout during Plasma startup can terminate
 # the shell before it has loaded the ShreeOS panel and dock.
 sleep 10
+uid="$(id -u)"
 apply_attempt=0
 while [ "$apply_attempt" -lt 30 ]; do
+  shell_pid_before="$(pgrep -u "$uid" -x plasmashell | head -n 1 || true)"
   if plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout; then
     break
   fi
@@ -37,10 +39,25 @@ if [ "$apply_attempt" -ge 30 ]; then
 fi
 
 # Plasma's resetLayout operation can stop the shell it was called from. The
-# user-service drop-in restarts it; wait for that managed restart before
-# applying the remaining session settings. The interval grows so a restart this
-# quick is not preceded by a burst of one-second pgrep spawns.
-uid="$(id -u)"
+# user-service drop-in restarts it. Wait for the original process to exit before
+# treating a plasmashell process as ready; otherwise the wallpaper update can
+# race the old shell's shutdown and be lost. The interval grows so a restart
+# this quick is not preceded by a burst of one-second pgrep spawns.
+shell_waited=0
+shell_interval=1
+if [ -n "$shell_pid_before" ]; then
+  # Some Plasma versions apply the new layout without replacing the shell.
+  # Give a requested restart a bounded window, but do not block first-login
+  # setup if Plasma keeps the existing process.
+  while [ "$shell_waited" -lt 10 ] &&
+    pgrep -u "$uid" -x plasmashell | grep -Fxq "$shell_pid_before"; do
+    sleep "$shell_interval"
+    shell_waited=$((shell_waited + shell_interval))
+    shell_interval=$((shell_interval * 2))
+    [ "$shell_interval" -le 3 ] || shell_interval=3
+  done
+fi
+
 shell_waited=0
 shell_interval=1
 while [ "$shell_waited" -lt 30 ] &&
@@ -93,18 +110,6 @@ fi
 # and the daemon in agreement without spawning a single polling process.
 if command -v kwriteconfig6 >/dev/null 2>&1; then
   kwriteconfig6 --file shreeosrc --group Desktop --key PowerProfile balanced
-fi
-
-# The release-verification live medium renders on QEMU's virtio display, where
-# Plasma effects are not reliably drawable. Disable compositing for the live
-# session only: this runs once per user and the installed system, whose
-# /run/live/medium does not exist, keeps the compositor KWin selects for itself.
-if [ -d /run/live/medium ] && command -v kwriteconfig6 >/dev/null 2>&1; then
-  kwriteconfig6 --file kwinrc --group Compositing --key Enabled false
-  if ! dbus-send --session --type=method_call --print-reply \
-    --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1; then
-    logger -t shreeos-plasma-first-login 'Live-session compositing change will apply at next sign-in'
-  fi
 fi
 
 touch "$marker"

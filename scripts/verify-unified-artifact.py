@@ -9,6 +9,16 @@ import re
 import sys
 from pathlib import Path
 
+MAX_ISO_SIZE_BYTES = 1_900_000_000
+
+
+def verify_image_size(size_bytes: int) -> None:
+    if size_bytes >= MAX_ISO_SIZE_BYTES:
+        raise ValueError(
+            f"ISO is {size_bytes} bytes; the release cap is strictly below "
+            f"{MAX_ISO_SIZE_BYTES} bytes"
+        )
+
 
 def read_key_values(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
@@ -35,6 +45,7 @@ def verify_bundle(
     suite: str,
     snapshot: str,
     live_build: str,
+    expected_commit: str | None = None,
 ) -> None:
     for path in (iso_path, checksum_path, packages_path, build_info_path, manifest_path):
         if not path.is_file() or path.stat().st_size == 0:
@@ -47,9 +58,10 @@ def verify_bundle(
     if not checksum_match or checksum_match.group(2) != iso_path.name:
         raise ValueError("checksum sidecar does not name the ISO")
 
+    size_bytes = iso_path.stat().st_size
+    verify_image_size(size_bytes)
     with iso_path.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
-    size_bytes = iso_path.stat().st_size
     if checksum_match.group(1).lower() != digest:
         raise ValueError("ISO bytes do not match the checksum sidecar")
 
@@ -64,6 +76,7 @@ def verify_bundle(
         "base_distribution": suite,
         "base_snapshot": snapshot,
         "live_build": live_build,
+        "products": ["live", "installed"],
         "iso": iso_path.name,
         "sha256": digest,
         "size_bytes": size_bytes,
@@ -73,6 +86,8 @@ def verify_bundle(
             raise ValueError(f"manifest field {key!r} does not match the artifact inputs")
     if not re.fullmatch(r"[0-9a-f]{40}", manifest.get("commit", "")):
         raise ValueError("manifest has no valid source commit")
+    if expected_commit and manifest["commit"] != expected_commit:
+        raise ValueError("manifest source commit does not match the current source commit")
     if not isinstance(manifest.get("git_dirty"), bool):
         raise ValueError("manifest git_dirty field must be boolean")
 
@@ -82,6 +97,7 @@ def verify_bundle(
         "kwin-x11": "kwin",
         "sddm": "sddm",
         "shreeos-tools": "shreeos_tools",
+        "shreeos-native-tools": "shreeos_native_tools",
     }
     package_versions: dict[str, str] = {}
     for line_number, raw_line in enumerate(packages_path.read_text(encoding="utf-8").splitlines(), 1):
@@ -113,6 +129,7 @@ def verify_bundle(
         "debian_suite": suite,
         "debian_snapshot": snapshot,
         "live_build": live_build,
+        "apt_recommends": "false",
         "git_commit": manifest["commit"],
         "git_dirty": "1" if manifest["git_dirty"] else "0",
         "sha256": digest,
@@ -127,10 +144,10 @@ def verify_bundle(
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 12:
+    if len(argv) not in {12, 13}:
         print(
             "Usage: verify-unified-artifact.py ISO CHECKSUM PACKAGES BUILD_INFO MANIFEST "
-            "VERSION PROFILE ARCH SUITE SNAPSHOT LIVE_BUILD",
+            "VERSION PROFILE ARCH SUITE SNAPSHOT LIVE_BUILD [EXPECTED_COMMIT]",
             file=sys.stderr,
         )
         return 2
@@ -146,7 +163,7 @@ def main(argv: list[str]) -> int:
         suite,
         snapshot,
         live_build,
-    ) = argv[1:]
+    ) = argv[1:12]
     try:
         verify_bundle(
             Path(iso),
@@ -160,6 +177,7 @@ def main(argv: list[str]) -> int:
             suite=suite,
             snapshot=snapshot,
             live_build=live_build,
+            expected_commit=argv[12] if len(argv) == 13 else None,
         )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"Unified artifact cache verification failed: {error}", file=sys.stderr)

@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+root="${SHREEOS_LIVE_ROOT:-}"
+
 if ! getent passwd shree >/dev/null 2>&1; then
   echo 'ShreeOS live account was not created; refusing to continue.' >&2
   exit 1
@@ -10,3 +12,16 @@ fi
 # authentication immediately after it creates the temporary live account.
 passwd --lock shree
 passwd --status shree | awk '$2 == "L" { locked = 1 } END { exit !locked }'
+
+# KWin must start without compositing on the live QEMU virtio display. Apply
+# this to the temporary live account before SDDM launches Plasma; keeping it out
+# of /etc/skel leaves installed users with KWin's normal renderer selection.
+if [ -e "${root}/run/live/medium" ] &&
+  [ -r "${root}/etc/shreeos/image-profile" ] &&
+  [ "$(cat "${root}/etc/shreeos/image-profile")" = plasma ]; then
+  runuser -u shree -- env \
+    HOME="${root}/home/shree" \
+    XDG_CONFIG_HOME="${root}/home/shree/.config" \
+    kwriteconfig6 --file kwinrc --group Compositing --key Enabled false
+  logger -t shreeos-live-user 'Disabled KWin compositing for the live Plasma session before SDDM startup'
+fi

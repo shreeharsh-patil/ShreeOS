@@ -1,4 +1,4 @@
-name: ISO
+name: Legacy source-built ISO experiment
 
 on:
   push:
@@ -26,7 +26,7 @@ env:
 
 jobs:
   build:
-    name: Build and validate desktop ISO
+    name: Build and validate legacy source-built desktop ISO
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     permissions:
@@ -95,7 +95,7 @@ jobs:
             build/sysroot
           key: shreeos-toolchain-cache-v3-abi-glibc2.40-gcc14.2.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.conf', 'scripts/common.sh', 'scripts/verify-stage.sh', 'tests/smoke/test-toolchain.sh', 'toolchain/**') }}
 
-      - name: Build and verify desktop ISO
+      - name: Build and verify legacy source-built desktop ISO
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/build-desktop.log) 2>&1
@@ -119,7 +119,7 @@ jobs:
           exec > >(tee -a build-logs/tests.log) 2>&1
           PROFILE="$BUILD_PROFILE" BIOS_TIMEOUT=240 UEFI_TIMEOUT=300 MEMORY=4096M make test-all
 
-      - name: Generate and verify desktop ISO bundle
+      - name: Generate and verify legacy source-built desktop ISO bundle
         run: |
           set -Eeuo pipefail
           exec > >(tee -a build-logs/assets.log) 2>&1

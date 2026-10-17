@@ -41,9 +41,9 @@ release; the XFCE profile's screenshot gate is still under investigation.
 The new `plasma` profile installs Debian's `kde-plasma-desktop`, SDDM, Dolphin,
 Konsole, Ark, Spectacle, Plasma network/audio widgets, PowerDevil and BlueDevil,
 plus Plank, Kate, Gwenview, Okular and KCalc. Plasma's layout scripting API
-creates a 28px top menu/status bar with a date and clock between expanding
+creates a 30px top menu/status bar with a date and clock between expanding
 spacers. An original Plasma style supplies its translucent surface, while
-Plank supplies the rounded, always-visible dock with 44px icons, 130% hover
+Plank supplies the rounded, auto-hidden dock with 50px icons, 145% hover
 magnification and persistent favorite launchers. An original ShreeOS QML theme styles the
 SDDM greeter with ShreeOS branding. The greeter theme persists into installed
 systems, while a boot-time check removes the live-only autologin override from

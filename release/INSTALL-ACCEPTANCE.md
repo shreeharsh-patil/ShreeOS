@@ -14,6 +14,12 @@ contain the commit ID of the commit that contains itself.
 
 ## Status
 
+The status block is authoritative. After accepting a build, update this block
+to `VERDICT: ACCEPTED` and copy its commit, version, date, ISO checksum,
+workflow run ID and artifact ID from the appended accepted build record. The
+release verifier rejects a historical accepted record if this current status
+does not match it.
+
 ```
 VERDICT: NOT ACCEPTED
 Commit:  none
@@ -29,16 +35,27 @@ That is the intended state until the disposable-disk procedure has been run.
 Use a disposable virtual machine only. Never run these steps against physical
 disks.
 
-1. Build the image: `make shreeos`, then note `out/shreeos(VERSION).iso`, its
-   checksum, and the source commit (`git rev-parse HEAD`).
+1. Run the **Unified ShreeOS development ISO** workflow on `master` after the
+   candidate source commit is ready. Select its successful workflow artifact,
+   download it by its exact workflow run and artifact IDs, verify its
+   `SHA256SUMS`, and record the ISO checksum, source commit, workflow run ID and
+   artifact ID. A push or manual run on `master` gives the run, artifact and
+   manifest one consistent source commit. Do not rebuild the image for this
+   test: the release gate publishes this same immutable artifact.
 2. Create a blank virtual disk of at least 20 GB and attach the ISO.
 3. Boot the ISO and let the live Plasma desktop appear. Confirm the ShreeOS
    wallpaper, top panel, centered dock, SDDM greeter branding and that every
    desktop shortcut opens a real application.
 4. Run the installer and complete each step deliberately:
    - language, timezone and keyboard layout
-   - guided "erase disk" on the **disposable disk only**, then a second run using
-     manual partitioning
+   - boot the ISO in **UEFI mode** for both the guided "erase disk" run and a
+     second run on a fresh disposable disk using manual partitioning
+   - the guided GPT layout must contain a 2 MiB unformatted GPT BIOS Boot
+     Partition (type `21686148-6449-6e6f-744e-656564454649`), a 512 MiB FAT32
+     EFI System Partition mounted at `/boot/efi` (type
+     `c12a7328-f81f-11d2-ba4b-00a0c93ec93b`), and an ext4 root partition
+   - for manual GPT partitioning, create those same three partitions and mount
+     the EFI System Partition at `/boot/efi`
    - user creation with a password of your choosing, and a hostname
    - confirm the summary shows only the disposable disk and that no live-session
      credential (`shree`, or a blank/locked password) is preselected
@@ -53,16 +70,22 @@ disks.
    - `id` shows the expected supplementary groups
    - `systemctl --failed` is empty
    - desktop settings persist across logout and login
-8. Repeat step 3's boot on the same disk in the other firmware mode (BIOS if you
-   used UEFI, UEFI if you used BIOS).
+8. Repeat the detached-disk boot on each installed disk in legacy BIOS mode.
+   The supported install flow starts in UEFI mode so Calamares creates the EFI
+   System Partition; the ShreeOS post-install job then adds BIOS GRUB to the
+   same validated GPT target disk. Do not install while booted in BIOS mode.
 
 ## Record format
 
 Append one block per accepted build. Every field is required. After testing,
-commit the record in a follow-up change that changes no other source file. The
-release gate checks the tested commit, matching ShreeOS version, firmware,
-installer, credentials, APT, login and system evidence, and verifies that the
-candidate source tree is otherwise unchanged.
+update the Status block above to match that record, then commit both in a
+follow-up change that changes no product source. The
+release gate checks the tested commit, matching ShreeOS version, exact
+successful `master` workflow artifact, firmware, installer, credentials, APT,
+login and system evidence, and verifies that the candidate source tree is
+otherwise unchanged. The accepted
+artifact is retained for 90 days; if it expires, a fresh install acceptance is
+required.
 
 ```
 VERDICT: ACCEPTED
@@ -70,6 +93,8 @@ Commit: <full 40-character commit SHA of the build that was tested>
 Version: <version from VERSION>
 Date: <ISO date>
 ISO SHA256: <full checksum of the image tested>
+Workflow run ID: <successful Unified ShreeOS development ISO run ID>
+Artifact ID: <immutable artifact ID from that run>
 Firmware: BIOS and UEFI both booted from the installed disk alone
 Installer: guided erase-disk, manual partitioning, user creation, hostname, timezone, keyboard
 Credentials: live session credentials were not reused; installed account authenticates
@@ -84,6 +109,7 @@ Limitations: <anything not covered, e.g. encryption, recovery from a failed inst
 These are not covered by the procedure above and remain open release gates:
 
 - LUKS encryption, and the failure path when the encrypted unlock fails.
+- LVM and manual encrypted-root layouts; use direct GPT partitions with an ext4 root for the documented acceptance path.
 - Recovery from an interrupted install and from a full target filesystem.
 - Installing alongside an existing operating system (dual boot).
 - Real hardware: Wi-Fi, Bluetooth, audio, printers, suspend/resume, GPU drivers.

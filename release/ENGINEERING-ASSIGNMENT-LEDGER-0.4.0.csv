@@ -1,0 +1,201 @@
+ID,Division,Assignment,Status,Assigned agent,Evidence or blocker
+D01-01,"Git, branches, pull requests and integration",Inventory current local and remote branches,passed,branch_ci_audit,Local and remote branch inventory in audit report
+D01-02,"Git, branches, pull requests and integration",Confirm PR #28 head SHA and base SHA,passed,branch_ci_audit,PR #28 SHA/base queried from GitHub
+D01-03,"Git, branches, pull requests and integration",Verify prepared fixes are ancestors of PR head,passed,branch_ci_audit,Ancestry check for base and prepared commits
+D01-04,"Git, branches, pull requests and integration",Audit PR mergeability and changed-file scope,passed,branch_ci_audit,PR diff and mergeability reviewed
+D01-05,"Git, branches, pull requests and integration",Inspect repository branch protection and merge requirements,passed,branch_ci_audit,Branch protection/ruleset query; no required checks found
+D01-06,"Git, branches, pull requests and integration",Match recent CI runs to exact PR SHA,passed,branch_ci_audit,PR check rollup tied to 3c4ea2b
+D01-07,"Git, branches, pull requests and integration",Review closed PR #26 ancestry and disposition,queued,,Awaiting assignment in a later resource-aware wave.
+D01-08,"Git, branches, pull requests and integration",Review closed PR #27 ancestry and disposition,queued,,Awaiting assignment in a later resource-aware wave.
+D01-09,"Git, branches, pull requests and integration",Inspect stale local PR audit refs,queued,,Awaiting assignment in a later resource-aware wave.
+D01-10,"Git, branches, pull requests and integration",Reconcile local integration branch ancestry,queued,,Awaiting assignment in a later resource-aware wave.
+D01-11,"Git, branches, pull requests and integration",Review possible merge conflicts,queued,,Awaiting assignment in a later resource-aware wave.
+D01-12,"Git, branches, pull requests and integration",Check remote branches for unmerged unique commits,queued,,Awaiting assignment in a later resource-aware wave.
+D01-13,"Git, branches, pull requests and integration",Prepare normal push strategy for current PR head,queued,,Awaiting assignment in a later resource-aware wave.
+D01-14,"Git, branches, pull requests and integration",Review commit boundaries for focused history,queued,,Awaiting assignment in a later resource-aware wave.
+D01-15,"Git, branches, pull requests and integration",Check candidate diff for accidental user changes,queued,,Awaiting assignment in a later resource-aware wave.
+D01-16,"Git, branches, pull requests and integration",Verify original checkout remains unchanged,queued,,Awaiting assignment in a later resource-aware wave.
+D01-17,"Git, branches, pull requests and integration",Verify existing stashes remain preserved,queued,,Awaiting assignment in a later resource-aware wave.
+D01-18,"Git, branches, pull requests and integration",Review required reviewer status for PR #28,queued,,Awaiting assignment in a later resource-aware wave.
+D01-19,"Git, branches, pull requests and integration",Confirm merge authorization gates,queued,,Awaiting assignment in a later resource-aware wave.
+D01-20,"Git, branches, pull requests and integration",Recheck branches and PRs after candidate push,queued,,Awaiting assignment in a later resource-aware wave.
+D02-01,"Debian packaging, dependencies and native integration",Verify shreeos-tools owns /usr/bin/shreeinfo,queued,,Awaiting assignment in a later resource-aware wave.
+D02-02,"Debian packaging, dependencies and native integration",Verify native tools package dependency version,queued,,Awaiting assignment in a later resource-aware wave.
+D02-03,"Debian packaging, dependencies and native integration",Audit native package maintainer scripts,queued,,Awaiting assignment in a later resource-aware wave.
+D02-04,"Debian packaging, dependencies and native integration",Check package architecture and control metadata,queued,,Awaiting assignment in a later resource-aware wave.
+D02-05,"Debian packaging, dependencies and native integration",Check package payload paths and executable modes,queued,,Awaiting assignment in a later resource-aware wave.
+D02-06,"Debian packaging, dependencies and native integration",Validate hardware daemon system account creation,queued,,Awaiting assignment in a later resource-aware wave.
+D02-07,"Debian packaging, dependencies and native integration",Validate hardware group membership for live user,queued,,Awaiting assignment in a later resource-aware wave.
+D02-08,"Debian packaging, dependencies and native integration",Review systemd service sandbox directives,queued,,Awaiting assignment in a later resource-aware wave.
+D02-09,"Debian packaging, dependencies and native integration",Align socket path with RuntimeDirectory,in_progress,root,Socket and test ownership fixes await second audit and new-SHA CI
+D02-10,"Debian packaging, dependencies and native integration",Validate socket mode and group ownership,queued,,Awaiting assignment in a later resource-aware wave.
+D02-11,"Debian packaging, dependencies and native integration",Exercise authorized supplementary-group IPC access,queued,,Awaiting assignment in a later resource-aware wave.
+D02-12,"Debian packaging, dependencies and native integration",Exercise rejected unprivileged IPC access,queued,,Awaiting assignment in a later resource-aware wave.
+D02-13,"Debian packaging, dependencies and native integration",Validate package provenance in ISO manifest,passed,artifact_provenance_review,Manifest/native package provenance audit
+D02-14,"Debian packaging, dependencies and native integration",Expand native package build-cache source inputs,queued,,Awaiting assignment in a later resource-aware wave.
+D02-15,"Debian packaging, dependencies and native integration",Check Plasma runtime dependency completeness,queued,,Awaiting assignment in a later resource-aware wave.
+D02-16,"Debian packaging, dependencies and native integration",Validate GRUB EFI and BIOS package selection,queued,,Awaiting assignment in a later resource-aware wave.
+D02-17,"Debian packaging, dependencies and native integration",Build real Debian package on Linux,queued,,Awaiting assignment in a later resource-aware wave.
+D02-18,"Debian packaging, dependencies and native integration",Inspect built package with dpkg-deb,queued,,Awaiting assignment in a later resource-aware wave.
+D02-19,"Debian packaging, dependencies and native integration",Check package installation and removal behavior,queued,,Awaiting assignment in a later resource-aware wave.
+D02-20,"Debian packaging, dependencies and native integration",Review upgrade and idempotent postinst behavior,queued,,Awaiting assignment in a later resource-aware wave.
+D03-01,"Linux kernel, bootloader, BIOS, UEFI and drivers",Review Debian kernel compatibility baseline,queued,,Awaiting assignment in a later resource-aware wave.
+D03-02,"Linux kernel, bootloader, BIOS, UEFI and drivers",Inspect live GRUB BIOS El Torito configuration,queued,,Awaiting assignment in a later resource-aware wave.
+D03-03,"Linux kernel, bootloader, BIOS, UEFI and drivers",Inspect UEFI boot image configuration,queued,,Awaiting assignment in a later resource-aware wave.
+D03-04,"Linux kernel, bootloader, BIOS, UEFI and drivers",Review Calamares EFI bootloader configuration,passed,installer_config_review,Calamares 3.3.14 bootloader configuration review
+D03-05,"Linux kernel, bootloader, BIOS, UEFI and drivers",Review BIOS Boot Partition type and layout,passed,installer_config_review,Partition schema and UEFI ESP behavior reviewed
+D03-06,"Linux kernel, bootloader, BIOS, UEFI and drivers",Validate hybrid BIOS GRUB installer helper,passed,installer_size_review,Host-side install helper source review; runtime still pending
+D03-07,"Linux kernel, bootloader, BIOS, UEFI and drivers",Check target disk and partition safety checks,queued,,Awaiting assignment in a later resource-aware wave.
+D03-08,"Linux kernel, bootloader, BIOS, UEFI and drivers",Review initramfs boot path and modules,queued,,Awaiting assignment in a later resource-aware wave.
+D03-09,"Linux kernel, bootloader, BIOS, UEFI and drivers",Validate firmware package availability,queued,,Awaiting assignment in a later resource-aware wave.
+D03-10,"Linux kernel, bootloader, BIOS, UEFI and drivers",Review graphics driver baseline,queued,,Awaiting assignment in a later resource-aware wave.
+D03-11,"Linux kernel, bootloader, BIOS, UEFI and drivers",Review storage controller support,queued,,Awaiting assignment in a later resource-aware wave.
+D03-12,"Linux kernel, bootloader, BIOS, UEFI and drivers",Review network driver support,queued,,Awaiting assignment in a later resource-aware wave.
+D03-13,"Linux kernel, bootloader, BIOS, UEFI and drivers",Plan BIOS QEMU firmware and boot test,queued,,Awaiting assignment in a later resource-aware wave.
+D03-14,"Linux kernel, bootloader, BIOS, UEFI and drivers",Plan UEFI OVMF firmware and boot test,queued,,Awaiting assignment in a later resource-aware wave.
+D03-15,"Linux kernel, bootloader, BIOS, UEFI and drivers",Capture BIOS serial and QEMU diagnostics,queued,,Awaiting assignment in a later resource-aware wave.
+D03-16,"Linux kernel, bootloader, BIOS, UEFI and drivers",Capture UEFI serial and QEMU diagnostics,queued,,Awaiting assignment in a later resource-aware wave.
+D03-17,"Linux kernel, bootloader, BIOS, UEFI and drivers","Verify GRUB, kernel, initramfs and root mount",queued,,Awaiting assignment in a later resource-aware wave.
+D03-18,"Linux kernel, bootloader, BIOS, UEFI and drivers",Verify installed disk BIOS boot,queued,,Awaiting assignment in a later resource-aware wave.
+D03-19,"Linux kernel, bootloader, BIOS, UEFI and drivers",Verify installed disk UEFI boot,queued,,Awaiting assignment in a later resource-aware wave.
+D03-20,"Linux kernel, bootloader, BIOS, UEFI and drivers",Document unsupported hardware limits,queued,,Awaiting assignment in a later resource-aware wave.
+D04-01,"KDE Plasma, UI, desktop services and responsiveness",Confirm Debian Trixie Plasma package baseline,queued,,Awaiting assignment in a later resource-aware wave.
+D04-02,"KDE Plasma, UI, desktop services and responsiveness",Check no testing-branch KDE packages are introduced,queued,,Awaiting assignment in a later resource-aware wave.
+D04-03,"KDE Plasma, UI, desktop services and responsiveness",Review desktop session startup configuration,queued,,Awaiting assignment in a later resource-aware wave.
+D04-04,"KDE Plasma, UI, desktop services and responsiveness",Review display manager readiness checks,queued,,Awaiting assignment in a later resource-aware wave.
+D04-05,"KDE Plasma, UI, desktop services and responsiveness",Validate Plasma configuration test suite,queued,,Awaiting assignment in a later resource-aware wave.
+D04-06,"KDE Plasma, UI, desktop services and responsiveness",Validate desktop application menu entries,queued,,Awaiting assignment in a later resource-aware wave.
+D04-07,"KDE Plasma, UI, desktop services and responsiveness",Check KIO SMB worker dependency,queued,,Awaiting assignment in a later resource-aware wave.
+D04-08,"KDE Plasma, UI, desktop services and responsiveness",Review system tray and native tool integration,queued,,Awaiting assignment in a later resource-aware wave.
+D04-09,"KDE Plasma, UI, desktop services and responsiveness",Check native hardware status client path,queued,,Awaiting assignment in a later resource-aware wave.
+D04-10,"KDE Plasma, UI, desktop services and responsiveness",Review KDE autostart services,queued,,Awaiting assignment in a later resource-aware wave.
+D04-11,"KDE Plasma, UI, desktop services and responsiveness",Inspect duplicate background processes,queued,,Awaiting assignment in a later resource-aware wave.
+D04-12,"KDE Plasma, UI, desktop services and responsiveness",Review desktop branding asset references,queued,,Awaiting assignment in a later resource-aware wave.
+D04-13,"KDE Plasma, UI, desktop services and responsiveness",Validate ShreeOS visual identity in image,queued,,Awaiting assignment in a later resource-aware wave.
+D04-14,"KDE Plasma, UI, desktop services and responsiveness",Check live desktop permission behavior,queued,,Awaiting assignment in a later resource-aware wave.
+D04-15,"KDE Plasma, UI, desktop services and responsiveness",Verify ShreeOS utility availability in live session,queued,,Awaiting assignment in a later resource-aware wave.
+D04-16,"KDE Plasma, UI, desktop services and responsiveness",Review desktop shutdown and reboot behavior,queued,,Awaiting assignment in a later resource-aware wave.
+D04-17,"KDE Plasma, UI, desktop services and responsiveness",Check accessibility and display defaults,queued,,Awaiting assignment in a later resource-aware wave.
+D04-18,"KDE Plasma, UI, desktop services and responsiveness",Perform graphical session usability inspection,queued,,Awaiting assignment in a later resource-aware wave.
+D04-19,"KDE Plasma, UI, desktop services and responsiveness",Measure desktop readiness time,queued,,Awaiting assignment in a later resource-aware wave.
+D04-20,"KDE Plasma, UI, desktop services and responsiveness",Document tested desktop hardware matrix,queued,,Awaiting assignment in a later resource-aware wave.
+D05-01,"CPU, RAM, startup and storage performance",Audit existing performance probe methodology,passed,performance_pipeline_review,Probe and capture pipeline reviewed
+D05-02,"CPU, RAM, startup and storage performance",Audit run aggregation and median calculation,passed,performance_pipeline_review,Aggregation and comparison implementation reviewed
+D05-03,"CPU, RAM, startup and storage performance",Audit baseline versus candidate comparison rules,passed,baseline_perf_audit,Comparison methodology audited
+D05-04,"CPU, RAM, startup and storage performance",Verify exact measurement environment matching,passed,baseline_measurement_audit,Measurement reproducibility audit
+D05-05,"CPU, RAM, startup and storage performance",Pin QEMU and firmware measurement inputs,queued,,Awaiting assignment in a later resource-aware wave.
+D05-06,"CPU, RAM, startup and storage performance",Capture candidate ISO SHA and probe hash,queued,,Awaiting assignment in a later resource-aware wave.
+D05-07,"CPU, RAM, startup and storage performance",Capture immutable baseline ISO SHA and probe hash,queued,,Awaiting assignment in a later resource-aware wave.
+D05-08,"CPU, RAM, startup and storage performance",Measure baseline boot time across repeated runs,blocked,,Requires Linux runner artifact and functioning guest probe
+D05-09,"CPU, RAM, startup and storage performance",Measure candidate boot time across repeated runs,blocked,,Candidate not yet built from updated source SHA
+D05-10,"CPU, RAM, startup and storage performance",Measure baseline desktop readiness,blocked,,Baseline ISO exists but valid desktop-ready measurements are not established
+D05-11,"CPU, RAM, startup and storage performance",Measure candidate desktop readiness,blocked,,Candidate ISO not yet built from updated source SHA
+D05-12,"CPU, RAM, startup and storage performance",Measure baseline idle RAM and CPU,blocked,,Baseline numeric metrics are unavailable
+D05-13,"CPU, RAM, startup and storage performance",Measure candidate idle RAM and CPU,blocked,,Candidate numeric metrics are unavailable
+D05-14,"CPU, RAM, startup and storage performance",Inspect major startup resource consumers,queued,,Awaiting assignment in a later resource-aware wave.
+D05-15,"CPU, RAM, startup and storage performance",Review service startup ordering and delays,queued,,Awaiting assignment in a later resource-aware wave.
+D05-16,"CPU, RAM, startup and storage performance",Review logging overhead in the hardware daemon,queued,,Awaiting assignment in a later resource-aware wave.
+D05-17,"CPU, RAM, startup and storage performance",Compare storage and ISO footprint,queued,,Awaiting assignment in a later resource-aware wave.
+D05-18,"CPU, RAM, startup and storage performance",Investigate performance regressions using evidence,queued,,Awaiting assignment in a later resource-aware wave.
+D05-19,"CPU, RAM, startup and storage performance",Preserve failed performance-run diagnostics,queued,,Awaiting assignment in a later resource-aware wave.
+D05-20,"CPU, RAM, startup and storage performance",Publish only comparable measured results,queued,,Awaiting assignment in a later resource-aware wave.
+D06-01,"Calamares, installation and recovery",Review pinned Calamares 3.3.14 configuration schema,passed,installer_config_review,Pinned Calamares source/config audit
+D06-02,"Calamares, installation and recovery",Verify supported guided partition layout syntax,queued,,Awaiting assignment in a later resource-aware wave.
+D06-03,"Calamares, installation and recovery",Verify UEFI ESP auto-add behavior,queued,,Awaiting assignment in a later resource-aware wave.
+D06-04,"Calamares, installation and recovery",Review shellprocess ROOT and firmware type expansion,passed,installer_size_review,ROOT/firmware expansion and helper flow source reviewed
+D06-05,"Calamares, installation and recovery",Review host-side mounted target discovery,queued,,Awaiting assignment in a later resource-aware wave.
+D06-06,"Calamares, installation and recovery",Validate BIOS helper target disk topology checks,queued,,Awaiting assignment in a later resource-aware wave.
+D06-07,"Calamares, installation and recovery",Verify helper runs after bootloader and package stages,queued,,Awaiting assignment in a later resource-aware wave.
+D06-08,"Calamares, installation and recovery",Review root and user creation configuration,queued,,Awaiting assignment in a later resource-aware wave.
+D06-09,"Calamares, installation and recovery",Test guided install on disposable GPT disk,blocked,,Requires graphical Linux/QEMU install environment and disposable disk
+D06-10,"Calamares, installation and recovery",Test manual partition install path,queued,,Awaiting assignment in a later resource-aware wave.
+D06-11,"Calamares, installation and recovery",Verify installation completes without Calamares errors,queued,,Awaiting assignment in a later resource-aware wave.
+D06-12,"Calamares, installation and recovery",Verify GRUB install completes in target,queued,,Awaiting assignment in a later resource-aware wave.
+D06-13,"Calamares, installation and recovery",Detach ISO after installation,queued,,Awaiting assignment in a later resource-aware wave.
+D06-14,"Calamares, installation and recovery",Boot installed disk independently in UEFI,queued,,Awaiting assignment in a later resource-aware wave.
+D06-15,"Calamares, installation and recovery",Boot installed disk independently in BIOS,queued,,Awaiting assignment in a later resource-aware wave.
+D06-16,"Calamares, installation and recovery",Verify first login and KDE desktop startup,queued,,Awaiting assignment in a later resource-aware wave.
+D06-17,"Calamares, installation and recovery",Verify APT and privilege escalation after install,queued,,Awaiting assignment in a later resource-aware wave.
+D06-18,"Calamares, installation and recovery",Verify settings persist after reboot,queued,,Awaiting assignment in a later resource-aware wave.
+D06-19,"Calamares, installation and recovery",Run recovery and initramfs regression tests,queued,,Awaiting assignment in a later resource-aware wave.
+D06-20,"Calamares, installation and recovery",Update install acceptance verdict from actual evidence,queued,,Awaiting assignment in a later resource-aware wave.
+D07-01,"Security, permissions and hardware daemon auditing",Audit IPC authorization fail-closed behavior,passed,security_arch_audit,Daemon authorization audit; follow-up review pending
+D07-02,"Security, permissions and hardware daemon auditing",Audit peer credential and supplementary-group checks,passed,security_arch_audit,Peer credentials and group authorization reviewed
+D07-03,"Security, permissions and hardware daemon auditing",Review daemon privilege drop to shreed user,queued,,Awaiting assignment in a later resource-aware wave.
+D07-04,"Security, permissions and hardware daemon auditing",Review service group and runtime directory access,queued,,Awaiting assignment in a later resource-aware wave.
+D07-05,"Security, permissions and hardware daemon auditing",Fix daemon socket path and runtime directory mismatch,passed,root,Socket path fixed in header/client/script/docs/package contract; tests passed
+D07-06,"Security, permissions and hardware daemon auditing",Fix root-run hardware test daemon group ownership,passed,root,Test daemon setgid and socket GID assertion added; Linux CI pending
+D07-07,"Security, permissions and hardware daemon auditing",Verify socket file mode remains 0660,queued,,Awaiting assignment in a later resource-aware wave.
+D07-08,"Security, permissions and hardware daemon auditing",Verify denied peer cannot issue hardware queries,queued,,Awaiting assignment in a later resource-aware wave.
+D07-09,"Security, permissions and hardware daemon auditing",Review read-only scope of hardware operations,queued,,Awaiting assignment in a later resource-aware wave.
+D07-10,"Security, permissions and hardware daemon auditing",Audit daemon file and log permissions,queued,,Awaiting assignment in a later resource-aware wave.
+D07-11,"Security, permissions and hardware daemon auditing",Review systemd capability bounding set,queued,,Awaiting assignment in a later resource-aware wave.
+D07-12,"Security, permissions and hardware daemon auditing",Review systemd filesystem and kernel protections,queued,,Awaiting assignment in a later resource-aware wave.
+D07-13,"Security, permissions and hardware daemon auditing",Inspect unsafe root-owned writable paths,queued,,Awaiting assignment in a later resource-aware wave.
+D07-14,"Security, permissions and hardware daemon auditing",Review package scripts for permission weakening,queued,,Awaiting assignment in a later resource-aware wave.
+D07-15,"Security, permissions and hardware daemon auditing",Check credential file mode 0600 regressions,queued,,Awaiting assignment in a later resource-aware wave.
+D07-16,"Security, permissions and hardware daemon auditing",Review daemon resource and connection limits,queued,,Awaiting assignment in a later resource-aware wave.
+D07-17,"Security, permissions and hardware daemon auditing",Check rejection log coalescing behavior,queued,,Awaiting assignment in a later resource-aware wave.
+D07-18,"Security, permissions and hardware daemon auditing",Run hardware daemon tests on Linux CI,queued,,Awaiting assignment in a later resource-aware wave.
+D07-19,"Security, permissions and hardware daemon auditing",Review desktop client access group membership,passed,security_arch_audit,"security_arch_audit re-review confirmed socket path, group ownership, non-root test expectation, and system-feature coverage; local system-feature suite passes"
+D07-20,"Security, permissions and hardware daemon auditing",Record security audit findings and residual risks,queued,,Awaiting assignment in a later resource-aware wave.
+D08-01,"CI/CD, workflows, caching and reproducibility",Review lint workflow shell and Python coverage,queued,,Awaiting assignment in a later resource-aware wave.
+D08-02,"CI/CD, workflows, caching and reproducibility",Review unified ISO workflow stage dependencies,queued,,Awaiting assignment in a later resource-aware wave.
+D08-03,"CI/CD, workflows, caching and reproducibility",Review release workflow publication gates,queued,,Awaiting assignment in a later resource-aware wave.
+D08-04,"CI/CD, workflows, caching and reproducibility",Review performance baseline workflow artifact retention,queued,,Awaiting assignment in a later resource-aware wave.
+D08-05,"CI/CD, workflows, caching and reproducibility",Audit cache key includes all relevant source inputs,passed,artifact_provenance_review,Cache input/provenance changes reviewed
+D08-06,"CI/CD, workflows, caching and reproducibility",Validate cached manifest source commit,passed,artifact_provenance_review,Expected source commit verification reviewed
+D08-07,"CI/CD, workflows, caching and reproducibility",Require native package in artifact manifest,passed,root,Native package manifest requirement wired and cache tests pass
+D08-08,"CI/CD, workflows, caching and reproducibility",Review workflow diagnostics on failure,queued,,Awaiting assignment in a later resource-aware wave.
+D08-09,"CI/CD, workflows, caching and reproducibility",Check workflow YAML syntax locally,passed,root,Workflow YAML parsed locally
+D08-10,"CI/CD, workflows, caching and reproducibility",Review current PR CI run conclusions by SHA,queued,,Awaiting assignment in a later resource-aware wave.
+D08-11,"CI/CD, workflows, caching and reproducibility",Trigger workflows for candidate commit,in_progress,root,Current local changes need commit and normal push before candidate CI
+D08-12,"CI/CD, workflows, caching and reproducibility",Verify Stage A package tests on candidate SHA,queued,,Awaiting assignment in a later resource-aware wave.
+D08-13,"CI/CD, workflows, caching and reproducibility",Verify Stage B ISO artifact on candidate SHA,queued,,Awaiting assignment in a later resource-aware wave.
+D08-14,"CI/CD, workflows, caching and reproducibility",Verify Stage C BIOS and UEFI tests on candidate SHA,queued,,Awaiting assignment in a later resource-aware wave.
+D08-15,"CI/CD, workflows, caching and reproducibility",Review release workflow install acceptance gate,queued,,Awaiting assignment in a later resource-aware wave.
+D08-16,"CI/CD, workflows, caching and reproducibility",Verify branch review and required-check policy,queued,,Awaiting assignment in a later resource-aware wave.
+D08-17,"CI/CD, workflows, caching and reproducibility",Inspect workflow permission scopes,queued,,Awaiting assignment in a later resource-aware wave.
+D08-18,"CI/CD, workflows, caching and reproducibility",Review artifact retention and provenance metadata,queued,,Awaiting assignment in a later resource-aware wave.
+D08-19,"CI/CD, workflows, caching and reproducibility",Document reproducible Linux build dependencies,queued,,Awaiting assignment in a later resource-aware wave.
+D08-20,"CI/CD, workflows, caching and reproducibility",Recheck CI status after any follow-up fixes,queued,,Awaiting assignment in a later resource-aware wave.
+D09-01,"QEMU, ISO, hardware compatibility and automated testing",Audit QEMU harness timeout and cleanup behavior,passed,performance_pipeline_review,QEMU harness lifecycle and capture behavior reviewed
+D09-02,"QEMU, ISO, hardware compatibility and automated testing",Preserve logs and screenshots on test failures,passed,root,Failure diagnostic preservation tests pass locally
+D09-03,"QEMU, ISO, hardware compatibility and automated testing",Review QEMU serial capture configuration,queued,,Awaiting assignment in a later resource-aware wave.
+D09-04,"QEMU, ISO, hardware compatibility and automated testing",Validate BIOS boot test harness,passed,firmware_crossboot_audit,BIOS/UEFI validation plan reviewed
+D09-05,"QEMU, ISO, hardware compatibility and automated testing",Validate UEFI boot test harness,passed,firmware_crossboot_audit,OVMF/firmware and cross-boot requirements reviewed
+D09-06,"QEMU, ISO, hardware compatibility and automated testing",Check OVMF firmware availability on host,blocked,,This Windows host has no Linux VM/WSL distro or discovered OVMF firmware
+D09-07,"QEMU, ISO, hardware compatibility and automated testing",Inspect ISO El Torito catalog,queued,,Awaiting assignment in a later resource-aware wave.
+D09-08,"QEMU, ISO, hardware compatibility and automated testing",Inspect UEFI boot image presence,queued,,Awaiting assignment in a later resource-aware wave.
+D09-09,"QEMU, ISO, hardware compatibility and automated testing",Extract and validate SquashFS contents,queued,,Awaiting assignment in a later resource-aware wave.
+D09-10,"QEMU, ISO, hardware compatibility and automated testing",Verify ISO package manifest,queued,,Awaiting assignment in a later resource-aware wave.
+D09-11,"QEMU, ISO, hardware compatibility and automated testing",Verify ISO native executable payload,queued,,Awaiting assignment in a later resource-aware wave.
+D09-12,"QEMU, ISO, hardware compatibility and automated testing",Verify installer module payload in ISO,queued,,Awaiting assignment in a later resource-aware wave.
+D09-13,"QEMU, ISO, hardware compatibility and automated testing",Build candidate ISO from exact source SHA,in_progress,root,Candidate artifact required from exact tested SHA
+D09-14,"QEMU, ISO, hardware compatibility and automated testing",Capture candidate ISO size and SHA-256,blocked,,New candidate ISO is not yet available
+D09-15,"QEMU, ISO, hardware compatibility and automated testing",Boot candidate ISO in BIOS QEMU,blocked,,New candidate ISO is not yet available
+D09-16,"QEMU, ISO, hardware compatibility and automated testing",Boot candidate ISO in UEFI QEMU,blocked,,New candidate ISO is not yet available
+D09-17,"QEMU, ISO, hardware compatibility and automated testing",Verify SDDM and Plasma session readiness,queued,,Awaiting assignment in a later resource-aware wave.
+D09-18,"QEMU, ISO, hardware compatibility and automated testing",Check shutdown and reboot paths in QEMU,queued,,Awaiting assignment in a later resource-aware wave.
+D09-19,"QEMU, ISO, hardware compatibility and automated testing",Run graphical QEMU install acceptance,blocked,,No completed interactive Calamares acceptance evidence
+D09-20,"QEMU, ISO, hardware compatibility and automated testing",Retain ISO validation logs and screenshots,queued,,Awaiting assignment in a later resource-aware wave.
+D10-01,"Release engineering, evidence and documentation",Review release acceptance document requirements,passed,root,Release acceptance remains NOT ACCEPTED pending genuine install
+D10-02,"Release engineering, evidence and documentation",Maintain 200-row engineering assignment ledger,in_progress,root,Ledger final update after candidate CI and acceptance work
+D10-03,"Release engineering, evidence and documentation",Update architecture docs for Debian-based integration,passed,root,Architecture documentation changes reviewed locally
+D10-04,"Release engineering, evidence and documentation",Document supported Debian and Plasma baseline,queued,,Awaiting assignment in a later resource-aware wave.
+D10-05,"Release engineering, evidence and documentation",Review image build and artifact provenance docs,passed,root,Image provenance and package architecture docs updated
+D10-06,"Release engineering, evidence and documentation",Document ISO size cap and measurement,queued,,Awaiting assignment in a later resource-aware wave.
+D10-07,"Release engineering, evidence and documentation",Collect exact source and artifact checksums,in_progress,artifact_identity_audit,Independent audit of exact tested ISO to release artifact identity is underway.
+D10-08,"Release engineering, evidence and documentation",Prepare machine-readable release manifest schema,queued,,Awaiting assignment in a later resource-aware wave.
+D10-09,"Release engineering, evidence and documentation",Review release asset naming and split rules,queued,,Awaiting assignment in a later resource-aware wave.
+D10-10,"Release engineering, evidence and documentation",Check public release tags before any publish,queued,,Awaiting assignment in a later resource-aware wave.
+D10-11,"Release engineering, evidence and documentation",Verify official release workflow gate behavior,queued,,Awaiting assignment in a later resource-aware wave.
+D10-12,"Release engineering, evidence and documentation",Document USB and VM installation instructions,queued,,Awaiting assignment in a later resource-aware wave.
+D10-13,"Release engineering, evidence and documentation",Document troubleshooting and known limitations,queued,,Awaiting assignment in a later resource-aware wave.
+D10-14,"Release engineering, evidence and documentation",Document native tools and package management,queued,,Awaiting assignment in a later resource-aware wave.
+D10-15,"Release engineering, evidence and documentation",Record verified BIOS and UEFI results,queued,,Awaiting assignment in a later resource-aware wave.
+D10-16,"Release engineering, evidence and documentation",Record real performance comparison evidence,queued,,Awaiting assignment in a later resource-aware wave.
+D10-17,"Release engineering, evidence and documentation",Record interactive installer evidence,queued,,Awaiting assignment in a later resource-aware wave.
+D10-18,"Release engineering, evidence and documentation",Confirm no release publication before all gates,queued,,Awaiting assignment in a later resource-aware wave.
+D10-19,"Release engineering, evidence and documentation",Prepare final A-J report evidence links,passed,root,A-J evidence structure preserved from user request
+D10-20,"Release engineering, evidence and documentation","Recheck original repository, worktree and stash preservation",passed,root,Original checkout and both existing stashes rechecked

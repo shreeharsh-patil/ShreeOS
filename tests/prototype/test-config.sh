@@ -16,7 +16,7 @@ packages="$CONFIG_DIR/config/package-lists/shreeos-base.list.chroot"
 actual="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$packages" | sort)"
 unique="$(printf '%s\n' "$actual" | uniq)"
 test "$actual" = "$unique"
-for required in apt ca-certificates live-boot live-config-systemd \
+for required in apt ca-certificates live-boot live-config-systemd user-setup \
   linux-image-amd64 network-manager systemd-sysv passwd; do
   grep -Fxq "$required" "$packages" || {
     echo "Prototype package list is missing: $required" >&2
@@ -62,6 +62,13 @@ grep -Fq 'apt-get check' "$boot_check"
 grep -Fq 'lsblk -ndo TYPE' "$boot_check"
 grep -Fq 'NetworkManager.service' "$boot_check"
 grep -Fq 'nmcli -t -f TYPE,STATE device status' "$boot_check"
+grep -Fq 'continuing with offline boot' "$boot_check"
+if grep -Fq "fail 'the Ethernet interface did not receive a default route'" "$boot_check"; then
+  echo 'Offline network must not fail live boot validation.' >&2
+  exit 1
+fi
+grep -Fq 'SHREEOS_BOOT_CHECK: Ethernet DHCP route is active' \
+  "$REPO_ROOT/tests/prototype/test-iso.sh"
 grep -Fq 'unexpectedly has sudo access' "$boot_check"
 if grep -Eq 'live-config\.components=[^ ]*sudo' \
   "$REPO_ROOT/scripts/build-debian-prototype.sh"; then
@@ -299,5 +306,6 @@ for bundle in office multimedia; do
   test -s "$CONFIG_DIR/features/toolsets/$bundle.list.chroot"
   grep -Fq "$bundle" "$CONFIG_DIR/features/includes.chroot/usr/local/bin/shreeos-software"
 done
-grep -Fq '/run/live/medium' "$plasma_includes/usr/local/bin/shreeos-plasma-first-login"
+grep -Fq '/run/live/medium' \
+  "$CONFIG_DIR/config/includes.chroot/lib/live/config-hooks/2000-lock-live-user"
 printf 'Debian prototype configuration contract passed.\n'

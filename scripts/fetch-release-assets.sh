@@ -87,4 +87,3 @@ cat -- "${parts[@]}" >"$destination/$iso_name"
   exit 1
 }
 printf 'Reassembled and verified %s\n' "$iso_name"
-
