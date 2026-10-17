@@ -15,11 +15,13 @@ set -eu
 WINDOW_SECONDS=30
 DESKTOP_WAIT_SECONDS=180
 SETTLE_SECONDS=15
+PERFORMANCE_TIME_HELPER=/usr/local/lib/shreeos/performance-time.sh
 
 emit() { printf 'SHREEOS_PERF %s=%s\n' "$1" "$2"; }
 
 desktop_ready() {
-  profile="$(cat /etc/shreeos/image-profile 2>/dev/null || echo unknown)"
+  [ -r /etc/shreeos/image-profile ] || return 1
+  profile="$(cat /etc/shreeos/image-profile 2>/dev/null || true)"
   case "$profile" in
     plasma)
       systemctl is-active --quiet sddm.service &&
@@ -34,7 +36,7 @@ desktop_ready() {
         pgrep -u shree -x plank >/dev/null &&
         [ -f /home/shree/.config/shreeos/xfce-session-ready ]
       ;;
-    *) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -67,37 +69,40 @@ to_mib() {
 }
 
 to_ms() {
-  # systemd-analyze prints "1.234s", "123ms", or "1min 2.345s".
-  case "${1:-}" in
-    '') echo 0 ;;
-    *ms) printf '%.0f\n' "$(printf '%s' "${1%ms}" | tr -dc '0-9.')" ;;
-    *min*)
-      awk -v raw="$1" 'BEGIN {
-        split(raw, parts, "min");
-        printf "%.0f\n", (parts[1] + 0) * 60000 + (parts[2] + 0) * 1000
-      }'
-      ;;
-    *s) awk -v v="$(printf '%s' "${1%s}" | tr -dc '0-9.')" 'BEGIN { printf "%.0f\n", v * 1000 }' ;;
-    *) echo 0 ;;
-  esac
+  shreeos_duration_to_ms "${1:-}"
 }
 
 # --- Cold boot ---------------------------------------------------------------
 probe_started="$(cut -d' ' -f1 /proc/uptime)"
 if command -v systemd-analyze >/dev/null 2>&1; then
+  if [ ! -r "$PERFORMANCE_TIME_HELPER" ]; then
+    emit boot_total_ms 0
+    echo "Missing performance duration helper: $PERFORMANCE_TIME_HELPER" >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  . "$PERFORMANCE_TIME_HELPER"
   summary="$(systemd-analyze time 2>/dev/null || true)"
   if [ -n "$summary" ]; then
     firmware="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(firmware\)).*/\1/p')"
     loader="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(loader\)).*/\1/p')"
     kernel="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(kernel\)).*/\1/p')"
     userspace="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(userspace\)).*/\1/p')"
-    total="$(printf '%s\n' "$summary" | sed -n 's/.*= *\([0-9.][^ ]*\)$/\1/p')"
+    total="$(shreeos_extract_boot_total "$summary")"
     reached="$(printf '%s\n' "$summary" | sed -n 's/.*reached after \([0-9.][^ ]*\) .*/\1/p')"
     emit boot_firmware_ms "$(to_ms "$firmware")"
     emit boot_loader_ms "$(to_ms "$loader")"
     emit boot_kernel_ms "$(to_ms "$kernel")"
     emit boot_userspace_ms "$(to_ms "$userspace")"
-    emit boot_total_ms "$(to_ms "$total")"
+    boot_total_ms="$(to_ms "$total")"
+    case "$boot_total_ms" in
+      ''|*[!0-9]*|0)
+        emit boot_total_ms 0
+        echo "Could not parse a positive systemd boot duration from: $summary" >&2
+        exit 1
+        ;;
+    esac
+    emit boot_total_ms "$boot_total_ms"
     emit graphical_reached_ms "$(to_ms "$reached")"
   fi
   # The slowest units are the actionable part of a boot-time regression.
@@ -170,7 +175,8 @@ cpu_sample() {
   awk '/^cpu / {
     total = 0
     for (field = 2; field <= 9; field++) total += $field
-    printf "%s %s\n", $5, total
+    # Linux reports iowait separately; waiting for storage is not CPU work.
+    printf "%s %s\n", $5 + $6, total
   }' /proc/stat
 }
 
@@ -205,5 +211,47 @@ top_cpu="$(ps -eo pcpu=,comm= --sort=-pcpu 2>/dev/null | head -n 5 |
 emit top_cpu_pct "${top_cpu:-none}"
 emit probe_elapsed_s "$(awk -v start="$probe_started" -v now="$(cut -d' ' -f1 /proc/uptime)" \
   'BEGIN { printf "%.0f\n", now - start }')"
+
+# Storage is measured only when the host harness attached its fresh, blank
+# QEMU scratch disk with this exact serial. Never select a disk by size or by
+# device name, and never write to an unmarked device.
+storage_device=""
+for serial_path in /sys/block/*/device/serial; do
+  [ -r "$serial_path" ] || continue
+  [ "$(cat "$serial_path" 2>/dev/null || true)" = SHREEOSPERF ] || continue
+  block_name="${serial_path#/sys/block/}"
+  block_name="${block_name%%/*}"
+  candidate_device="/dev/$block_name"
+  if [ -b "$candidate_device" ]; then
+    storage_device="$candidate_device"
+    break
+  fi
+done
+if [ -n "$storage_device" ]; then
+  storage_size_mib=64
+  start_ns="$(date +%s%N)"
+  dd if=/dev/zero of="$storage_device" bs=1M count="$storage_size_mib" \
+    oflag=direct conv=fdatasync status=none
+  end_ns="$(date +%s%N)"
+  storage_write_mib_s="$(awk -v start="$start_ns" -v end="$end_ns" \
+    -v size="$storage_size_mib" 'BEGIN {
+      seconds = (end - start) / 1000000000
+      if (seconds <= 0) exit 1
+      printf "%.2f", size / seconds
+    }')"
+  start_ns="$(date +%s%N)"
+  dd if="$storage_device" of=/dev/null bs=1M count="$storage_size_mib" \
+    iflag=direct status=none
+  end_ns="$(date +%s%N)"
+  storage_read_mib_s="$(awk -v start="$start_ns" -v end="$end_ns" \
+    -v size="$storage_size_mib" 'BEGIN {
+      seconds = (end - start) / 1000000000
+      if (seconds <= 0) exit 1
+      printf "%.2f", size / seconds
+    }')"
+  emit storage_size_mib "$storage_size_mib"
+  emit storage_write_mib_s "$storage_write_mib_s"
+  emit storage_read_mib_s "$storage_read_mib_s"
+fi
 
 printf 'SHREEOS_PERF_END\n'

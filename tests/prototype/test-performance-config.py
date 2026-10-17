@@ -24,6 +24,8 @@ PROFILE = ROOT / "prototype/debian-live/profiles/plasma"
 INCLUDES = PROFILE / "includes.chroot"
 BIN = INCLUDES / "usr/local/bin"
 PACKAGE_LIST = PROFILE / "package-lists/shreeos-plasma.list.chroot"
+PERFORMANCE_TIME = (ROOT / "prototype/debian-live/config/includes.chroot"
+                    / "usr/local/lib/shreeos/performance-time.sh")
 
 
 def shell():
@@ -505,6 +507,10 @@ class MeasurementProvenanceTests(unittest.TestCase):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
         for tool in ("unsquashfs", "xvfb-run", "sha256sum"):
             self.assertIn(tool, report)
+        self.assertIn('CAPTURE_ONLY:-0', report)
+        self.assertIn('-bios "$BIOS_ROM"', report)
+        self.assertIn('dpkg-query -W -f=', report)
+        self.assertIn('bios_rom_sha256=', report)
 
     def test_performance_runner_rejects_a_different_embedded_probe(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
@@ -514,21 +520,76 @@ class MeasurementProvenanceTests(unittest.TestCase):
         baseline = (ROOT / ".github/workflows/performance-baseline.yml").read_text(encoding="utf-8")
         self.assertIn('install -D "../measurement-harness/$probe_path" "$probe_path"', baseline)
         self.assertIn('install -D "../measurement-harness/$unit_path" "$unit_path"', baseline)
+        self.assertIn('install -D "../measurement-harness/$time_helper_path" "$time_helper_path"', baseline)
         self.assertIn("expected_changes=", baseline)
+        self.assertIn("aggregate-performance-runs.py", baseline)
+        self.assertIn("baseline-evidence/run-3/performance-candidate.tsv", baseline)
+        self.assertIn("shreeos-performance-baseline-${{ github.run_id }}", baseline)
+        self.assertIn('CAPTURE_ONLY=1 QEMU_LOG_DIR=', baseline)
+        self.assertIn('qemu-system-x86=1:10.0.13+ds-0+deb13u1', baseline)
+
+    def test_idle_cpu_treats_iowait_as_idle_and_storage_only_targets_the_tagged_scratch_disk(self):
+        probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
+        self.assertIn('printf "%s %s\\n", $5 + $6, total', probe)
+        self.assertIn('= SHREEOSPERF', probe)
+        self.assertIn('dd if=/dev/zero of="$storage_device"', probe)
+        self.assertIn('iflag=direct status=none', probe)
 
     def test_performance_comparison_requires_matching_probe_hashes(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
         self.assertIn('baseline_probe_sha256=', report)
         self.assertIn('baseline_probe_service_sha256=', report)
+        self.assertIn('baseline_probe_time_helper_sha256=', report)
+        self.assertIn("qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel", report)
+        self.assertIn("# host_cpu_model=%s", report)
+        self.assertIn("# qemu_command=%s", report)
         self.assertIn('[ "$baseline_probe_sha256" != "$probe_sha256" ]', report)
         self.assertIn('[ "$baseline_probe_service_sha256" != "$probe_service_sha256" ]', report)
+        self.assertIn('[ "$baseline_probe_time_helper_sha256" != "$probe_time_helper_sha256" ]', report)
+        self.assertIn('informational only; backing storage varies by runner', report)
+
+    def test_unknown_profile_cannot_falsely_mark_desktop_ready(self):
+        probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
+        self.assertIn('[ -r /etc/shreeos/image-profile ] || return 1', probe)
+        self.assertIn('*) return 1 ;;', probe)
+
+    def test_release_perf_uses_capture_all_then_median_aggregate_gate(self):
+        release = (ROOT / ".github/workflows/shreeos-release.yml").read_text(encoding="utf-8")
+        self.assertIn('container:\n      image: debian:trixie-slim', release)
+        self.assertIn('qemu-system-x86=1:10.0.13+ds-0+deb13u1', release)
+        self.assertIn('if ! CAPTURE_ONLY=1 QEMU_LOG_DIR=', release)
+        self.assertIn('continuing to remaining samples', release)
+        self.assertIn('scripts/compare-performance-runs.py', release)
 
     def test_boot_time_parser_handles_minute_and_second_values(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
-        minutes_case = probe.index("    *min*)")
-        seconds_case = probe.index("    *s) awk")
-        self.assertLess(minutes_case, seconds_case,
-                        "Minute durations must be parsed before the generic seconds suffix")
+        self.assertIn("shreeos_extract_boot_total", probe)
+        self.assertIn("Could not parse a positive systemd boot duration", probe)
+
+    def test_systemd_total_parser_handles_trailing_graphical_parenthetical(self):
+        sample = ("Startup finished in 4.321s (firmware) + 1.234s (loader) + "
+                  "3.456s (kernel) + 2min 3.123s (userspace) = "
+                  "2min 12.134s (graphical.target reached after 2min 2.345s in userspace).")
+        result = subprocess.run(
+            [shell(), "-c", '. "$1"; shreeos_extract_boot_total "$2"',
+             "sh", shell_path(PERFORMANCE_TIME), sample],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "2min 12.134s")
+
+    def test_systemd_duration_conversion_covers_units_and_zero(self):
+        for duration, expected in (("123ms", "123"), ("1.250s", "1250"),
+                                   ("2min 3.500s", "123500"), ("0s", "0"),
+                                   ("invalid", "0")):
+            with self.subTest(duration=duration):
+                result = subprocess.run(
+                    [shell(), "-c", '. "$1"; shreeos_duration_to_ms "$2"',
+                     "sh", shell_path(PERFORMANCE_TIME), duration],
+                    capture_output=True, text=True, timeout=10,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
 
 
 if __name__ == "__main__":

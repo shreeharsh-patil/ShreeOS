@@ -17,6 +17,7 @@
 #   QEMU_LOG_DIR  directory to copy the report, metrics, serial log and QEMU log into
 #   RESUME        "1" to compare against tests/prototype/performance-baseline.tsv
 #   REQUIRE_BASELINE "1" to fail if no untouched-build baseline is recorded
+#   CAPTURE_ONLY  "1" to validate and retain one sample but defer target gates
 #   MEASURED_SOURCE_COMMIT  source commit used to build the measured ISO
 set -Eeuo pipefail
 
@@ -35,7 +36,7 @@ MEASURED_SOURCE_COMMIT="${MEASURED_SOURCE_COMMIT:-${GITHUB_SHA:-}}"
 # shellcheck source=scripts/performance-targets.sh
 source "$REPO_ROOT/scripts/performance-targets.sh"
 
-for tool in realpath xorriso unsquashfs qemu-system-x86_64 qemu-img xvfb-run timeout setsid sha256sum python3; do
+for tool in realpath xorriso unsquashfs qemu-system-x86_64 qemu-img xvfb-run timeout setsid sha256sum python3 dpkg-query; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Missing performance test dependency: $tool" >&2
     exit 2
@@ -78,6 +79,7 @@ SERIAL="$TEST_DIR/serial.log"
 MONITOR="$TEST_DIR/monitor.sock"
 MONITOR_LOG="$TEST_DIR/monitor.log"
 SCREEN="$TEST_DIR/performance-screen.ppm"
+MENU_SCREEN="$TEST_DIR/performance-menu.ppm"
 SQUASHFS="$TEST_DIR/filesystem.squashfs"
 TARGET_DISK="$TEST_DIR/target.raw"
 
@@ -95,26 +97,104 @@ cmp -s "$PROBE_SOURCE" "$TEST_DIR/probe" || {
   exit 1
 }
 SERVICE_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service"
+TIME_HELPER_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/usr/local/lib/shreeos/performance-time.sh"
 unsquashfs -q -cat "$SQUASHFS" etc/systemd/system/shreeos-perf-probe.service >"$TEST_DIR/probe.service" 2>/dev/null || true
 cmp -s "$SERVICE_SOURCE" "$TEST_DIR/probe.service" || {
   echo 'Image uses a different performance probe unit than the measurement harness; baseline and candidate would not be comparable.' >&2
   exit 1
 }
+unsquashfs -q -cat "$SQUASHFS" usr/local/lib/shreeos/performance-time.sh >"$TEST_DIR/performance-time.sh" 2>/dev/null || true
+cmp -s "$TIME_HELPER_SOURCE" "$TEST_DIR/performance-time.sh" || {
+  echo 'Image uses a different boot-time parser than the measurement harness; baseline and candidate would not be comparable.' >&2
+  exit 1
+}
 probe_sha256="$(sha256sum "$PROBE_SOURCE" | awk '{print $1}')"
 probe_service_sha256="$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
+probe_time_helper_sha256="$(sha256sum "$TIME_HELPER_SOURCE" | awk '{print $1}')"
+qemu_version="$(qemu-system-x86_64 --version | head -n 1 | tr -d '\r')"
+qemu_package_version="$(dpkg-query -W -f='${Version}' qemu-system-x86)"
+seabios_package_version="$(dpkg-query -W -f='${Version}' seabios)"
+BIOS_ROM=/usr/share/seabios/bios-256k.bin
+[ -r "$BIOS_ROM" ] || { echo "Missing pinned SeaBIOS ROM: $BIOS_ROM" >&2; exit 2; }
+bios_rom_sha256="$(sha256sum "$BIOS_ROM" | awk '{print $1}')"
+host_kernel="$(uname -sr)"
+host_cpu_model="$(awk -F: '/^model name[[:space:]]*:/ { sub(/^[[:space:]]+/, "", $2); print $2; exit }' /proc/cpuinfo)"
+host_mem_total_kib="$(awk '$1 == "MemTotal:" { print $2; exit }' /proc/meminfo)"
+firmware="SeaBIOS:$BIOS_ROM:sha256=$bios_rom_sha256"
+qemu_profile='q35;4096MiB;2-vCPU;virtio-graphics;no-network;fresh-2GiB-virtio-raw-disk;cache=none;explicit-SeaBIOS;CD-ROM-first;1280x800'
 
 qemu-img create -q -f raw "$TARGET_DISK" 2G
 
-# The probe window is 30 s plus boot. Keep extra QEMU time for timeout diagnostics.
-deadline=$((SECONDS + 900))
-qemu_timeout=960
-setsid xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
-  -machine q35 -m 4096 -smp 2 -vga virtio -nic none \
-  -drive "file=$TARGET_DISK,format=raw,if=virtio" \
-  -cdrom "$ISO" -boot order=d \
-  -display gtk -monitor "unix:$MONITOR,server,nowait" \
-  -serial stdio -no-reboot >"$SERIAL" 2>"$TEST_DIR/qemu.log" &
+# The probe window is 30 s plus boot. A 25-minute guest deadline leaves five
+# minutes for QEMU to terminate cleanly while keeping three attempts bounded.
+deadline=$((SECONDS + 1500))
+qemu_timeout=1800
+qemu_args=(
+  -machine q35 -m 4096 -smp 2 -vga virtio -nic none
+  -bios "$BIOS_ROM"
+  -drive "file=$TARGET_DISK,format=raw,if=none,id=perf-disk,cache=none"
+  -device virtio-blk-pci,drive=perf-disk,serial=SHREEOSPERF
+  -cdrom "$ISO" -boot order=d
+  -display gtk -monitor "unix:$MONITOR,server,nowait"
+  -serial stdio -no-reboot
+)
+qemu_invocation=(
+  setsid xvfb-run -a -s "-screen 0 1280x800x24"
+  timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64
+  "${qemu_args[@]}"
+)
+printf -v qemu_command '%q ' "${qemu_invocation[@]}"
+qemu_command="${qemu_command% }"
+"${qemu_invocation[@]}" >"$SERIAL" 2>"$TEST_DIR/qemu.log" &
 emulator_pid=$!
+
+# Select the normal live entry from the graphical GRUB menu. Without this
+# explicit keypress the baseline can remain at the menu indefinitely in QEMU.
+sleep 20
+if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
+  python3 - "$MONITOR" "$MENU_SCREEN" <<'PY' >>"$MONITOR_LOG" 2>&1
+import socket
+import sys
+import time
+
+monitor, screen = sys.argv[1:]
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.settimeout(3)
+for _ in range(10):
+    try:
+        client.connect(monitor)
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit("QEMU monitor socket did not become available for GRUB selection")
+
+def read_prompt():
+    response = bytearray()
+    deadline = time.monotonic() + 10
+    while b"(qemu) " not in response:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("QEMU monitor did not return a prompt for GRUB selection")
+        client.settimeout(remaining)
+        chunk = client.recv(4096)
+        if not chunk:
+            raise ConnectionError("QEMU monitor closed during GRUB selection")
+        response.extend(chunk)
+
+def command(value):
+    client.sendall((value + "\n").encode())
+    read_prompt()
+
+try:
+    read_prompt()
+    command(f"screendump {screen}")
+    command("sendkey home")
+    command("sendkey ret")
+finally:
+    client.close()
+PY
+fi
 
 while ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; do
   if ! kill -0 "$emulator_pid" 2>/dev/null || (( SECONDS >= deadline )); then
@@ -229,6 +309,9 @@ if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
     if [ -s "$SCREEN" ]; then
       cp -f "$SCREEN" "$QEMU_LOG_DIR/performance-screen.ppm"
     fi
+    if [ -s "$MENU_SCREEN" ]; then
+      cp -f "$MENU_SCREEN" "$QEMU_LOG_DIR/performance-menu.ppm"
+    fi
   fi
   tail -n 60 "$TEST_DIR/qemu.log" >&2 || true
   tail -n 60 "$MONITOR_LOG" >&2 || true
@@ -240,38 +323,72 @@ if [ "$status" -ne 0 ]; then
   [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
   [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
   [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MONITOR_LOG" ] || cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"; }
+  [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MENU_SCREEN" ] || cp -f "$MENU_SCREEN" "$QEMU_LOG_DIR/performance-menu.ppm"; }
   exit 1
 fi
 
 # Metrics are stored as key<TAB>value. Several values (top RSS, top CPU, the
 # systemd blame list) legitimately contain spaces, so a space-delimited parse
 # would truncate them and silently weaken the report.
-grep 'SHREEOS_PERF ' "$SERIAL" | sed 's/^.*SHREEOS_PERF //' |
-  awk 'index($0, "=") { key = substr($0, 1, index($0, "=") - 1);
-                        value = substr($0, index($0, "=") + 1);
-                        print key "\t" value }' |
-  sort -u >"$TEST_DIR/metrics.tsv"
-[ -s "$TEST_DIR/metrics.tsv" ] || { echo 'No SHREEOS_PERF metrics were captured.' >&2; exit 1; }
+awk 'index($0, "SHREEOS_PERF ") {
+       line = substr($0, index($0, "SHREEOS_PERF ") + length("SHREEOS_PERF "))
+       separator = index(line, "=")
+       if (separator > 1) print substr(line, 1, separator - 1) "\t" substr(line, separator + 1)
+     }' "$SERIAL" | sort -u >"$TEST_DIR/metrics.tsv"
 
 {
   printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
   printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
-  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network\n'
+  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed\n'
   printf '# probe_sha256=%s\n' "$probe_sha256"
   printf '# probe_service_sha256=%s\n' "$probe_service_sha256"
-  awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms)$/ {
+  printf '# probe_time_helper_sha256=%s\n' "$probe_time_helper_sha256"
+  printf '# qemu_version=%s\n' "$qemu_version"
+  printf '# qemu_package_version=%s\n' "$qemu_package_version"
+  printf '# seabios_package_version=%s\n' "$seabios_package_version"
+  printf '# bios_rom_sha256=%s\n' "$bios_rom_sha256"
+  printf '# host_kernel=%s\n' "$host_kernel"
+  printf '# host_cpu_model=%s\n' "$host_cpu_model"
+  printf '# host_mem_total_kib=%s\n' "$host_mem_total_kib"
+  printf '# firmware=%s\n' "$firmware"
+  printf '# qemu_profile=%s\n' "$qemu_profile"
+  printf '# qemu_command=%s\n' "$qemu_command"
+  awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms|desktop_ready|pss_available|units_failed|storage_write_mib_s|storage_read_mib_s)$/ {
     print $1 "\t" $2
   }' "$TEST_DIR/metrics.tsv"
 } >"$TEST_DIR/performance-candidate.tsv"
 
-# Persist the raw evidence before interpreting it.
+# Persist raw and parsed evidence before interpreting or rejecting any metric.
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
 [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MONITOR_LOG" ] || cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"; }
+[ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/metrics.tsv" "$QEMU_LOG_DIR/metrics.tsv"
+[ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/performance-candidate.tsv" "$QEMU_LOG_DIR/performance-candidate.tsv"
+[ -s "$TEST_DIR/metrics.tsv" ] || { echo 'No SHREEOS_PERF metrics were captured; logs and empty metrics were retained.' >&2; exit 1; }
 
 metric() {
   awk -F'\t' -v key="$1" '$1 == key { print $2; exit }' "$TEST_DIR/metrics.tsv"
 }
+
+require_positive_metric() {
+  key="$1"
+  measured="$(metric "$key")"
+  if ! awk -v value="$measured" 'BEGIN {
+    if (value !~ /^[0-9]+([.][0-9]+)?$/ || value + 0 <= 0) exit 1
+  }'; then
+    printf 'Missing or non-positive %s measurement: %s\n' "$key" "${measured:-missing}" >&2
+    exit 1
+  fi
+}
+
+for required_positive in boot_total_ms graphical_reached_ms storage_write_mib_s storage_read_mib_s; do
+  require_positive_metric "$required_positive"
+done
+if [ "$(metric desktop_ready)" != 1 ]; then
+  printf 'The live desktop did not reach the required ready state: %s\n' \
+    "$(metric desktop_ready)" >&2
+  exit 1
+fi
 
 REPORT="$TEST_DIR/performance-report.md"
 {
@@ -281,7 +398,7 @@ REPORT="$TEST_DIR/performance-report.md"
   # shellcheck disable=SC2016
   printf 'Image: `%s`\n' "$(basename -- "$ISO")"
   printf 'Measured: %s (UTC)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, no network\n\n'
+  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, QEMU BIOS, no network; serial-tagged QEMU scratch disk, 64 MiB sequential direct write/read\n\n'
   printf '| Metric | Measured |\n| --- | --- |\n'
   while IFS=$'\t' read -r key value; do
     [ -n "$key" ] || continue
@@ -292,6 +409,7 @@ REPORT="$TEST_DIR/performance-report.md"
 
 # --- Enforce the release targets --------------------------------------------
 failures=0
+if [ "${CAPTURE_ONLY:-0}" != 1 ]; then
 if [ "$MEASURED_SOURCE_COMMIT" = "$UNTOUCHED_BASELINE_COMMIT" ]; then
   for required_metric in mem_used_mib cpu_busy_pct boot_total_ms graphical_reached_ms; do
     measured="$(metric "$required_metric")"
@@ -331,6 +449,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
   baseline_conditions="$(awk -F= '$1 == "# conditions" { print $2; exit }' "$BASELINE")"
   baseline_probe_sha256="$(awk -F= '$1 == "# probe_sha256" { print $2; exit }' "$BASELINE")"
   baseline_probe_service_sha256="$(awk -F= '$1 == "# probe_service_sha256" { print $2; exit }' "$BASELINE")"
+  baseline_probe_time_helper_sha256="$(awk -F= '$1 == "# probe_time_helper_sha256" { print $2; exit }' "$BASELINE")"
   if [ "$baseline_source_commit" != "$UNTOUCHED_BASELINE_COMMIT" ]; then
     printf 'Baseline provenance must name untouched source %s.\n' \
       "$UNTOUCHED_BASELINE_COMMIT" >&2
@@ -342,7 +461,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,no-network' ]; then
+  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed' ]; then
     printf 'Baseline was not measured under the controlled release conditions.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))
@@ -359,7 +478,22 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  for required_metric in mem_used_mib cpu_busy_pct boot_total_ms graphical_reached_ms; do
+  if ! [[ "$baseline_probe_time_helper_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ "$baseline_probe_time_helper_sha256" != "$probe_time_helper_sha256" ]; then
+    printf 'Baseline boot-time parser hash does not match this candidate.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  for environment_field in qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel host_cpu_model host_mem_total_kib firmware qemu_profile; do
+    baseline_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$BASELINE")"
+    measured_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$TEST_DIR/performance-candidate.tsv")"
+    if [ -z "$baseline_environment" ] || [ "$baseline_environment" != "$measured_environment" ]; then
+      printf 'Baseline %s does not match the candidate measurement environment.\n' "$environment_field" >&2
+      baseline_valid=0
+      failures=$((failures + 1))
+    fi
+  done
+  for required_metric in mem_used_mib cpu_busy_pct boot_total_ms graphical_reached_ms desktop_ready storage_write_mib_s storage_read_mib_s; do
     baseline_value="$(awk -F'\t' -v key="$required_metric" \
       '$1 == key { print $2; exit }' "$BASELINE")"
     if ! [[ "$baseline_value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
@@ -368,14 +502,32 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
       failures=$((failures + 1))
     fi
   done
+  for required_positive in boot_total_ms graphical_reached_ms desktop_ready storage_write_mib_s storage_read_mib_s; do
+    baseline_value="$(awk -F'\t' -v key="$required_positive" \
+      '$1 == key { print $2; exit }' "$BASELINE")"
+    if ! awk -v value="$baseline_value" 'BEGIN {
+      if (value !~ /^[0-9]+([.][0-9]+)?$/ || value + 0 <= 0) exit 1
+    }'; then
+      printf 'Baseline is missing a positive %s measurement.\n' "$required_positive" >&2
+      baseline_valid=0
+      failures=$((failures + 1))
+    fi
+  done
   while IFS=$'\t' read -r key baseline_value; do
     case "$key" in '' | '#'*) continue ;; esac
     measured="$(metric "$key")"
     [ -n "$measured" ] || continue
+    if [[ "$key" == storage_* ]]; then
+      printf '| %s | %s | %s | informational only; backing storage varies by runner |\n' \
+        "$key" "$baseline_value" "$measured" >>"$REPORT"
+      continue
+    fi
+    regression_delta='((m - b) / b) * 100'
     verdict="$(awk -v b="$baseline_value" -v m="$measured" -v t="$REGRESSION_TOLERANCE_PCT" \
-      'BEGIN {
+      -v expression="$regression_delta" 'BEGIN {
         if (b <= 0) { print "no-baseline"; exit }
-        delta = ((m - b) / b) * 100
+        if (expression == "((b - m) / b) * 100") delta = ((b - m) / b) * 100
+        else delta = ((m - b) / b) * 100
         printf "%.1f%% %s", delta, (delta > t ? "REGRESSION" : "ok")
       }')"
     printf '| %s | %s | %s | %s |\n' "$key" "$baseline_value" "$measured" "$verdict" >>"$REPORT"
@@ -421,10 +573,15 @@ else
     failures=$((failures + 1))
   fi
 fi
+else
+  printf '\n## Aggregate acceptance deferred\n\nThis valid sample was captured without per-run performance gates. The workflow evaluates all three samples after aggregation.\n' >>"$REPORT"
+fi
 
 {
   printf '\n## Target evaluation\n\n'
-  if [ "$MEASURED_SOURCE_COMMIT" = "$UNTOUCHED_BASELINE_COMMIT" ] && [ "$failures" -eq 0 ]; then
+  if [ "${CAPTURE_ONLY:-0}" = 1 ]; then
+    printf 'Sample capture and structural validation completed; aggregate target and baseline gates are deferred.\n'
+  elif [ "$MEASURED_SOURCE_COMMIT" = "$UNTOUCHED_BASELINE_COMMIT" ] && [ "$failures" -eq 0 ]; then
     printf 'Untouched-build baseline measurements are complete.\n'
   elif [ "$failures" -eq 0 ]; then
     printf 'All absolute and comparative performance release targets were met.\n'
@@ -451,4 +608,8 @@ cat "$REPORT"
   printf 'Performance gate failed with %s problem(s).\n' "$failures" >&2
   exit 1
 }
-printf 'Performance gate passed.\n'
+if [ "${CAPTURE_ONLY:-0}" = 1 ]; then
+  printf 'Performance sample captured; aggregate acceptance is deferred.\n'
+else
+  printf 'Performance gate passed.\n'
+fi
