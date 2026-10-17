@@ -167,8 +167,8 @@ class CommandTests(unittest.TestCase):
                            CALLS=shell_path(log))
                 path_setup = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; '
             else:
-                env = dict(os.environ, CALLS=log.as_posix())
-                path_setup = f'PATH="{folder.as_posix()}:$PATH"; export PATH; '
+                env = dict(os.environ, PATH=f'{folder.as_posix()}{os.pathsep}{os.environ["PATH"]}',
+                           CALLS=log.as_posix())
             for mode, factor, blur in (("balanced", "0.8", "true"), ("performance", "0.5", "false"),
                                        ("reduced", "0", "false")):
                 if log.exists():
