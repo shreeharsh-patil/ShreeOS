@@ -139,6 +139,108 @@ static int reject_unprivileged_peer(const char *socket_path) {
     return WEXITSTATUS(status) == 0;
 }
 
+static int allow_supplementary_hardware_group_peer(const char *socket_path) {
+    struct passwd *nobody = getpwnam("nobody");
+    struct group *hardware = getgrnam("shree-hardware");
+    pid_t child;
+    int status;
+
+    if (!nobody || !hardware) return 0;
+    child = fork();
+    if (child < 0) return 0;
+    if (child == 0) {
+        gid_t groups[] = {hardware->gr_gid};
+        char response[SHREED_RESPONSE_MAX + 1];
+        if (setgroups(1, groups) != 0 || setgid(nobody->pw_gid) != 0 ||
+            setuid(nobody->pw_uid) != 0) {
+            _exit(2);
+        }
+        _exit(exchange(socket_path, "{\"action\":\"ping\"}", response,
+                       sizeof(response)) == 0 && strstr(response, "\"pong\":true") != NULL ? 0 : 1);
+    }
+    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 0;
+    return WEXITSTATUS(status) == 0;
+}
+
+static int rejected_peer_flood_is_coalesced(const char *socket_path, const char *log_path) {
+    char line[512];
+    int rejection_records = 0;
+    FILE *log_file;
+
+    for (int attempt = 0; attempt < 64; attempt++) {
+        if (!reject_unprivileged_peer(socket_path)) return 0;
+    }
+    usleep(100000);
+    log_file = fopen(log_path, "r");
+    if (!log_file) return 0;
+    while (fgets(line, sizeof(line), log_file)) {
+        if (strstr(line, "rejected unauthenticated local peer")) rejection_records++;
+    }
+    fclose(log_file);
+    return rejection_records == 1;
+}
+
+static int connect_and_hold(const char *socket_path) {
+    const char *request = "{\"action\":\"ping\"}";
+    char response[SHREED_RESPONSE_MAX + 1];
+    uint32_t length = htonl((uint32_t)strlen(request));
+    int fd = connect_socket(socket_path);
+
+    if (fd < 0 || write_all(fd, &length, sizeof(length)) != 0 ||
+        write_all(fd, request, strlen(request)) != 0 ||
+        read_all(fd, &length, sizeof(length)) != 0) {
+        if (fd >= 0) close(fd);
+        return -1;
+    }
+    length = ntohl(length);
+    if (length == 0 || length >= sizeof(response) || read_all(fd, response, length) != 0) {
+        close(fd);
+        return -1;
+    }
+    response[length] = '\0';
+    if (!strstr(response, "\"pong\":true")) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static int per_uid_rejection_log_is_coalesced(const char *socket_path, const char *log_path) {
+    int held[SHREED_MAX_CLIENTS_PER_UID];
+    char line[512];
+    int rejection_records = 0;
+    int log_opened = 0;
+    FILE *log_file;
+
+    for (size_t index = 0; index < SHREED_MAX_CLIENTS_PER_UID; index++) {
+        held[index] = connect_and_hold(socket_path);
+        if (held[index] < 0) {
+            while (index > 0) close(held[--index]);
+            return 0;
+        }
+    }
+    for (int attempt = 0; attempt < 64; attempt++) {
+        char response[SHREED_RESPONSE_MAX + 1];
+        if (exchange(socket_path, "{\"action\":\"ping\"}", response,
+                     sizeof(response)) == 0) {
+            for (size_t index = 0; index < SHREED_MAX_CLIENTS_PER_UID; index++) close(held[index]);
+            return 0;
+        }
+    }
+    usleep(100000);
+    log_file = fopen(log_path, "r");
+    if (log_file) {
+        log_opened = 1;
+        while (fgets(line, sizeof(line), log_file)) {
+            if (strstr(line, "rejected peer exceeding per-UID IPC limit")) rejection_records++;
+        }
+        fclose(log_file);
+    }
+    for (size_t index = 0; index < SHREED_MAX_CLIENTS_PER_UID; index++) close(held[index]);
+    usleep(100000);
+    return log_opened && rejection_records == 1;
+}
+
 int main(int argc, char **argv) {
     char socket_path[108];
     char log_path[108];
@@ -154,6 +256,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Usage: test-shreed <daemon-path>\n");
         return 2;
     }
+    signal(SIGPIPE, SIG_IGN);
     snprintf(socket_path, sizeof(socket_path), "/tmp/shreed-test-%ld.sock", (long)getpid());
     snprintf(log_path, sizeof(log_path), "/tmp/shreed-test-%ld.log", (long)getpid());
     unlink(socket_path);
@@ -179,6 +282,16 @@ int main(int argc, char **argv) {
          strstr(response, "\"code\":\"INVALID_REQUEST") != NULL);
     if (geteuid() == 0) {
         TEST("nonmember local peer is denied", reject_unprivileged_peer(socket_path));
+        if (getgrnam("shree-hardware")) {
+            TEST("supplementary shree-hardware group member is authorized",
+                 allow_supplementary_hardware_group_peer(socket_path));
+        } else {
+            printf("SKIP: supplementary group authorization requires shree-hardware group\n");
+        }
+        TEST("rejected peer flood produces one bounded log record",
+             rejected_peer_flood_is_coalesced(socket_path, log_path));
+        TEST("per-UID rejection flood produces one bounded log record",
+             per_uid_rejection_log_is_coalesced(socket_path, log_path));
     } else {
         printf("SKIP: nonmember local peer authorization test requires root\n");
     }
