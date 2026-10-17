@@ -96,9 +96,14 @@ jobs:
           bash tests/unified/test-iso-contents.sh "$iso"
       - name: Verify ISO provenance and enforce the 1.9 GB size cap
         run: |
+          set -Eeuo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
           iso="out/shreeos(${version}).iso"
+          catalog_report="out/shreeos(${version})-eltorito.txt"
           test "$(stat -c '%s' "$iso")" -lt 1900000000
+          xorriso -indev "$iso" -report_el_torito plain 2>&1 | tee "$catalog_report"
+          grep -Eq '^El Torito boot img[[:space:]]*:[[:space:]]*[0-9]+[[:space:]]+BIOS[[:space:]]+y([[:space:]]|$)' "$catalog_report"
+          grep -Eq '^El Torito boot img[[:space:]]*:[[:space:]]*[0-9]+[[:space:]]+UEFI[[:space:]]+y([[:space:]]|$)' "$catalog_report"
           python3 scripts/verify-unified-artifact.py \
             "$iso" "$iso.sha256" \
             "out/shreeos(${version})-packages.txt" \
@@ -127,6 +132,7 @@ jobs:
             out/shreeos*.iso
             out/shreeos*.iso.sha256
             out/SHA256SUMS
+            out/shreeos*-eltorito.txt
             out/shreeos*-packages.txt
             out/shreeos*-build-info.txt
             out/shreeos*-manifest.json
