@@ -141,7 +141,10 @@ The interactive acceptance record in
 [`release/INSTALL-ACCEPTANCE.md`](release/INSTALL-ACCEPTANCE.md) is still
 `NOT ACCEPTED`; a disposable-disk install, detached-media reboot, account
 login, and installed APT update must be recorded before a stable release.
-Do not use the current image to install on physical disks.
+Current development and CI images are for disposable VM validation only. Do
+not flash them to USB media or install them on physical disks. The
+[manual VM acceptance procedure](release/INSTALL-ACCEPTANCE.md) is a QA
+checklist, not a supported end-user installation guide.
 
 ## Downloads and checksums
 
@@ -154,9 +157,10 @@ containing the ISO with:
 sha256sum -c 'shreeos(0.4.0).iso.sha256'
 ```
 
-To create bootable USB media from a future release, follow that release's
-instructions and verify the target device carefully: writing an image erases
-the selected USB drive.
+Do not flash a development or CI artifact to USB media. A certified public
+release will include a verified writing method for supported host operating
+systems and a clear check of the selected target device; writing an image erases
+that device.
 
 ## Packages and updates
 

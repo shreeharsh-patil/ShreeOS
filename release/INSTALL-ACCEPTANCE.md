@@ -42,7 +42,7 @@ disks.
    artifact ID. A push or manual run on `master` gives the run, artifact and
    manifest one consistent source commit. Do not rebuild the image for this
    test: the release gate publishes this same immutable artifact.
-2. Create a blank virtual disk of at least 20 GB and attach the ISO.
+2. Create a blank virtual disk of at least 25 GB and attach the ISO.
 3. Boot the ISO and let the live Plasma desktop appear. Confirm the ShreeOS
    wallpaper, top panel, centered dock, SDDM greeter branding and that every
    desktop shortcut opens a real application.
