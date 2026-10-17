@@ -38,10 +38,11 @@ unsquashfs -s "$SQUASHFS" >/dev/null
 extract_dir="$TEST_DIR/root"
 mkdir -p "$extract_dir"
 # Extract only the installer payload; the full root is hundreds of megabytes.
-for path in etc/calamares usr/local/bin usr/local/libexec \
-  usr/lib/calamares; do
-  unsquashfs -q -d "$extract_dir" "$SQUASHFS" "$path" >/dev/null 2>&1 || true
-done
+# Keep paths with shared parents in one invocation. Repeated unsquashfs calls
+# can reject an already-created parent directory, and ignoring that error can
+# silently leave later installer files out of the verification tree.
+unsquashfs -q -d "$extract_dir" "$SQUASHFS" \
+  etc/calamares usr/local/bin usr/local/libexec usr/lib/calamares >/dev/null
 
 fail() {
   printf 'INSTALLER PAYLOAD FAILED: %s\n' "$*" >&2
