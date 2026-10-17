@@ -252,6 +252,11 @@ class CommandTests(unittest.TestCase):
         self.assertIn("c12a7328-f81f-11d2-ba4b-00a0c93ec93b", helper)
         self.assertIn("21686148-6449-6e6f-744e-656564454649", helper)
         self.assertIn('chroot "$target_root" grub-install --target=i386-pc --recheck', helper)
+        builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+        self.assertRegex(
+            builder,
+            r'install -Dm0755 \\\s+"\$CONFIG_SOURCE/profiles/desktop/includes\.chroot/usr/local/libexec/shreeos-install-bios-grub" \\\s+"\$BUILD_DIR/config/includes\.chroot/usr/local/libexec/shreeos-install-bios-grub"',
+        )
         self.assertIn("grub-pc-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
                                       / "shreeos-plasma.list.chroot").read_text(encoding="utf-8"))
         self.assertIn("grub-efi-amd64-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
