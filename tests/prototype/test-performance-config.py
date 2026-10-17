@@ -249,6 +249,21 @@ class SessionStartupTests(unittest.TestCase):
         self.assertIn("smaps_rollup", probe)
         self.assertIn('emit pss_available "$pss_supported"', probe)
 
+    def test_performance_probe_target_enablement_has_no_ordering_cycle(self):
+        service = (ROOT / "prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service").read_text(encoding="utf-8")
+        timer = (ROOT / "prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.timer").read_text(encoding="utf-8")
+        builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+        self.assertNotIn("Wants=graphical.target", service)
+        self.assertIn("After=graphical.target", service)
+        self.assertIn("OnActiveSec=5s", timer)
+        self.assertIn("Unit=shreeos-perf-probe.service", timer)
+        self.assertIn("WantedBy=graphical.target", timer)
+        self.assertIn(
+            '"$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-perf-probe.timer"',
+            builder,
+        )
+        self.assertIn('if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then', builder)
+
 
 class PowerProfileTests(unittest.TestCase):
     STUBS = {
@@ -520,7 +535,9 @@ class MeasurementProvenanceTests(unittest.TestCase):
         baseline = (ROOT / ".github/workflows/performance-baseline.yml").read_text(encoding="utf-8")
         self.assertIn('install -D "../measurement-harness/$probe_path" "$probe_path"', baseline)
         self.assertIn('install -D "../measurement-harness/$unit_path" "$unit_path"', baseline)
+        self.assertIn('install -D "../measurement-harness/$timer_path" "$timer_path"', baseline)
         self.assertIn('install -D "../measurement-harness/$time_helper_path" "$time_helper_path"', baseline)
+        self.assertIn("builder_path=scripts/build-debian-prototype.sh", baseline)
         self.assertIn("expected_changes=", baseline)
         self.assertIn("aggregate-performance-runs.py", baseline)
         self.assertIn("baseline-evidence/run-3/performance-candidate.tsv", baseline)
@@ -539,13 +556,19 @@ class MeasurementProvenanceTests(unittest.TestCase):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
         self.assertIn('baseline_probe_sha256=', report)
         self.assertIn('baseline_probe_service_sha256=', report)
+        self.assertIn('baseline_probe_timer_sha256=', report)
         self.assertIn('baseline_probe_time_helper_sha256=', report)
+        self.assertIn('measurement_protocol_sha256=', report)
         self.assertIn("qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel", report)
         self.assertIn("# host_cpu_model=%s", report)
         self.assertIn("# qemu_command=%s", report)
         self.assertIn('[ "$baseline_probe_sha256" != "$probe_sha256" ]', report)
         self.assertIn('[ "$baseline_probe_service_sha256" != "$probe_service_sha256" ]', report)
+        self.assertIn('[ "$baseline_probe_timer_sha256" != "$probe_timer_sha256" ]', report)
         self.assertIn('[ "$baseline_probe_time_helper_sha256" != "$probe_time_helper_sha256" ]', report)
+        self.assertIn('[ "$baseline_measurement_protocol_sha256" != "$measurement_protocol_sha256" ]', report)
+        self.assertIn(".github/workflows/performance-baseline.yml", report)
+        self.assertIn("tests/prototype/test-performance-report.sh | sha256sum", report)
         self.assertIn('informational only; backing storage varies by runner', report)
 
     def test_unknown_profile_cannot_falsely_mark_desktop_ready(self):

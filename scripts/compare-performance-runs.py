@@ -12,7 +12,8 @@ from pathlib import Path
 BASELINE_COMMIT = "9313ebb042cf71bb148441037940b130d49920d1"
 REQUIRED_METADATA = (
     "source_commit", "iso_sha256", "conditions", "probe_sha256",
-    "probe_service_sha256", "probe_time_helper_sha256", "qemu_version",
+    "probe_service_sha256", "probe_timer_sha256", "probe_time_helper_sha256",
+    "measurement_protocol_sha256", "qemu_version",
     "qemu_package_version", "seabios_package_version", "bios_rom_sha256",
     "host_kernel", "host_cpu_model", "host_mem_total_kib", "firmware",
     "qemu_profile", "sample_count",

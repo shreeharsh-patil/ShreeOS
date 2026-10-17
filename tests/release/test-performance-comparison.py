@@ -31,7 +31,9 @@ class PerformanceComparisonTests(unittest.TestCase):
             "conditions": "2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed",
             "probe_sha256": "c" * 64,
             "probe_service_sha256": "d" * 64,
+            "probe_timer_sha256": "0" * 64,
             "probe_time_helper_sha256": "e" * 64,
+            "measurement_protocol_sha256": "1" * 64,
             "qemu_version": "QEMU emulator version 10.0.13",
             "qemu_package_version": "1:10.0.13+ds-0+deb13u1",
             "seabios_package_version": "1.16.3-2",
@@ -111,6 +113,13 @@ class PerformanceComparisonTests(unittest.TestCase):
         self._write_summary(self.candidate, metadata, self.candidate_metrics)
         failures, _ = MODULE.evaluate(self.candidate, self.baseline, self.targets, True)
         self.assertTrue(any("bios_rom_sha256" in failure for failure in failures))
+
+    def test_rejects_a_different_measurement_protocol(self) -> None:
+        metadata = dict(self.metadata)
+        metadata["measurement_protocol_sha256"] = "2" * 64
+        self._write_summary(self.candidate, metadata, self.candidate_metrics)
+        failures, _ = MODULE.evaluate(self.candidate, self.baseline, self.targets, True)
+        self.assertTrue(any("measurement_protocol_sha256" in failure for failure in failures))
 
     def test_required_baseline_must_exist_and_health_invariants_are_checked(self) -> None:
         failures, _ = MODULE.evaluate(self.candidate, None, self.targets, True)

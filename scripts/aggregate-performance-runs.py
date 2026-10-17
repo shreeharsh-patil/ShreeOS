@@ -16,7 +16,9 @@ METADATA_FIELDS = (
     "conditions",
     "probe_sha256",
     "probe_service_sha256",
+    "probe_timer_sha256",
     "probe_time_helper_sha256",
+    "measurement_protocol_sha256",
     "qemu_version",
     "qemu_package_version",
     "seabios_package_version",
@@ -138,6 +140,7 @@ def write_summary(output: Path, report: Path, samples: list[Path]) -> None:
         stream.write(f"Source commit: `{metadata['source_commit']}`\n\n")
         stream.write(f"ISO SHA-256: `{metadata['iso_sha256']}`\n\n")
         stream.write(f"Conditions: {metadata['conditions']}\n\n")
+        stream.write(f"Measurement protocol SHA-256: `{metadata['measurement_protocol_sha256']}`\n\n")
         stream.write(f"QEMU: {metadata['qemu_version']}\n\n")
         stream.write(f"QEMU package: `{metadata['qemu_package_version']}`\n\n")
         stream.write(f"Host: {metadata['host_kernel']}; {metadata['host_cpu_model']}; "

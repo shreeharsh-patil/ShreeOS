@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule the ShreeOS live performance probe after the desktop target
+ConditionPathExists=/run/live/medium
+
+[Timer]
+OnActiveSec=5s
+AccuracySec=1s
+Unit=shreeos-perf-probe.service
+
+[Install]
+WantedBy=graphical.target

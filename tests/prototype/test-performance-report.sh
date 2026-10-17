@@ -97,10 +97,16 @@ cmp -s "$PROBE_SOURCE" "$TEST_DIR/probe" || {
   exit 1
 }
 SERVICE_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service"
+TIMER_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.timer"
 TIME_HELPER_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/usr/local/lib/shreeos/performance-time.sh"
 unsquashfs -q -cat "$SQUASHFS" etc/systemd/system/shreeos-perf-probe.service >"$TEST_DIR/probe.service" 2>/dev/null || true
 cmp -s "$SERVICE_SOURCE" "$TEST_DIR/probe.service" || {
   echo 'Image uses a different performance probe unit than the measurement harness; baseline and candidate would not be comparable.' >&2
+  exit 1
+}
+unsquashfs -q -cat "$SQUASHFS" etc/systemd/system/shreeos-perf-probe.timer >"$TEST_DIR/probe.timer" 2>/dev/null || true
+cmp -s "$TIMER_SOURCE" "$TEST_DIR/probe.timer" || {
+  echo 'Image uses a different performance probe timer than the measurement harness; baseline and candidate would not be comparable.' >&2
   exit 1
 }
 unsquashfs -q -cat "$SQUASHFS" usr/local/lib/shreeos/performance-time.sh >"$TEST_DIR/performance-time.sh" 2>/dev/null || true
@@ -110,7 +116,18 @@ cmp -s "$TIME_HELPER_SOURCE" "$TEST_DIR/performance-time.sh" || {
 }
 probe_sha256="$(sha256sum "$PROBE_SOURCE" | awk '{print $1}')"
 probe_service_sha256="$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
+probe_timer_sha256="$(sha256sum "$TIMER_SOURCE" | awk '{print $1}')"
 probe_time_helper_sha256="$(sha256sum "$TIME_HELPER_SOURCE" | awk '{print $1}')"
+measurement_protocol_sha256="$(
+  cd "$REPO_ROOT"
+  sha256sum \
+    .github/workflows/performance-baseline.yml \
+    .github/workflows/shreeos-release.yml \
+    prototype/debian-live/performance-targets.tsv \
+    scripts/aggregate-performance-runs.py \
+    scripts/compare-performance-runs.py \
+    tests/prototype/test-performance-report.sh | sha256sum | awk '{print $1}'
+)"
 qemu_version="$(qemu-system-x86_64 --version | head -n 1 | tr -d '\r')"
 qemu_package_version="$(dpkg-query -W -f='${Version}' qemu-system-x86)"
 seabios_package_version="$(dpkg-query -W -f='${Version}' seabios)"
@@ -342,7 +359,9 @@ awk 'index($0, "SHREEOS_PERF ") {
   printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed\n'
   printf '# probe_sha256=%s\n' "$probe_sha256"
   printf '# probe_service_sha256=%s\n' "$probe_service_sha256"
+  printf '# probe_timer_sha256=%s\n' "$probe_timer_sha256"
   printf '# probe_time_helper_sha256=%s\n' "$probe_time_helper_sha256"
+  printf '# measurement_protocol_sha256=%s\n' "$measurement_protocol_sha256"
   printf '# qemu_version=%s\n' "$qemu_version"
   printf '# qemu_package_version=%s\n' "$qemu_package_version"
   printf '# seabios_package_version=%s\n' "$seabios_package_version"
@@ -449,7 +468,9 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
   baseline_conditions="$(awk -F= '$1 == "# conditions" { print $2; exit }' "$BASELINE")"
   baseline_probe_sha256="$(awk -F= '$1 == "# probe_sha256" { print $2; exit }' "$BASELINE")"
   baseline_probe_service_sha256="$(awk -F= '$1 == "# probe_service_sha256" { print $2; exit }' "$BASELINE")"
+  baseline_probe_timer_sha256="$(awk -F= '$1 == "# probe_timer_sha256" { print $2; exit }' "$BASELINE")"
   baseline_probe_time_helper_sha256="$(awk -F= '$1 == "# probe_time_helper_sha256" { print $2; exit }' "$BASELINE")"
+  baseline_measurement_protocol_sha256="$(awk -F= '$1 == "# measurement_protocol_sha256" { print $2; exit }' "$BASELINE")"
   if [ "$baseline_source_commit" != "$UNTOUCHED_BASELINE_COMMIT" ]; then
     printf 'Baseline provenance must name untouched source %s.\n' \
       "$UNTOUCHED_BASELINE_COMMIT" >&2
@@ -478,9 +499,21 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
+  if ! [[ "$baseline_probe_timer_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ "$baseline_probe_timer_sha256" != "$probe_timer_sha256" ]; then
+    printf 'Baseline performance probe timer hash does not match this candidate.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
   if ! [[ "$baseline_probe_time_helper_sha256" =~ ^[0-9a-f]{64}$ ]] ||
     [ "$baseline_probe_time_helper_sha256" != "$probe_time_helper_sha256" ]; then
     printf 'Baseline boot-time parser hash does not match this candidate.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  if ! [[ "$baseline_measurement_protocol_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ "$baseline_measurement_protocol_sha256" != "$measurement_protocol_sha256" ]; then
+    printf 'Baseline measurement protocol hash does not match this candidate.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))
   fi

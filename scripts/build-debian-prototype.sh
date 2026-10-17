@@ -316,10 +316,13 @@ fi
 mkdir -p "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants"
 ln -sfn ../shreeos-boot-check.service \
   "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-boot-check.service"
-# The boot performance probe is enabled on live media only. Its own unit carries
-# ConditionPathExists=/run/live/medium, so an installed system never runs it.
-ln -sfn ../shreeos-perf-probe.service \
-  "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-perf-probe.service"
+# Start the performance probe a few seconds after the graphical target is
+# reached. The timer is a quick target dependency; the long-running probe is
+# ordered after graphical.target but is not part of its startup transaction.
+if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then
+  ln -sfn ../shreeos-perf-probe.timer \
+    "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-perf-probe.timer"
+fi
 
 ISO_APPLICATION="ShreeOS Base Prototype"
 ISO_VOLUME="SHREEOS_PROTO"
