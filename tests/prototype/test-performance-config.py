@@ -255,7 +255,7 @@ class SessionStartupTests(unittest.TestCase):
         builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
         self.assertNotIn("Wants=graphical.target", service)
         self.assertIn("After=graphical.target", service)
-        self.assertIn("OnActiveSec=5s", timer)
+        self.assertIn("OnActiveSec=5min", timer)
         self.assertIn("Unit=shreeos-perf-probe.service", timer)
         self.assertIn("WantedBy=graphical.target", timer)
         self.assertIn(
