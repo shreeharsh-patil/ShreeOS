@@ -182,6 +182,34 @@ class AcceptedInstallArtifactTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("does not match the accepted record fields", result.stderr)
 
+    def test_duplicate_current_status_section_is_rejected(self):
+        text = self.record_path.read_text(encoding="utf-8")
+        self.record_path.write_text(
+            text + "\n## Status\n\n```\nVERDICT: NOT ACCEPTED\n```\n",
+            encoding="utf-8",
+        )
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("exactly one current Status section", result.stderr)
+
+    def test_duplicate_current_status_verdict_is_rejected(self):
+        text = self.record_path.read_text(encoding="utf-8")
+        self.record_path.write_text(
+            text.replace("VERDICT: ACCEPTED\n", "VERDICT: ACCEPTED\nVERDICT: NOT ACCEPTED\n", 1),
+            encoding="utf-8",
+        )
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("verdict is missing or ambiguous", result.stderr)
+
+    def test_duplicate_current_status_identity_field_is_rejected(self):
+        text = self.record_path.read_text(encoding="utf-8")
+        text = text.replace(f"Commit: {COMMIT}\n", f"Commit: {COMMIT}\nCommit: {COMMIT}\n", 1)
+        self.record_path.write_text(text, encoding="utf-8")
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("contains duplicate fields", result.stderr)
+
     def test_iso_hash_must_match_acceptance_record(self):
         self._write_record(digest="0" * 64)
         result = self._verify()

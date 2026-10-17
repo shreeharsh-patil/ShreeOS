@@ -312,6 +312,16 @@ jobs:
           iso="out/${{ steps.version.outputs.iso_name }}"
           bash tests/prototype/test-iso-squashfs.sh "$iso"
 
+      - name: Inspect and capture Debian package evidence
+        if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag')) }}
+        run: |
+          python3 scripts/capture-native-package-evidence.py \
+            --packages-dir build/debian-live-prototype/config/packages.chroot \
+            --admindir build/debian-live-prototype/chroot/var/lib/dpkg \
+            --iso "out/${{ steps.version.outputs.iso_name }}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --output-dir "$RUNNER_TEMP/shreeos-package-evidence"
+
       - name: Assert the manifest matches the tree and the artifact
         run: |
           expected_source_commit="${{ steps.accepted_artifact.outputs.source_commit }}"
@@ -373,6 +383,16 @@ jobs:
           name: shreeos-iso-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-assets/
           if-no-files-found: error
+          overwrite: true
+          retention-days: 90
+
+      - name: Upload Debian package inspection evidence
+        if: ${{ always() && !((github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'push' && github.ref_type == 'tag')) }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-debian-package-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shreeos-package-evidence/
+          if-no-files-found: warn
           overwrite: true
           retention-days: 90
 

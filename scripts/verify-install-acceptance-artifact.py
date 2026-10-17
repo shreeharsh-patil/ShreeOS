@@ -26,28 +26,35 @@ REQUIRED_EVIDENCE = (
 
 def read_accepted_record(path: Path, version: str) -> dict[str, str]:
     text = path.read_text(encoding="utf-8")
-    status_match = re.search(
-        r"^## Status\s*\n(.*?)(?=^## |\Z)",
-        text,
-        re.MULTILINE | re.DOTALL,
-    )
-    if status_match is None:
+    status_headings = list(re.finditer(r"^## Status[ \t]*$", text, re.MULTILINE))
+    if not status_headings:
         raise ValueError("INSTALL-ACCEPTANCE.md is missing its current Status section")
-    status_block = re.search(r"```[^\n]*\n(.*?)\n```", status_match.group(1), re.DOTALL)
-    if status_block is None:
+    if len(status_headings) != 1:
+        raise ValueError("INSTALL-ACCEPTANCE.md must contain exactly one current Status section")
+    status_start = status_headings[0].start()
+    section_body_start = status_headings[0].end()
+    next_section = re.search(r"^## ", text[section_body_start:], re.MULTILINE)
+    status_end = section_body_start + next_section.start() if next_section is not None else len(text)
+    status_section = text[section_body_start:status_end]
+    status_blocks = re.findall(r"```[^\n]*\n(.*?)\n```", status_section, re.DOTALL)
+    if not status_blocks:
         raise ValueError("INSTALL-ACCEPTANCE.md current Status section is missing its record block")
-    current_status = status_block.group(1)
-    current_verdict = re.search(r"^VERDICT:\s*(.*?)\s*$", current_status, re.MULTILINE)
-    if current_verdict is None or current_verdict.group(1) != "ACCEPTED":
-        verdict = current_verdict.group(1) if current_verdict else "missing"
+    if len(status_blocks) != 1:
+        raise ValueError("INSTALL-ACCEPTANCE.md current Status section must contain exactly one record block")
+    current_status = status_blocks[0]
+    current_verdicts = re.findall(r"^VERDICT:\s*(.*?)\s*$", current_status, re.MULTILINE)
+    if len(current_verdicts) != 1 or current_verdicts[0] != "ACCEPTED":
+        verdict = current_verdicts[0] if len(current_verdicts) == 1 else "missing or ambiguous"
         raise ValueError(f"Current install acceptance verdict is {verdict}, not ACCEPTED")
-    current_fields = dict(
-        re.findall(
-            r"^([A-Za-z][A-Za-z 0-9/-]*):\s*(.*?)\s*$",
-            current_status,
-            re.MULTILINE,
-        )
+    current_pairs = re.findall(
+        r"^([A-Za-z][A-Za-z 0-9/-]*):\s*(.*?)\s*$",
+        current_status,
+        re.MULTILINE,
     )
+    current_keys = [key for key, _value in current_pairs]
+    if len(current_keys) != len(set(current_keys)):
+        raise ValueError("Current install acceptance status contains duplicate fields")
+    current_fields = dict(current_pairs)
     status_identity = ("Commit", "Version", "Date", "ISO SHA256", "Workflow run ID", "Artifact ID")
     missing_status = [field for field in status_identity if not current_fields.get(field)]
     if missing_status:
@@ -57,20 +64,22 @@ def read_accepted_record(path: Path, version: str) -> dict[str, str]:
 
     # The Status section is authoritative. Do not let an older ACCEPTED record
     # override a current NOT ACCEPTED status or a mismatched current artifact.
-    history = text[:status_match.start()] + text[status_match.end():]
+    history = text[:status_start] + text[status_end:]
     records = re.findall(
         r"^VERDICT:\s*ACCEPTED\s*\n(.*?)(?=^VERDICT:|\Z)",
         history,
         re.MULTILINE | re.DOTALL,
     )
     for record in reversed(records):
-        fields = dict(
-            re.findall(
-                r"^([A-Za-z][A-Za-z 0-9/-]*):\s*(.*?)\s*$",
-                record,
-                re.MULTILINE,
-            )
+        record_pairs = re.findall(
+            r"^([A-Za-z][A-Za-z 0-9/-]*):\s*(.*?)\s*$",
+            record,
+            re.MULTILINE,
         )
+        record_keys = [key for key, _value in record_pairs]
+        if len(record_keys) != len(set(record_keys)):
+            raise ValueError("Accepted install record contains duplicate fields")
+        fields = dict(record_pairs)
         if fields.get("Version") == version:
             break
     else:
