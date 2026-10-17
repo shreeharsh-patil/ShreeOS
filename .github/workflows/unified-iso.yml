@@ -105,6 +105,12 @@ jobs:
           iso="out/shreeos(${version}).iso"
           QEMU_LOG_DIR=build-logs/unified-qemu \
             bash tests/prototype/test-iso.sh "$iso" plasma
+      - name: Prepare checksums for the immutable install-acceptance artifact
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          iso="shreeos(${version}).iso"
+          (cd out && sha256sum --check "$iso.sha256")
+          (cd out && sha256sum -- "$iso" > SHA256SUMS)
       - name: Upload development ISO, checksum and manifests
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -112,11 +118,12 @@ jobs:
           path: |
             out/shreeos*.iso
             out/shreeos*.iso.sha256
+            out/SHA256SUMS
             out/shreeos*-packages.txt
             out/shreeos*-build-info.txt
             out/shreeos*-manifest.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
       - name: Preserve BIOS/UEFI logs and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

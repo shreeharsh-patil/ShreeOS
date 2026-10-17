@@ -185,7 +185,7 @@ D10-03,"Release engineering, evidence and documentation",Update architecture doc
 D10-04,"Release engineering, evidence and documentation",Document supported Debian and Plasma baseline,queued,,Awaiting assignment in a later resource-aware wave.
 D10-05,"Release engineering, evidence and documentation",Review image build and artifact provenance docs,passed,root,Image provenance and package architecture docs updated
 D10-06,"Release engineering, evidence and documentation",Document ISO size cap and measurement,queued,,Awaiting assignment in a later resource-aware wave.
-D10-07,"Release engineering, evidence and documentation",Collect exact source and artifact checksums,queued,,Awaiting assignment in a later resource-aware wave.
+D10-07,"Release engineering, evidence and documentation",Collect exact source and artifact checksums,in_progress,artifact_identity_audit,Independent audit of exact tested ISO to release artifact identity is underway.
 D10-08,"Release engineering, evidence and documentation",Prepare machine-readable release manifest schema,queued,,Awaiting assignment in a later resource-aware wave.
 D10-09,"Release engineering, evidence and documentation",Review release asset naming and split rules,queued,,Awaiting assignment in a later resource-aware wave.
 D10-10,"Release engineering, evidence and documentation",Check public release tags before any publish,queued,,Awaiting assignment in a later resource-aware wave.

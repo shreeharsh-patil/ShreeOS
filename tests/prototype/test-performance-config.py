@@ -557,7 +557,8 @@ class MeasurementProvenanceTests(unittest.TestCase):
         release = (ROOT / ".github/workflows/shreeos-release.yml").read_text(encoding="utf-8")
         self.assertIn('container:\n      image: debian:trixie-slim', release)
         self.assertIn('qemu-system-x86=1:10.0.13+ds-0+deb13u1', release)
-        self.assertIn('if ! CAPTURE_ONLY=1 QEMU_LOG_DIR=', release)
+        self.assertIn('if ! MEASURED_SOURCE_COMMIT="${{ needs.build.outputs.source_commit }}" \\', release)
+        self.assertIn('CAPTURE_ONLY=1 QEMU_LOG_DIR=', release)
         self.assertIn('continuing to remaining samples', release)
         self.assertIn('scripts/compare-performance-runs.py', release)
 

@@ -207,6 +207,9 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged" \
     "$BUILD_DIR/config/includes.chroot/usr/local/libexec/"
+  install -Dm0755 \
+    "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-install-bios-grub" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/libexec/shreeos-install-bios-grub"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/applications/shreeos-installer.desktop" \
     "$BUILD_DIR/config/includes.chroot/usr/share/applications/"
   cp "$REPO_ROOT/branding/icons/installer.svg" \
