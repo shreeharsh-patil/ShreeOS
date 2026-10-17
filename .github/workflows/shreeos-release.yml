@@ -215,6 +215,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             live-build=1:20250505+deb13u1 \
+            gcc make libc6-dev \
             debootstrap xorriso squashfs-tools \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
             qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync util-linux \
