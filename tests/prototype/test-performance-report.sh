@@ -35,7 +35,7 @@ MEASURED_SOURCE_COMMIT="${MEASURED_SOURCE_COMMIT:-${GITHUB_SHA:-}}"
 # shellcheck source=scripts/performance-targets.sh
 source "$REPO_ROOT/scripts/performance-targets.sh"
 
-for tool in realpath xorriso unsquashfs qemu-system-x86_64 qemu-img xvfb-run timeout sha256sum python3; do
+for tool in realpath xorriso unsquashfs qemu-system-x86_64 qemu-img xvfb-run timeout setsid sha256sum python3; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Missing performance test dependency: $tool" >&2
     exit 2
@@ -76,6 +76,8 @@ QEMU_LOG_DIR="${QEMU_LOG_DIR:-}"
 
 SERIAL="$TEST_DIR/serial.log"
 MONITOR="$TEST_DIR/monitor.sock"
+MONITOR_LOG="$TEST_DIR/monitor.log"
+SCREEN="$TEST_DIR/performance-screen.ppm"
 SQUASHFS="$TEST_DIR/filesystem.squashfs"
 TARGET_DISK="$TEST_DIR/target.raw"
 
@@ -103,14 +105,15 @@ probe_service_sha256="$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
 
 qemu-img create -q -f raw "$TARGET_DISK" 2G
 
-# The window is 30 s of measurement plus boot; 15 minutes is a generous ceiling.
+# The probe window is 30 s plus boot. Keep extra QEMU time for timeout diagnostics.
 deadline=$((SECONDS + 900))
-xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 900s qemu-system-x86_64 \
+qemu_timeout=960
+setsid xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
   -machine q35 -m 4096 -smp 2 -vga virtio -nic none \
   -drive "file=$TARGET_DISK,format=raw,if=virtio" \
   -cdrom "$ISO" -boot order=d \
   -display gtk -monitor "unix:$MONITOR,server,nowait" \
-  -serial "file:$SERIAL" -no-reboot >"$TEST_DIR/qemu.log" 2>&1 &
+  -serial stdio -no-reboot >"$SERIAL" 2>"$TEST_DIR/qemu.log" &
 emulator_pid=$!
 
 while ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; do
@@ -122,7 +125,7 @@ done
 
 if grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
   # Give the guest a clean shutdown signal through the monitor.
-  python3 - "$MONITOR" <<'PY' || true
+  if ! python3 - "$MONITOR" <<'PY' >>"$MONITOR_LOG" 2>&1
 import socket
 import sys
 import time
@@ -136,13 +139,81 @@ for _ in range(5):
     except OSError:
         time.sleep(1)
 else:
-    raise SystemExit(0)
-client.recv(4096)
+    raise SystemExit("QEMU monitor socket did not become available to stop the guest")
+client.settimeout(10)
+response = bytearray()
+while b"(qemu) " not in response:
+    chunk = client.recv(4096)
+    if not chunk:
+        raise SystemExit("QEMU monitor closed before returning a prompt")
+    response.extend(chunk)
 client.sendall(b"quit\n")
 client.close()
 PY
+  then
+    kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+  fi
+else
+  # Snapshot the guest before stopping it so a missing probe marker can be
+  # distinguished from a guest that never reached the desktop.
+  python3 - "$MONITOR" "$SCREEN" <<'PY' >>"$MONITOR_LOG" 2>&1 || true
+import os
+import socket
+import sys
+import time
+
+monitor, output = sys.argv[1:]
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+for _ in range(10):
+    try:
+        client.connect(monitor)
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit("QEMU monitor socket did not become available for timeout diagnostics")
+
+def read_prompt():
+    response = bytearray()
+    deadline = time.monotonic() + 10
+    while b"(qemu) " not in response:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"QEMU monitor timed out: {response.decode(errors='replace')}")
+        client.settimeout(remaining)
+        chunk = client.recv(4096)
+        if not chunk:
+            raise ConnectionError("QEMU monitor closed before returning a prompt")
+        response.extend(chunk)
+    text = response.decode(errors="replace")
+    print(text, end="", flush=True)
+    return text
+
+def command(value):
+    client.sendall((value + "\n").encode())
+    return read_prompt()
+
+try:
+    client.settimeout(10)
+    read_prompt()
+    command("info status")
+    command(f"screendump {output}")
+    if not os.path.isfile(output) or os.path.getsize(output) == 0:
+        raise RuntimeError(f"QEMU did not create diagnostic screenshot: {output}")
+    client.sendall(b"quit\n")
+except Exception:
+    try:
+        client.sendall(b"quit\n")
+    except OSError:
+        pass
+    raise
+finally:
+    client.close()
+PY
+  kill -TERM -- "-$emulator_pid" 2>/dev/null || true
 fi
-wait "$emulator_pid" || true
+status=0
+wait "$emulator_pid" || status=$?
 
 if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
   echo 'The image never completed its performance probe.' >&2
@@ -152,8 +223,23 @@ if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
     if [ -s "$TEST_DIR/qemu.log" ]; then
       cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
     fi
+    if [ -s "$MONITOR_LOG" ]; then
+      cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"
+    fi
+    if [ -s "$SCREEN" ]; then
+      cp -f "$SCREEN" "$QEMU_LOG_DIR/performance-screen.ppm"
+    fi
   fi
   tail -n 60 "$TEST_DIR/qemu.log" >&2 || true
+  tail -n 60 "$MONITOR_LOG" >&2 || true
+  exit 1
+fi
+
+if [ "$status" -ne 0 ]; then
+  echo "QEMU exited with status $status after completing the performance probe." >&2
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MONITOR_LOG" ] || cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"; }
   exit 1
 fi
 
@@ -180,6 +266,8 @@ grep 'SHREEOS_PERF ' "$SERIAL" | sed 's/^.*SHREEOS_PERF //' |
 
 # Persist the raw evidence before interpreting it.
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+[ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+[ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MONITOR_LOG" ] || cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"; }
 
 metric() {
   awk -F'\t' -v key="$1" '$1 == key { print $2; exit }' "$TEST_DIR/metrics.tsv"

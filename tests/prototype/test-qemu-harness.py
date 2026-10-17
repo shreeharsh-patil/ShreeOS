@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = ROOT / "tests/prototype/test-iso.sh"
+PERFORMANCE_HARNESS = ROOT / "tests/prototype/test-performance-report.sh"
 
 
 class QemuHarnessTests(unittest.TestCase):
@@ -33,6 +34,17 @@ class QemuHarnessTests(unittest.TestCase):
         self.assertLess(nonzero_exit, boot_marker)
         self.assertLess(boot_marker, screenshot_guard)
         self.assertLess(screenshot_guard, screenshot_read)
+
+    def test_performance_timeout_preserves_live_serial_and_guest_diagnostics(self):
+        script = PERFORMANCE_HARNESS.read_text(encoding="utf-8")
+        self.assertIn("setsid xvfb-run", script)
+        self.assertIn("-serial stdio -no-reboot", script)
+        self.assertIn("deadline=$((SECONDS + 900))", script)
+        self.assertIn("qemu_timeout=960", script)
+        self.assertIn('command("info status")', script)
+        self.assertIn('command(f"screendump {output}")', script)
+        self.assertIn('cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"', script)
+        self.assertIn('cp -f "$SCREEN" "$QEMU_LOG_DIR/performance-screen.ppm"', script)
 
 
 if __name__ == "__main__":

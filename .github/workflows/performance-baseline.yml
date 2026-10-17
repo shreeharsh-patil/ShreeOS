@@ -48,7 +48,7 @@ jobs:
             live-build=1:20250505+deb13u1 \
             debootstrap xorriso squashfs-tools dpkg-dev \
             grub-common grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
-            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
+            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync util-linux \
             ca-certificates debian-archive-keyring python3 librsvg2-bin git
 
       - name: Confirm the exact baseline source commit
