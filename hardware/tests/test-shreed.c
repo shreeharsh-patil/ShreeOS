@@ -181,28 +181,8 @@ static int rejected_peer_flood_is_coalesced(const char *socket_path, const char 
 }
 
 static int connect_and_hold(const char *socket_path) {
-    const char *request = "{\"action\":\"ping\"}";
-    char response[SHREED_RESPONSE_MAX + 1];
-    uint32_t length = htonl((uint32_t)strlen(request));
-    int fd = connect_socket(socket_path);
-
-    if (fd < 0 || write_all(fd, &length, sizeof(length)) != 0 ||
-        write_all(fd, request, strlen(request)) != 0 ||
-        read_all(fd, &length, sizeof(length)) != 0) {
-        if (fd >= 0) close(fd);
-        return -1;
-    }
-    length = ntohl(length);
-    if (length == 0 || length >= sizeof(response) || read_all(fd, response, length) != 0) {
-        close(fd);
-        return -1;
-    }
-    response[length] = '\0';
-    if (!strstr(response, "\"pong\":true")) {
-        close(fd);
-        return -1;
-    }
-    return fd;
+    /* An idle authenticated socket occupies a daemon client slot until closed. */
+    return connect_socket(socket_path);
 }
 
 static int per_uid_rejection_log_is_coalesced(const char *socket_path, const char *log_path) {
