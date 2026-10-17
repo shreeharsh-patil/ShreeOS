@@ -125,6 +125,7 @@ jobs:
         run: |
           python3 tests/prototype/test-desktop-config.py
           python3 tests/prototype/test-plasma-config.py
+          python3 tests/prototype/test-qemu-harness.py
           python3 tests/prototype/test-system-features.py
           python3 tests/prototype/test-performance-config.py
           bash tests/prototype/test-performance-targets.sh

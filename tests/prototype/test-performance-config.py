@@ -32,6 +32,15 @@ def shell():
     return shutil.which("bash")
 
 
+def shell_path(path):
+    if os.name != "nt":
+        return str(path)
+    cygpath = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/usr/bin/cygpath.exe"
+    result = subprocess.run([str(cygpath), "-u", str(path)],
+                            check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
 def read_ini(path):
     parser = configparser.RawConfigParser()
     parser.read(path, encoding="utf-8")
@@ -140,10 +149,26 @@ class LiveCompositingTests(unittest.TestCase):
                 stub.chmod(0o755)
 
             calls = folder / "calls"
-            env = dict(os.environ, PATH=stub_dir.as_posix() + os.pathsep + os.environ["PATH"],
-                       SHREEOS_LIVE_ROOT=root.as_posix(), CALLS=calls.as_posix())
-            result = subprocess.run([shell(), self.HOOK.as_posix()],
-                                    env=env, capture_output=True, text=True, timeout=5)
+            if os.name == "nt":
+                stub_paths = [shell_path(stub) for stub in stub_dir.iterdir()]
+                subprocess.run([shell(), "-c", 'chmod +x "$@"', "sh", *stub_paths],
+                               check=True, capture_output=True, text=True)
+                env = dict(
+                    os.environ,
+                    SHREEOS_TEST_BIN=shell_path(stub_dir),
+                    SHREEOS_TEST_HOOK=shell_path(self.HOOK),
+                    SHREEOS_LIVE_ROOT=shell_path(root),
+                    CALLS=shell_path(calls),
+                    XDG_CONFIG_HOME=shell_path(root / "home/shree/.config"),
+                    HOME=shell_path(root / "home/shree"),
+                )
+                command = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; exec "$SHREEOS_TEST_HOOK"'
+                invocation = [shell(), "-c", command]
+            else:
+                env = dict(os.environ, PATH=stub_dir.as_posix() + os.pathsep + os.environ["PATH"],
+                           SHREEOS_LIVE_ROOT=root.as_posix(), CALLS=calls.as_posix())
+                invocation = [shell(), self.HOOK.as_posix()]
+            result = subprocess.run(invocation, env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             call_text = calls.read_text(encoding="utf-8") if calls.exists() else ""
             kwinrc = root / "home/shree/.config/kwinrc"
