@@ -39,7 +39,8 @@ extract_dir="$TEST_DIR/root"
 mkdir -p "$extract_dir"
 # Extract only the installer payload; the full root is hundreds of megabytes.
 for path in etc/calamares usr/local/bin/shreeos-installer \
-  usr/local/libexec/shreeos-installer-privileged usr/lib/calamares; do
+  usr/local/libexec/shreeos-installer-privileged \
+  usr/local/libexec/shreeos-install-bios-grub usr/lib/calamares; do
   unsquashfs -q -d "$extract_dir" "$SQUASHFS" "$path" >/dev/null 2>&1 || true
 done
 
