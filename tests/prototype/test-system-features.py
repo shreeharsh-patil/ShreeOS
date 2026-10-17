@@ -28,6 +28,15 @@ def shell():
     return shutil.which("bash")
 
 
+def shell_path(path):
+    if os.name != "nt":
+        return str(path)
+    cygpath = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/usr/bin/cygpath.exe"
+    result = subprocess.run([str(cygpath), "-u", str(path)],
+                            check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
 class RepositoryTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -117,7 +126,7 @@ class CommandTests(unittest.TestCase):
             with self.subTest(values=values):
                 env = dict(os.environ, SHREEOS_FIRMWARE="free", SHREEOS_TOOLSETS="")
                 env.update(values)
-                result = subprocess.run([shell(), (ROOT / "scripts/build-debian-prototype.sh").as_posix()],
+                result = subprocess.run([shell(), shell_path(ROOT / "scripts/build-debian-prototype.sh")],
                                         env=env, capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertNotIn("must be built as root", result.stderr)
@@ -131,8 +140,9 @@ class CommandTests(unittest.TestCase):
             marker.write_text("existing")
             layout = config / "plasma-org.kde.plasma.desktop-appletsrc"
             layout.write_text("custom layout")
-            env = dict(os.environ, HOME=(folder / "home").as_posix(), XDG_CONFIG_HOME=config.as_posix())
-            result = subprocess.run([shell(), (PLASMA / "usr/local/bin/shreeos-plasma-first-login").as_posix()],
+            env = dict(os.environ, HOME=shell_path(folder / "home"),
+                       XDG_CONFIG_HOME=shell_path(config))
+            result = subprocess.run([shell(), shell_path(PLASMA / "usr/local/bin/shreeos-plasma-first-login")],
                                     env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(layout.read_text(), "custom layout")
@@ -149,13 +159,27 @@ class CommandTests(unittest.TestCase):
                 stub.write_text('#!/bin/sh\nprintf "%s" "${0##*/}" >> "$CALLS"\n'
                                 'printf " <%s>" "$@" >> "$CALLS"\nprintf "\\n" >> "$CALLS"\n')
                 stub.chmod(0o755)
-            env = dict(os.environ, PATH=folder.as_posix() + (";" if os.name == "nt" else ":") + os.environ["PATH"],
-                       CALLS=log.as_posix())
+            if os.name == "nt":
+                stub_paths = [shell_path(stub) for stub in folder.iterdir()]
+                subprocess.run([shell(), "-c", 'chmod +x "$@"', "sh", *stub_paths],
+                               check=True, capture_output=True, text=True)
+                env = dict(os.environ, SHREEOS_TEST_BIN=shell_path(folder),
+                           CALLS=shell_path(log))
+                path_setup = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; '
+            else:
+                env = dict(os.environ, CALLS=log.as_posix())
+                path_setup = f'PATH="{folder.as_posix()}:$PATH"; export PATH; '
             for mode, factor, blur in (("balanced", "0.8", "true"), ("performance", "0.5", "false"),
                                        ("reduced", "0", "false")):
                 if log.exists():
                     log.unlink()
-                result = subprocess.run([shell(), (PLASMA / "usr/local/bin/shreeos-motion").as_posix(), mode],
+                if os.name == "nt":
+                    invocation = [shell(), "-c", path_setup + 'exec "$SHREEOS_TEST_SCRIPT" "$1"',
+                                  "sh", mode]
+                    env["SHREEOS_TEST_SCRIPT"] = shell_path(PLASMA / "usr/local/bin/shreeos-motion")
+                else:
+                    invocation = [shell(), shell_path(PLASMA / "usr/local/bin/shreeos-motion"), mode]
+                result = subprocess.run(invocation,
                                         env=env, text=True, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 text = log.read_text()
@@ -177,7 +201,7 @@ class CommandTests(unittest.TestCase):
         ]
         for script, arguments in cases:
             with self.subTest(script=script, arguments=arguments):
-                result = subprocess.run([shell(), script.as_posix(), *arguments],
+                result = subprocess.run([shell(), shell_path(script), *arguments],
                                         capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 2, result.stderr)
 

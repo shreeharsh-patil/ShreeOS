@@ -219,7 +219,7 @@ run_boot_test() {
     )
   fi
 
-  xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
+  setsid xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
     -machine q35 -m "$memory" -smp 2 -vga virtio -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
@@ -228,7 +228,7 @@ run_boot_test() {
   local emulator_pid=$!
   sleep 20
   if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-  if python3 - "$monitor_socket" "$menu_dump" "$splash_dump" >>"$emulator_log" 2>&1 <<'PY'
+    if python3 - "$monitor_socket" "$menu_dump" "$splash_dump" >>"$emulator_log" 2>&1 <<'PY'
 import socket
 import sys
 import time
@@ -350,7 +350,7 @@ finally:
 PY
   then
     printf 'QEMU desktop screenshot capture failed; stopping the guest.\n' >>"$emulator_log"
-    kill -TERM "$emulator_pid" 2>/dev/null || true
+    kill -TERM -- "-$emulator_pid" 2>/dev/null || true
   fi
   fi
   wait "$emulator_pid" || status=$?

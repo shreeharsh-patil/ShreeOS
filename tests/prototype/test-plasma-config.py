@@ -25,6 +25,15 @@ def read_ini(path):
     return parser
 
 
+def shell_path(path):
+    if os.name != "nt":
+        return str(path)
+    cygpath = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/usr/bin/cygpath.exe"
+    result = subprocess.run([str(cygpath), "-u", str(path)],
+                            check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
 class PlasmaConfigTests(unittest.TestCase):
     def test_every_pinned_app_has_a_launcher_and_an_installed_provider(self):
         dock = read_ini(INCLUDES / "usr/share/shreeos/defaults/plasma-plank.dconf")
@@ -140,8 +149,9 @@ class PlasmaConfigTests(unittest.TestCase):
             marker.write_text("existing profile")
             custom = home / ".config/plasma-org.kde.plasma.desktop-appletsrc"
             custom.write_text("user-owned layout")
-            env = dict(os.environ, HOME=home.as_posix(), XDG_CONFIG_HOME=(home / ".config").as_posix())
-            result = subprocess.run([shell, (INCLUDES / "usr/local/bin/shreeos-plasma-first-login").as_posix()],
+            env = dict(os.environ, HOME=shell_path(home),
+                       XDG_CONFIG_HOME=shell_path(home / ".config"))
+            result = subprocess.run([shell, shell_path(INCLUDES / "usr/local/bin/shreeos-plasma-first-login")],
                                     env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(custom.read_text(), "user-owned layout")
@@ -187,15 +197,30 @@ class PlasmaConfigTests(unittest.TestCase):
                 stub = folder / name
                 stub.write_text(body)
                 stub.chmod(0o755)
-            separator = ";" if os.name == "nt" else ":"
+            if os.name == "nt":
+                stub_paths = [shell_path(stub) for stub in folder.iterdir() if stub.name != "shreeos-plasma-first-login"]
+                subprocess.run([shell, "-c", 'chmod +x "$@"', "sh", *stub_paths],
+                               check=True, capture_output=True, text=True)
             script_text = (INCLUDES / "usr/local/bin/shreeos-plasma-first-login").read_text()
             self.assertEqual(script_text.count("/usr/local/bin/shreeos-theme"), 1)
             script = folder / "shreeos-plasma-first-login"
             script.write_text(script_text.replace("/usr/local/bin/shreeos-theme", "shreeos-theme"))
-            env = dict(os.environ, PATH=folder.as_posix() + separator + os.environ["PATH"],
-                       HOME=(folder / "home").as_posix(), XDG_CONFIG_HOME=config_home.as_posix(),
-                       SHREEOS_PLASMA_FIRST_LOGIN_SERVICE="1", CALLS=calls.as_posix())
-            result = subprocess.run([shell, script.as_posix()],
+            if os.name == "nt":
+                env = dict(os.environ,
+                           HOME=shell_path(folder / "home"),
+                           XDG_CONFIG_HOME=shell_path(config_home),
+                           SHREEOS_PLASMA_FIRST_LOGIN_SERVICE="1",
+                           CALLS=shell_path(calls),
+                           SHREEOS_TEST_BIN=shell_path(folder))
+                command = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; exec "$SHREEOS_TEST_SCRIPT"'
+                env["SHREEOS_TEST_SCRIPT"] = shell_path(script)
+                invocation = [shell, "-c", command]
+            else:
+                env = dict(os.environ, PATH=folder.as_posix() + ":" + os.environ["PATH"],
+                           HOME=(folder / "home").as_posix(), XDG_CONFIG_HOME=config_home.as_posix(),
+                           SHREEOS_PLASMA_FIRST_LOGIN_SERVICE="1", CALLS=calls.as_posix())
+                invocation = [shell, script.as_posix()]
+            result = subprocess.run(invocation,
                                     env=env, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             trace = calls.read_text().splitlines()
@@ -213,7 +238,7 @@ class PlasmaConfigTests(unittest.TestCase):
             calls.write_text("")
             Path(f"{calls}.pgrep-count").unlink()
             stable_env = dict(env, PGREP_MODE="stable")
-            result = subprocess.run([shell, script.as_posix()],
+            result = subprocess.run(invocation,
                                     env=stable_env, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(marker.is_file())
