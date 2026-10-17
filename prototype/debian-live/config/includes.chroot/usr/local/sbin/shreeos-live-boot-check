@@ -55,16 +55,12 @@ if ! systemctl is-active --quiet NetworkManager.service; then
 fi
 log 'NetworkManager is active'
 
-elapsed=0
-until nmcli -t -f TYPE,STATE device status | grep -Eq '^ethernet:connected' &&
-  ip route show default | grep -q '^default '; do
-  if [ "$elapsed" -ge 60 ]; then
-    fail 'the Ethernet interface did not receive a default route'
-  fi
-  sleep 1
-  elapsed=$((elapsed + 1))
-done
-log 'Ethernet DHCP route is active'
+if nmcli -t -f TYPE,STATE device status | grep -Eq '^ethernet:connected' &&
+  ip route show default | grep -q '^default '; then
+  log 'Ethernet DHCP route is active'
+else
+  log 'Ethernet DHCP route is unavailable; continuing with offline boot'
+fi
 
 if id -nG shree | tr ' ' '\n' | grep -Fxq sudo; then
   fail 'live account unexpectedly has sudo access'

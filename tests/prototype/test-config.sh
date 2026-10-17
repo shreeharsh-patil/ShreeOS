@@ -62,6 +62,9 @@ grep -Fq 'apt-get check' "$boot_check"
 grep -Fq 'lsblk -ndo TYPE' "$boot_check"
 grep -Fq 'NetworkManager.service' "$boot_check"
 grep -Fq 'nmcli -t -f TYPE,STATE device status' "$boot_check"
+grep -Fq 'continuing with offline boot' "$boot_check"
+grep -Fq 'SHREEOS_BOOT_CHECK: Ethernet DHCP route is active' \
+  "$REPO_ROOT/tests/prototype/test-iso.sh"
 grep -Fq 'unexpectedly has sudo access' "$boot_check"
 if grep -Eq 'live-config\.components=[^ ]*sudo' \
   "$REPO_ROOT/scripts/build-debian-prototype.sh"; then
