@@ -64,10 +64,24 @@ import re
 import sys
 
 text = open(sys.argv[1]).read()
-# The YAML sequence lists module names under "sequence:"; pull every list item.
+# The YAML sequence lists module names under "sequence:". Scope the match to
+# that block so the document marker ("---") and list keys such as "- show:"
+# cannot be mistaken for module names.
 names = []
+in_sequence = False
 for line in text.splitlines():
-    match = re.match(r"\s*-\s*([A-Za-z0-9_.@-]+)\s*$", line)
+    if not in_sequence:
+        if re.fullmatch(r"sequence:\s*", line):
+            in_sequence = True
+        continue
+    if (
+        line
+        and not line[0].isspace()
+        and not line.startswith("-")
+        and not line.lstrip().startswith("#")
+    ):
+        break
+    match = re.match(r"\s*-\s+([A-Za-z0-9_.@-]+)\s*$", line)
     if match:
         names.append(match.group(1))
 print("\n".join(names))
@@ -156,15 +170,16 @@ privileged="$extract_dir/usr/local/libexec/shreeos-installer-privileged"
 policy="$TEST_DIR/policy.xml"
 unsquashfs -q -cat "$SQUASHFS" usr/share/polkit-1/actions/org.shreeos.installer.policy \
   >"$policy" 2>/dev/null || fail 'the installer polkit policy is not packaged'
-python3 - "$policy" "$privileged" <<'PY' || fail 'the installer polkit policy is not scoped to the privileged helper'
+python3 - "$policy" "$privileged" "$extract_dir" <<'PY' || fail 'the installer polkit policy is not scoped to the privileged helper'
 import sys
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 actions = ET.parse(sys.argv[1]).findall("action")
 if len(actions) != 1:
     raise SystemExit(f"expected exactly one polkit action, found {len(actions)}")
 annotations = {node.get("key"): node.text for node in actions[0].findall("annotate")}
-expected = sys.argv[2].replace("/root/", "/")
+expected = "/" + Path(sys.argv[2]).relative_to(sys.argv[3]).as_posix()
 if annotations.get("org.freedesktop.policykit.exec.path") != expected:
     raise SystemExit("polkit action is not scoped to the packaged privileged helper")
 if annotations.get("org.freedesktop.policykit.exec.allow_gui") != "true":
