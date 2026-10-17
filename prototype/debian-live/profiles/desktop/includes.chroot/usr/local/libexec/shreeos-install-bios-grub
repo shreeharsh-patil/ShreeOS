@@ -1,0 +1,78 @@
+#!/bin/sh
+set -eu
+
+fail() {
+  printf 'ShreeOS hybrid GRUB setup: %s\n' "$*" >&2
+  exit 1
+}
+
+for tool in findmnt lsblk blkid readlink chroot awk tr; do
+  command -v "$tool" >/dev/null 2>&1 || fail "required command is missing: $tool"
+done
+[ "$#" -eq 2 ] || fail "Calamares did not provide the target root and firmware type"
+
+target_root="$1"
+firmware_type="$2"
+[ "$firmware_type" = efi ] ||
+  fail "hybrid BIOS GRUB setup requires an installer session booted in UEFI mode (got: $firmware_type)"
+
+# Run from the live system so findmnt sees Calamares' host-side mount paths.
+# Calamares 3.3.14 leaves bootLoader.installPath empty for EFI installs, so
+# derive the target from the mounted ESP and root. Both must be direct
+# partitions on the same GPT disk; do not guess from size, ordering, or names.
+case "$target_root" in
+  /*) ;;
+  *) fail "Calamares target root is not an absolute path: $target_root" ;;
+esac
+target_root="$(readlink -f -- "$target_root")"
+[ -d "$target_root" ] && [ "$target_root" != / ] ||
+  fail "Calamares target root is missing or resolves to the live root: $target_root"
+
+esp_source="$(findmnt --noheadings --raw --output SOURCE --target "$target_root/boot/efi")"
+case "$esp_source" in
+  /dev/*) ;;
+  *) fail "the target EFI system partition is not mounted at $target_root/boot/efi" ;;
+esac
+esp="$(readlink -f -- "$esp_source")"
+[ -b "$esp" ] || fail "the mounted EFI source is not a block device: $esp_source"
+esp_type="$(lsblk --noheadings --nodeps --output PARTTYPE "$esp" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+[ "$esp_type" = c12a7328-f81f-11d2-ba4b-00a0c93ec93b ] ||
+  fail "the mounted /boot/efi partition is not GPT EFI System type"
+
+parent="$(lsblk --noheadings --nodeps --output PKNAME "$esp" | tr -d '[:space:]')"
+[ -n "$parent" ] || fail "cannot resolve the disk containing the mounted ESP"
+disk="/dev/$parent"
+[ -b "$disk" ] || fail "the ESP parent is not a block device: $disk"
+disk="$(readlink -f -- "$disk")"
+partition_table="$(blkid --output value --match-tag PTTYPE "$disk" 2>/dev/null || true)"
+[ "$partition_table" = gpt ] || fail "the ESP parent is not a GPT disk: $disk"
+
+root_source="$(findmnt --noheadings --raw --output SOURCE --target "$target_root")"
+case "$root_source" in
+  /dev/*) ;;
+  *) fail "the installed root filesystem is not mounted from a device: $root_source" ;;
+esac
+root_partition="$(readlink -f -- "$root_source")"
+[ -b "$root_partition" ] || fail "the installed root source is not a block device: $root_source"
+root_type="$(lsblk --noheadings --nodeps --output TYPE "$root_partition" | tr -d '[:space:]')"
+[ "$root_type" = part ] || fail "the installed root must be a direct disk partition (found $root_type)"
+root_parent="$(lsblk --noheadings --nodeps --output PKNAME "$root_partition" | tr -d '[:space:]')"
+[ -n "$root_parent" ] || fail "cannot resolve the disk containing the installed root"
+root_disk="$(readlink -f -- "/dev/$root_parent")"
+[ "$root_disk" = "$disk" ] ||
+  fail "the installed root and ESP are not on the same disk ($root_disk and $disk)"
+
+bios_boot_type=21686148-6449-6e6f-744e-656564454649
+bios_boot_parts="$(lsblk --noheadings --raw --paths --output NAME,PARTTYPE "$disk" |
+  awk -v type="$bios_boot_type" 'tolower($2) == type { print $1 }')"
+bios_boot_count="$(printf '%s\n' "$bios_boot_parts" | awk 'NF { count++ } END { print count + 0 }')"
+[ "$bios_boot_count" -eq 1 ] ||
+  fail "the target GPT disk must contain exactly one BIOS Boot Partition (found $bios_boot_count)"
+bios_boot_partition="$(printf '%s\n' "$bios_boot_parts" | awk 'NF { print; exit }')"
+bios_boot_filesystem="$(lsblk --noheadings --nodeps --output FSTYPE "$bios_boot_partition" | tr -d '[:space:]')"
+[ -z "$bios_boot_filesystem" ] || fail "the BIOS Boot Partition must remain unformatted"
+[ -d "$target_root/usr/lib/grub/i386-pc" ] || fail "the installed target is missing BIOS GRUB modules"
+[ -s "$target_root/boot/grub/grub.cfg" ] || fail "the installed target has no generated GRUB configuration"
+
+printf 'Installing BIOS GRUB to the validated target disk %s\n' "$disk"
+chroot "$target_root" grub-install --target=i386-pc --recheck "$disk"

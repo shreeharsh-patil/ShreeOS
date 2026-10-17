@@ -50,6 +50,8 @@ fail() {
 
 settings="$extract_dir/etc/calamares/settings.conf"
 [ -s "$settings" ] || fail "the image ships no Calamares settings.conf"
+[ -s "$extract_dir/etc/calamares/modules/shellprocess.conf" ] || fail 'the image ships no ShreeOS hybrid GRUB shellprocess config'
+[ -s "$extract_dir/usr/local/libexec/shreeos-install-bios-grub" ] || fail 'the image ships no hybrid BIOS GRUB helper'
 
 # --- Sequence integrity: each configured module must have a config file ------
 # Calamares' own built-ins ship inside libcalamares and need no config, so the
@@ -88,7 +90,7 @@ for module in "${sequence_modules[@]}"; do
     | networkcfg | hwclock | bootloader | grubcfg | packages | plymouthcfg \
     | initramfs | initramfscfg | luksbootkeyfile | dpkg-unsafe-io \
     | dpkg-unsafe-io-undo | sources-media | sources-media-unmount \
-    | services-systemd | bootloader-config | umount)
+    | services-systemd | bootloader-config | shellprocess | umount)
       continue
       ;;
   esac

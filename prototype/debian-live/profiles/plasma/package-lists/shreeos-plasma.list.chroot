@@ -1,5 +1,5 @@
 # ShreeOS Plasma profile: official Debian/KDE binaries plus ShreeOS-owned defaults.
-# Debian's metapackage pulls its maintained Plasma dependencies and recommends.
+# Dependencies are installed automatically; selected recommendation-derived features are explicit below.
 kde-plasma-desktop
 kwin-x11
 sddm
@@ -39,6 +39,8 @@ librsvg2-common
 xdg-user-dirs
 calamares
 calamares-settings-debian
+grub-efi-amd64-bin
+grub-pc-bin
 pkexec
 x11-xserver-utils
 kdialog
@@ -54,3 +56,32 @@ power-profiles-daemon
 systemd-zram-generator
 fwupd
 plasma-discover-backend-fwupd
+# Keep the desktop features used by ShreeOS when APT recommends are disabled.
+xserver-xorg
+libgl1-mesa-dri
+mesa-vulkan-drivers
+xserver-xorg-video-intel
+xserver-xorg-video-qxl
+kio-extras
+systemsettings
+xdg-desktop-portal
+xdg-desktop-portal-gtk
+xdg-desktop-portal-kde
+desktop-file-utils
+shared-mime-info
+hicolor-icon-theme
+gtk-update-icon-cache
+cups-pk-helper
+system-config-printer-common
+system-config-printer-udev
+smbclient
+avahi-daemon
+colord
+sane-airscan
+sane-utils
+ipp-usb
+onboard-data
+sound-icons
+xbrlapi
+btrfs-progs
+squashfs-tools

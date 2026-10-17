@@ -93,9 +93,9 @@ down. They are installable, not shipped.
 | Signed ShreeOS-authored `.deb`s and a ShreeOS package repository | `docs/SYSTEM-READINESS.md` |
 | Wayland session | matrix above |
 
-The untouched comparison source is `9313ebb042cf71bb148441037940b130d49920d1`, the pre-optimization revision used for this change. A baseline record must name that source commit, include the measured ISO SHA256, and use the same 2-vCPU, 4096-MiB, VirtIO, 1280x800, no-network conditions. The release job rejects baseline data without this provenance.
+The untouched comparison source is `9313ebb042cf71bb148441037940b130d49920d1`, the pre-optimization revision used for this change. The baseline workflow builds that source separately, overlays only the identical measurement probe, service, and duration helper, then records three valid QEMU samples. A baseline record must name the untouched source commit, include the measured ISO SHA-256, and use the same 2-vCPU, 4096-MiB, VirtIO, 1280x800, no-network conditions, pinned QEMU/SeaBIOS packages, and BIOS ROM hash. The release job rejects missing or mismatched provenance and evaluates absolute targets and regressions on the candidate median. Every raw sample must report a ready desktop, available PSS instrumentation, and no failed system units. Storage throughput remains informational because hosted-runner backing storage varies.
 
-To collect it, build the ISO from that source revision, run the current performance report against the ISO with `MEASURED_SOURCE_COMMIT=9313ebb042cf71bb148441037940b130d49920d1`, then review the archived `performance-candidate.tsv` and commit it as `tests/prototype/performance-baseline.tsv`. The candidate release run is measured separately and compared to this record.
+To collect it, dispatch `.github/workflows/performance-baseline.yml`, inspect all three archived samples and the aggregate summary, then commit the reviewed aggregate as `tests/prototype/performance-baseline.tsv`. Candidate measurements are captured separately, all samples are retained, and the median is compared with that reviewed baseline.
 
 ## Build and release paths
 
