@@ -382,7 +382,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             xorriso squashfs-tools qemu-system-x86 qemu-system-gui qemu-utils \
-            ovmf xvfb xauth python3 ca-certificates unzip gh
+            dosfstools fdisk e2fsprogs grub2-common cpio ovmf xvfb xauth \
+            python3 ca-certificates unzip gh
 
       - name: Recover the built ISO
         env:

@@ -38,10 +38,12 @@ unsquashfs -s "$SQUASHFS" >/dev/null
 extract_dir="$TEST_DIR/root"
 mkdir -p "$extract_dir"
 # Extract only the installer payload; the full root is hundreds of megabytes.
-for path in etc/calamares usr/local/bin/shreeos-installer \
-  usr/local/libexec/shreeos-installer-privileged usr/lib/calamares; do
-  unsquashfs -q -d "$extract_dir" "$SQUASHFS" "$path" >/dev/null 2>&1 || true
-done
+# Keep paths with shared parents in one invocation. Repeated unsquashfs calls
+# can reject an already-created parent directory, and ignoring that error can
+# silently leave later installer files out of the verification tree.
+unsquashfs -q -d "$extract_dir" "$SQUASHFS" \
+  etc/calamares usr/local/bin/shreeos-installer \
+  usr/local/libexec/shreeos-installer-privileged usr/lib/calamares >/dev/null
 
 fail() {
   printf 'INSTALLER PAYLOAD FAILED: %s\n' "$*" >&2
@@ -60,10 +62,18 @@ import re
 import sys
 
 text = open(sys.argv[1]).read()
-# The YAML sequence lists module names under "sequence:"; pull every list item.
+# Only read module names from the sequence block. This skips the YAML document
+# marker ("---") and list keys such as "- show:" and "- exec:".
 names = []
+in_sequence = False
 for line in text.splitlines():
-    match = re.match(r"\s*-\s*([A-Za-z0-9_.-]+)\s*$", line)
+    if not in_sequence:
+        if re.fullmatch(r"sequence:\s*", line):
+            in_sequence = True
+        continue
+    if line and not line[0].isspace() and not line.startswith("-"):
+        break
+    match = re.match(r"\s*-\s+([A-Za-z0-9_.@-]+)\s*$", line)
     if match:
         names.append(match.group(1))
 print("\n".join(names))
@@ -149,15 +159,16 @@ privileged="$extract_dir/usr/local/libexec/shreeos-installer-privileged"
 policy="$TEST_DIR/policy.xml"
 unsquashfs -q -cat "$SQUASHFS" usr/share/polkit-1/actions/org.shreeos.installer.policy \
   >"$policy" 2>/dev/null || fail 'the installer polkit policy is not packaged'
-python3 - "$policy" "$privileged" <<'PY' || fail 'the installer polkit policy is not scoped to the privileged helper'
+python3 - "$policy" "$privileged" "$extract_dir" <<'PY' || fail 'the installer polkit policy is not scoped to the privileged helper'
 import sys
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 actions = ET.parse(sys.argv[1]).findall("action")
 if len(actions) != 1:
     raise SystemExit(f"expected exactly one polkit action, found {len(actions)}")
 annotations = {node.get("key"): node.text for node in actions[0].findall("annotate")}
-expected = sys.argv[2].replace("/root/", "/")
+expected = "/" + Path(sys.argv[2]).relative_to(sys.argv[3]).as_posix()
 if annotations.get("org.freedesktop.policykit.exec.path") != expected:
     raise SystemExit("polkit action is not scoped to the packaged privileged helper")
 if annotations.get("org.freedesktop.policykit.exec.allow_gui") != "true":
