@@ -71,6 +71,20 @@ class AcceptedInstallArtifactTests(unittest.TestCase):
                 [
                     "# Interactive install acceptance",
                     "",
+                    "## Status",
+                    "",
+                    "```",
+                    "VERDICT: ACCEPTED",
+                    f"Commit: {COMMIT}",
+                    f"Version: {VERSION}",
+                    "Date: 2026-10-17",
+                    f"ISO SHA256: {digest}",
+                    f"Workflow run ID: {run_id}",
+                    f"Artifact ID: {artifact_id}",
+                    "```",
+                    "",
+                    "## Accepted build record",
+                    "",
                     "VERDICT: ACCEPTED",
                     f"Commit: {COMMIT}",
                     f"Version: {VERSION}",
@@ -150,6 +164,23 @@ class AcceptedInstallArtifactTests(unittest.TestCase):
         result = self._verify()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(self.digest, result.stdout)
+
+    def test_current_not_accepted_status_rejects_historical_accepted_record(self):
+        text = self.record_path.read_text(encoding="utf-8")
+        self.record_path.write_text(text.replace("VERDICT: ACCEPTED", "VERDICT: NOT ACCEPTED", 1), encoding="utf-8")
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Current install acceptance verdict is NOT", result.stderr)
+
+    def test_current_status_must_match_accepted_artifact_identity(self):
+        text = self.record_path.read_text(encoding="utf-8")
+        self.record_path.write_text(
+            text.replace(f"ISO SHA256: {self.digest}", f"ISO SHA256: {'0' * 64}", 1),
+            encoding="utf-8",
+        )
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match the accepted record fields", result.stderr)
 
     def test_iso_hash_must_match_acceptance_record(self):
         self._write_record(digest="0" * 64)

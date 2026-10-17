@@ -14,6 +14,12 @@ contain the commit ID of the commit that contains itself.
 
 ## Status
 
+The status block is authoritative. After accepting a build, update this block
+to `VERDICT: ACCEPTED` and copy its commit, version, date, ISO checksum,
+workflow run ID and artifact ID from the appended accepted build record. The
+release verifier rejects a historical accepted record if this current status
+does not match it.
+
 ```
 VERDICT: NOT ACCEPTED
 Commit:  none
@@ -72,7 +78,8 @@ disks.
 ## Record format
 
 Append one block per accepted build. Every field is required. After testing,
-commit the record in a follow-up change that changes no product source. The
+update the Status block above to match that record, then commit both in a
+follow-up change that changes no product source. The
 release gate checks the tested commit, matching ShreeOS version, exact
 successful `master` workflow artifact, firmware, installer, credentials, APT,
 login and system evidence, and verifies that the candidate source tree is

@@ -26,9 +26,41 @@ REQUIRED_EVIDENCE = (
 
 def read_accepted_record(path: Path, version: str) -> dict[str, str]:
     text = path.read_text(encoding="utf-8")
+    status_match = re.search(
+        r"^## Status\s*\n(.*?)(?=^## |\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if status_match is None:
+        raise ValueError("INSTALL-ACCEPTANCE.md is missing its current Status section")
+    status_block = re.search(r"```[^\n]*\n(.*?)\n```", status_match.group(1), re.DOTALL)
+    if status_block is None:
+        raise ValueError("INSTALL-ACCEPTANCE.md current Status section is missing its record block")
+    current_status = status_block.group(1)
+    current_verdict = re.search(r"^VERDICT:\s*(.*?)\s*$", current_status, re.MULTILINE)
+    if current_verdict is None or current_verdict.group(1) != "ACCEPTED":
+        verdict = current_verdict.group(1) if current_verdict else "missing"
+        raise ValueError(f"Current install acceptance verdict is {verdict}, not ACCEPTED")
+    current_fields = dict(
+        re.findall(
+            r"^([A-Za-z][A-Za-z 0-9/-]*):\s*(.*?)\s*$",
+            current_status,
+            re.MULTILINE,
+        )
+    )
+    status_identity = ("Commit", "Version", "Date", "ISO SHA256", "Workflow run ID", "Artifact ID")
+    missing_status = [field for field in status_identity if not current_fields.get(field)]
+    if missing_status:
+        raise ValueError(f"Current install acceptance status is missing: {', '.join(missing_status)}")
+    if current_fields["Version"] != version:
+        raise ValueError(f"Current install acceptance status is not for ShreeOS {version}")
+
+    # The Status section is authoritative. Do not let an older ACCEPTED record
+    # override a current NOT ACCEPTED status or a mismatched current artifact.
+    history = text[:status_match.start()] + text[status_match.end():]
     records = re.findall(
         r"^VERDICT:\s*ACCEPTED\s*\n(.*?)(?=^VERDICT:|\Z)",
-        text,
+        history,
         re.MULTILINE | re.DOTALL,
     )
     for record in reversed(records):
@@ -61,6 +93,14 @@ def read_accepted_record(path: Path, version: str) -> dict[str, str]:
         date.fromisoformat(fields["Date"])
     except ValueError as error:
         raise ValueError("The acceptance date must use YYYY-MM-DD") from error
+    mismatched_status = [
+        field for field in status_identity if current_fields.get(field) != fields.get(field)
+    ]
+    if mismatched_status:
+        raise ValueError(
+            "Current install acceptance status does not match the accepted record fields: "
+            + ", ".join(mismatched_status)
+        )
     return fields
 
 
