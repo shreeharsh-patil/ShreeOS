@@ -123,15 +123,14 @@ grep -Fq 'productIcon: shreeos-app.svg' "$branding/branding.desc" ||
 
 # --- The unlock source must be the real live medium -------------------------
 unpack="$extract_dir/etc/calamares/modules/unpackfs.conf"
-if [ -s "$unpack" ]; then
-  grep -Fq '/run/live/medium' "$unpack" ||
-    fail 'unpackfs does not install from the live medium mount'
-fi
+[ -s "$unpack" ] || fail 'Calamares unpackfs.conf is not packaged'
+grep -Fq '/run/live/medium' "$unpack" ||
+  fail 'unpackfs does not install from the live medium mount'
 
 # --- Credentials: the live account must not become the installed account ----
 users="$extract_dir/etc/calamares/modules/users.conf"
-if [ -s "$users" ]; then
-  python3 - "$users" <<'PY' || fail 'the installer would reuse the live session credentials'
+[ -s "$users" ] || fail 'Calamares users.conf is not packaged'
+python3 - "$users" <<'PY' || fail 'the installer would reuse the live session credentials'
 import re
 import sys
 
@@ -147,7 +146,6 @@ if not re.search(r"^\s*setRootPassword\s*:", text, re.MULTILINE):
 if not re.search(r"^\s*passwordRequirements\s*:", text, re.MULTILINE):
     raise SystemExit("users.conf sets no password strength requirements")
 PY
-fi
 
 # --- Privilege boundary -----------------------------------------------------
 wrapper="$extract_dir/usr/local/bin/shreeos-installer"

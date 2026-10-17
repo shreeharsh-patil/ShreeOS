@@ -634,6 +634,7 @@ jobs:
               --repository "$GH_REPO" \
               --baseline tests/prototype/performance-baseline.tsv \
               --provenance tests/prototype/performance-baseline.provenance.json \
+              --evidence-dir tests/prototype/performance-baseline-evidence \
               --download-dir "$RUNNER_TEMP/shreeos-performance-baseline"
           elif [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
             printf 'A measured untouched-build baseline is required for this release run.\n' >&2

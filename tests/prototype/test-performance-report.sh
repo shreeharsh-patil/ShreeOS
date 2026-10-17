@@ -71,9 +71,7 @@ MEASURED_SOURCE_COMMIT="${MEASURED_SOURCE_COMMIT:-$manifest_source_commit}"
 }
 
 TEST_DIR="$(mktemp -d)"
-trap 'rm -rf -- "$TEST_DIR"' EXIT
 QEMU_LOG_DIR="${QEMU_LOG_DIR:-}"
-[ -z "$QEMU_LOG_DIR" ] || mkdir -p "$QEMU_LOG_DIR"
 
 SERIAL="$TEST_DIR/serial.log"
 MONITOR="$TEST_DIR/monitor.sock"
@@ -82,6 +80,41 @@ SCREEN="$TEST_DIR/performance-screen.ppm"
 MENU_SCREEN="$TEST_DIR/performance-menu.ppm"
 SQUASHFS="$TEST_DIR/filesystem.squashfs"
 TARGET_DISK="$TEST_DIR/target.raw"
+PIDFILE="$TEST_DIR/qemu.pid"
+emulator_pid=''
+
+save_capture_artifact() {
+  local source="$1" name="$2"
+  if [ -n "$QEMU_LOG_DIR" ] && [ -s "$source" ]; then
+    cp -f "$source" "$QEMU_LOG_DIR/$name" ||
+      printf 'Could not preserve capture artifact: %s\n' "$source" >&2
+  fi
+}
+
+cleanup_capture() {
+  local exit_status=$?
+  trap - EXIT
+  if [ -n "$emulator_pid" ] && kill -0 -- "-$emulator_pid" 2>/dev/null; then
+    kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+    for _ in $(seq 1 25); do
+      kill -0 -- "-$emulator_pid" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL -- "-$emulator_pid" 2>/dev/null || true
+    wait "$emulator_pid" 2>/dev/null || true
+  fi
+  if [ "$exit_status" -ne 0 ]; then
+    save_capture_artifact "$SERIAL" serial.log
+    save_capture_artifact "$TEST_DIR/qemu.log" qemu.log
+    save_capture_artifact "$MONITOR_LOG" monitor.log
+    save_capture_artifact "$SCREEN" performance-screen.ppm
+    save_capture_artifact "$MENU_SCREEN" grub-menu.ppm
+  fi
+  rm -rf -- "$TEST_DIR"
+  return "$exit_status"
+}
+trap cleanup_capture EXIT
+[ -z "$QEMU_LOG_DIR" ] || mkdir -p "$QEMU_LOG_DIR"
 
 # Extract the probe so the contract between image and report can be checked
 # statically as well as observed at runtime.
@@ -133,7 +166,6 @@ measurement_protocol_sha256="$(
     tests/prototype/test-performance-report.sh | sha256sum | awk '{print $1}'
 )"
 python3 "$REPO_ROOT/scripts/performance-environment.py" >"$TEST_DIR/environment-metadata.txt"
-python3 "$REPO_ROOT/scripts/performance-environment.py" --snapshot "$TEST_DIR/environment-before.json"
 qemu_version="$(qemu-system-x86_64 --version | head -n 1 | tr -d '\r')"
 qemu_package_version="$(dpkg-query -W -f='${Version}' qemu-system-x86)"
 seabios_package_version="$(dpkg-query -W -f='${Version}' seabios)"
@@ -159,6 +191,7 @@ qemu_args=(
   "-drive" "file=$TARGET_DISK,format=raw,if=none,id=perf-disk,cache=none"
   "-device" "virtio-blk-pci,drive=perf-disk,serial=SHREEOSPERF"
   "-cdrom" "$ISO" "-boot" "order=d"
+  "-pidfile" "$PIDFILE"
   "-display" "gtk" "-monitor" "unix:$MONITOR,server,nowait"
   "-serial" "stdio" "-no-reboot"
 )
@@ -169,8 +202,39 @@ qemu_invocation=(
 )
 printf -v qemu_command '%q ' "${qemu_invocation[@]}"
 qemu_command="${qemu_command% }"
+# Take the cgroup counters after disk creation and setup, immediately before
+# launch, so the delta covers QEMU and guest execution rather than harness work.
+python3 "$REPO_ROOT/scripts/performance-environment.py" --snapshot "$TEST_DIR/environment-before.json"
 "${qemu_invocation[@]}" >"$SERIAL" 2>"$TEST_DIR/qemu.log" &
 emulator_pid=$!
+
+# Read QEMU's own security status while it is alive. The wrapper PID belongs
+# to xvfb-run/timeout, so QEMU writes its PID to this dedicated file.
+for _ in $(seq 1 100); do
+  [ -s "$PIDFILE" ] && break
+  if ! kill -0 "$emulator_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if [ ! -s "$PIDFILE" ]; then
+  echo 'QEMU did not create its PID file; process security metadata is unavailable.' >&2
+  kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+  wait "$emulator_pid" 2>/dev/null || true
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  exit 1
+fi
+qemu_pid="$(cat "$PIDFILE")"
+if ! python3 "$REPO_ROOT/scripts/performance-environment.py" \
+  --process-pid "$qemu_pid" >"$TEST_DIR/qemu-process-metadata.txt"; then
+  echo 'Could not capture the live QEMU process security metadata.' >&2
+  kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+  wait "$emulator_pid" 2>/dev/null || true
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  exit 1
+fi
 
 # Select the normal live entry from the graphical GRUB menu. Without this
 # explicit keypress the baseline can remain at the menu indefinitely in QEMU.
@@ -404,9 +468,13 @@ awk 'index($0, "SHREEOS_PERF ") {
   printf '# host_cpu_model=%s\n' "$host_cpu_model"
   printf '# host_mem_total_kib=%s\n' "$host_mem_total_kib"
   cat "$TEST_DIR/environment-metadata.txt"
+  cat "$TEST_DIR/qemu-process-metadata.txt"
   printf '# firmware=%s\n' "$firmware"
   printf '# qemu_profile=%s\n' "$qemu_profile"
   printf '# qemu_command=%s\n' "$qemu_command"
+  awk -F= '/^# cgroup_cpu_stat_(nr_periods|nr_throttled|throttled_usec)_delta=/ || /^# cgroup_cpu_stat_throttled_usec_local_delta=/ || /^# cgroup_memory_events_(low|high|max|oom|oom_kill|oom_group_kill)_visible_max_delta=/ || /^# cgroup_capture_elapsed_usec=/ {
+    sub(/^# /, ""); split($0, field, "="); print field[1] "\t" field[2]
+  }' "$TEST_DIR/environment-deltas.txt"
   awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms|desktop_ready|pss_available|units_failed|storage_write_mib_s|storage_read_mib_s)$/ {
     print $1 "\t" $2
   }' "$TEST_DIR/metrics.tsv"
@@ -554,7 +622,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  for environment_field in qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel host_cpu_model host_mem_total_kib cgroup_version cgroup_cpuset_cpus_effective cgroup_cpuset_cpu_count cgroup_cpu_quota_cores cgroup_memory_max_bytes cgroup_memory_high_bytes cgroup_memory_swap_max_bytes cgroup_pids_max process_capeff process_capbnd process_nonewprivs process_seccomp process_seccomp_filters firmware qemu_profile; do
+  for environment_field in qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel host_cpu_model host_mem_total_kib cgroup_version cgroup_limit_scope cgroup_memory_event_scope cgroup_reported_path_shape cgroup_mount_root_path_shape cgroup_cpuset_cpus_effective cgroup_cpuset_cpu_count cgroup_cpu_quota_cores cgroup_memory_max_bytes cgroup_memory_high_bytes cgroup_memory_swap_max_bytes cgroup_pids_max collector_capeff collector_capbnd collector_nonewprivs collector_seccomp collector_seccomp_filters qemu_process_capeff qemu_process_capbnd qemu_process_nonewprivs qemu_process_seccomp qemu_process_seccomp_filters firmware qemu_profile; do
     baseline_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$BASELINE")"
     measured_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$TEST_DIR/performance-candidate.tsv")"
     if [ -z "$baseline_environment" ] || [ "$baseline_environment" != "$measured_environment" ]; then

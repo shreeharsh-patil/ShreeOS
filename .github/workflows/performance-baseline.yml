@@ -167,7 +167,10 @@ jobs:
     timeout-minutes: 360
     permissions:
       actions: read
+      artifact-metadata: write
       contents: read
+      attestations: write
+      id-token: write
     container:
       image: debian:trixie-slim
     steps:
@@ -243,11 +246,24 @@ jobs:
           HARNESS_COMMIT: ${{ steps.checkout_harness.outputs.commit }}
         run: |
           bundle=baseline-bundle
-          mkdir -p "$bundle"
+          mkdir -p "$bundle/raw-evidence"
           cp baseline-evidence/performance-baseline.tsv "$bundle/performance-baseline.tsv"
           cp baseline-evidence/run-1/performance-candidate.tsv "$bundle/performance-sample-1.tsv"
           cp baseline-evidence/run-2/performance-candidate.tsv "$bundle/performance-sample-2.tsv"
           cp baseline-evidence/run-3/performance-candidate.tsv "$bundle/performance-sample-3.tsv"
+          for sample in 1 2 3; do
+            cp "$bundle/performance-sample-$sample.tsv" \
+              "baseline-evidence/performance-sample-$sample.tsv"
+            mkdir -p "$bundle/raw-evidence/run-$sample"
+            for name in qemu.log serial.log metrics.tsv environment-deltas.txt performance-candidate.tsv; do
+              test -f "baseline-evidence/run-$sample/$name"
+              cp "baseline-evidence/run-$sample/$name" "$bundle/raw-evidence/run-$sample/$name"
+            done
+            if [[ -f "baseline-evidence/run-$sample/monitor.log" ]]; then
+              cp "baseline-evidence/run-$sample/monitor.log" "$bundle/raw-evidence/run-$sample/monitor.log"
+            fi
+          done
+          cp -a "$bundle/raw-evidence" baseline-evidence/raw-evidence
           artifact_name="shreeos-performance-baseline-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python3 scripts/write-performance-provenance.py \
             --output "$bundle/provenance.json" \
@@ -255,12 +271,30 @@ jobs:
             --sample "$bundle/performance-sample-1.tsv" \
             --sample "$bundle/performance-sample-2.tsv" \
             --sample "$bundle/performance-sample-3.tsv" \
+            --raw-evidence "$bundle/raw-evidence" \
             --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --harness-commit "$HARNESS_COMMIT" \
             --artifact-name "$artifact_name"
           cp "$bundle/provenance.json" baseline-evidence/provenance.json
+          cp "$bundle/performance-baseline.sha256" baseline-evidence/performance-baseline.sha256
+
+      - name: Attest the durable baseline evidence manifest
+        id: attest_baseline
+        if: success()
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: baseline-bundle/performance-baseline.sha256
+
+      - name: Retain the signed baseline evidence bundle
+        if: success()
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.attest_baseline.outputs.bundle-path }}
+        run: |
+          test -s "$ATTESTATION_BUNDLE"
+          cp "$ATTESTATION_BUNDLE" baseline-bundle/performance-baseline.attestation.json
+          cp "$ATTESTATION_BUNDLE" baseline-evidence/performance-baseline.attestation.json
 
       - name: Upload raw baseline ISO, QEMU logs and reports
         if: always()

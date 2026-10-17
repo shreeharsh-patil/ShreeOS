@@ -7,6 +7,7 @@ import argparse
 import math
 import statistics
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 
@@ -26,6 +27,10 @@ METADATA_FIELDS = (
     "host_kernel",
     "host_cpu_model",
     "host_mem_total_kib",
+    "cgroup_limit_scope",
+    "cgroup_memory_event_scope",
+    "cgroup_reported_path_shape",
+    "cgroup_mount_root_path_shape",
     "cgroup_version",
     "cgroup_cpuset_cpus_effective",
     "cgroup_cpuset_cpu_count",
@@ -34,11 +39,16 @@ METADATA_FIELDS = (
     "cgroup_memory_high_bytes",
     "cgroup_memory_swap_max_bytes",
     "cgroup_pids_max",
-    "process_capeff",
-    "process_capbnd",
-    "process_nonewprivs",
-    "process_seccomp",
-    "process_seccomp_filters",
+    "collector_capeff",
+    "collector_capbnd",
+    "collector_nonewprivs",
+    "collector_seccomp",
+    "collector_seccomp_filters",
+    "qemu_process_capeff",
+    "qemu_process_capbnd",
+    "qemu_process_nonewprivs",
+    "qemu_process_seccomp",
+    "qemu_process_seccomp_filters",
     "firmware",
     "qemu_profile",
 )
@@ -54,6 +64,27 @@ METRICS = (
     "storage_write_mib_s",
     "storage_read_mib_s",
 )
+RESOURCE_COUNTERS = (
+    "cgroup_cpu_stat_nr_periods_delta",
+    "cgroup_cpu_stat_nr_throttled_delta",
+    "cgroup_cpu_stat_throttled_usec_delta",
+    "cgroup_cpu_stat_throttled_usec_local_delta",
+    "cgroup_capture_elapsed_usec",
+    "cgroup_memory_events_low_visible_max_delta",
+    "cgroup_memory_events_high_visible_max_delta",
+    "cgroup_memory_events_max_visible_max_delta",
+    "cgroup_memory_events_oom_visible_max_delta",
+    "cgroup_memory_events_oom_kill_visible_max_delta",
+    "cgroup_memory_events_oom_group_kill_visible_max_delta",
+)
+MEMORY_PRESSURE_COUNTERS = RESOURCE_COUNTERS[5:]
+REPORTED_METRICS = (
+    *METRICS,
+    *RESOURCE_COUNTERS,
+    "cgroup_cpu_throttled_period_pct",
+    "cgroup_cpu_local_throttled_capacity_estimate_pct",
+)
+MAX_THROTTLED_PERIOD_PCT = 10.0
 
 
 def parse_sample(path: Path) -> tuple[dict[str, str], dict[str, float]]:
@@ -83,7 +114,7 @@ def parse_sample(path: Path) -> tuple[dict[str, str], dict[str, float]]:
     missing_metadata = [
         field for field in SAMPLE_REQUIRED_METADATA_FIELDS if not metadata.get(field)
     ]
-    missing_metrics = [field for field in METRICS if field not in metrics]
+    missing_metrics = [field for field in (*METRICS, *RESOURCE_COUNTERS) if field not in metrics]
     if missing_metadata or missing_metrics:
         raise ValueError(
             f"{path} is missing metadata {missing_metadata} or metrics {missing_metrics}"
@@ -97,6 +128,38 @@ def parse_sample(path: Path) -> tuple[dict[str, str], dict[str, float]]:
     for metric in ("boot_total_ms", "graphical_reached_ms", "storage_write_mib_s", "storage_read_mib_s"):
         if metrics[metric] <= 0:
             raise ValueError(f"metric {metric} must be positive in {path}")
+    for counter in RESOURCE_COUNTERS:
+        if metrics[counter] < 0 or not metrics[counter].is_integer():
+            raise ValueError(f"resource counter {counter} must be a nonnegative integer in {path}")
+    periods = metrics["cgroup_cpu_stat_nr_periods_delta"]
+    throttled = metrics["cgroup_cpu_stat_nr_throttled_delta"]
+    own_throttled_usec = metrics["cgroup_cpu_stat_throttled_usec_delta"]
+    local_throttled_usec = metrics["cgroup_cpu_stat_throttled_usec_local_delta"]
+    elapsed_usec = metrics["cgroup_capture_elapsed_usec"]
+    if throttled > periods or (periods == 0 and (throttled or own_throttled_usec)):
+        raise ValueError(f"invalid cgroup CPU throttling counters in {path}")
+    if elapsed_usec <= 0:
+        raise ValueError(f"cgroup capture duration must be positive in {path}")
+    pressured = [key for key in MEMORY_PRESSURE_COUNTERS if metrics[key] > 0]
+    if pressured:
+        raise ValueError(f"cgroup memory pressure events were reported in {path}: {pressured}")
+    metrics["cgroup_cpu_throttled_period_pct"] = throttled / periods * 100 if periods else 0.0
+    cpuset_cpus = int(metadata["cgroup_cpuset_cpu_count"])
+    raw_quota = metadata["cgroup_cpu_quota_cores"]
+    quota_cpus = float("inf") if raw_quota == "max" else float(Fraction(raw_quota))
+    available_cpus = min(float(cpuset_cpus), quota_cpus)
+    if available_cpus <= 0:
+        raise ValueError(f"visible cgroup CPU capacity must be positive in {path}")
+    metrics["cgroup_cpu_local_throttled_capacity_estimate_pct"] = (
+        local_throttled_usec / (elapsed_usec * available_cpus) * 100
+    )
+    if max(
+        metrics["cgroup_cpu_throttled_period_pct"],
+        metrics["cgroup_cpu_local_throttled_capacity_estimate_pct"],
+    ) > MAX_THROTTLED_PERIOD_PCT:
+        raise ValueError(
+            f"cgroup CPU throttling exceeded {MAX_THROTTLED_PERIOD_PCT:g}% in {path}"
+        )
     return metadata, metrics
 
 
@@ -119,7 +182,7 @@ def aggregate(samples: list[Path]) -> tuple[dict[str, str], dict[str, tuple[floa
         if mismatches:
             raise ValueError(f"sample environment/provenance differs in {path}: {mismatches}")
     result: dict[str, tuple[float, float, float]] = {}
-    for metric in METRICS:
+    for metric in REPORTED_METRICS:
         values = [sample_metrics[metric] for _, sample_metrics in parsed]
         result[metric] = (min(values), statistics.median(values), max(values))
     return metadata, result
@@ -138,13 +201,13 @@ def write_summary(output: Path, report: Path, samples: list[Path]) -> None:
             stream.write(
                 f"# sample_{index}_qemu_command={sample_metadata['qemu_command']}\n"
             )
-        for metric in METRICS:
+        for metric in REPORTED_METRICS:
             minimum, median, maximum = metrics[metric]
             stream.write(
                 f"# variability_{metric}=min:{format_number(minimum)},"
                 f"median:{format_number(median)},max:{format_number(maximum)}\n"
             )
-        for metric in METRICS:
+        for metric in REPORTED_METRICS:
             stream.write(f"{metric}\t{format_number(metrics[metric][1])}\n")
 
     with report.open("w", encoding="utf-8", newline="\n") as stream:
@@ -171,7 +234,7 @@ def write_summary(output: Path, report: Path, samples: list[Path]) -> None:
                 f"| {metric} | {format_number(minimum)} | {format_number(median)} | "
                 f"{format_number(maximum)} |\n"
             )
-        stream.write("\nRaw per-run TSVs and logs are retained beside this summary.\n")
+        stream.write("\nRaw per-run TSVs and logs are retained beside this summary. Cgroup counters cover the visible hierarchy; CPU local throttling includes inherited ancestor throttling where the kernel exposes it.\n")
 
 
 def main(argv: list[str]) -> int:

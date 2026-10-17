@@ -79,6 +79,46 @@ class QemuHarnessTests(unittest.TestCase):
         self.assertIn('command(f"screendump {output}")', script)
         self.assertIn('cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"', script)
         self.assertIn('cp -f "$SCREEN" "$QEMU_LOG_DIR/performance-screen.ppm"', script)
+        self.assertIn("trap cleanup_capture EXIT", script)
+        self.assertIn('kill -KILL -- "-$emulator_pid"', script)
+        self.assertIn('save_capture_artifact "$MONITOR_LOG" monitor.log', script)
+
+    def test_monitor_failure_triggers_process_group_cleanup_and_retains_logs(self):
+        script = PERFORMANCE_HARNESS.read_text(encoding="utf-8")
+        trap = script.index("trap cleanup_capture EXIT")
+        qemu_start = script.index('"${qemu_invocation[@]}" >"$SERIAL"')
+        cleanup = script.index("cleanup_capture() {")
+        terminate = script.index('kill -TERM -- "-$emulator_pid"', cleanup)
+        kill_after_grace = script.index('kill -KILL -- "-$emulator_pid"', terminate)
+        wait = script.index('wait "$emulator_pid" 2>/dev/null || true', kill_after_grace)
+        preserve_monitor_log = script.index('save_capture_artifact "$MONITOR_LOG" monitor.log', wait)
+        remove_workdir = script.index('rm -rf -- "$TEST_DIR"', preserve_monitor_log)
+        monitor_python = script.index('python3 - "$MONITOR" "$MENU_SCREEN" "$SERIAL"')
+
+        self.assertIn("set -Eeuo pipefail", script)
+        self.assertLess(trap, qemu_start)
+        self.assertLess(qemu_start, monitor_python)
+        self.assertLess(terminate, kill_after_grace)
+        self.assertLess(kill_after_grace, wait)
+        self.assertLess(wait, preserve_monitor_log)
+        self.assertLess(preserve_monitor_log, remove_workdir)
+
+    def test_performance_cgroup_snapshot_and_qemu_pid_capture_bracket_the_guest(self):
+        script = PERFORMANCE_HARNESS.read_text(encoding="utf-8")
+        self.assertIn('"-pidfile" "$PIDFILE"', script)
+        self.assertIn('qemu_pid="$(cat "$PIDFILE")"', script)
+        self.assertIn("--process-pid \"$qemu_pid\"", script)
+        disk_create = script.index('qemu-img create -q -f raw "$TARGET_DISK" 2G')
+        snapshot = script.index('--snapshot "$TEST_DIR/environment-before.json"')
+        launch = script.index('"${qemu_invocation[@]}" >"$SERIAL"')
+        pid_read = script.index('qemu_pid="$(cat "$PIDFILE")"')
+        process_capture = script.index("--process-pid \"$qemu_pid\"")
+        guest_menu = script.index("sleep 20", process_capture)
+        self.assertLess(disk_create, snapshot)
+        self.assertLess(snapshot, launch)
+        self.assertLess(launch, pid_read)
+        self.assertLess(pid_read, process_capture)
+        self.assertLess(process_capture, guest_menu)
 
 
 if __name__ == "__main__":

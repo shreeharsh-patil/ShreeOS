@@ -564,6 +564,7 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn("container:\n      image: debian:trixie-slim\n    steps:", baseline)
         self.assertIn("performance-sample-3.tsv", baseline)
         self.assertIn("write-performance-provenance.py", baseline)
+        self.assertIn('--raw-evidence "$bundle/raw-evidence"', baseline)
         self.assertIn('CAPTURE_ONLY=1 QEMU_LOG_DIR=', baseline)
         self.assertIn('qemu-system-x86=1:10.0.13+ds-0+deb13u1', baseline)
         self.assertIn("gh run download \"$GITHUB_RUN_ID\"", baseline)
@@ -605,6 +606,7 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn("Verify the committed performance baseline against its successful workflow run", release)
         self.assertIn("scripts/verify-performance-baseline.py", release)
         self.assertIn("tests/prototype/performance-baseline.provenance.json", release)
+        self.assertIn("--evidence-dir tests/prototype/performance-baseline-evidence", release)
         self.assertIn("actions: read", release)
 
     def test_unknown_profile_cannot_falsely_mark_desktop_ready(self):
