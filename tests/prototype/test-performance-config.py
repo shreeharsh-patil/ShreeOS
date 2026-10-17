@@ -572,9 +572,24 @@ class MeasurementProvenanceTests(unittest.TestCase):
     def test_idle_cpu_treats_iowait_as_idle_and_storage_only_targets_the_tagged_scratch_disk(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
         self.assertIn('printf "%s %s\\n", $5 + $6, total', probe)
+        self.assertIn("for serial_path in /sys/block/*/serial /sys/block/*/device/serial; do", probe)
         self.assertIn('= SHREEOSPERF', probe)
         self.assertIn('dd if=/dev/zero of="$storage_device"', probe)
         self.assertIn('iflag=direct status=none', probe)
+
+    def test_performance_metric_parser_normalizes_serial_crlf(self):
+        report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
+        start_marker = 'awk \'index($0, "SHREEOS_PERF ") {'
+        start = report.index(start_marker)
+        end = report.index("' \"$SERIAL\" | sort -u", start)
+        awk_program = report[start + len("awk '"):end]
+        result = subprocess.run(
+            [shell(), "-c", 'awk "$1"', "sh", awk_program],
+            input="SHREEOS_PERF boot_total_ms=218753\r\nSHREEOS_PERF desktop_ready=1\r\n",
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "boot_total_ms\t218753\ndesktop_ready\t1\n")
 
     def test_performance_comparison_requires_matching_probe_hashes(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")

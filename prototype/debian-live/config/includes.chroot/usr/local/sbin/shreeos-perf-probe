@@ -239,7 +239,7 @@ emit probe_elapsed_s "$(awk -v start="$probe_started" -v now="$(cut -d' ' -f1 /p
 # QEMU scratch disk with this exact serial. Never select a disk by size or by
 # device name, and never write to an unmarked device.
 storage_device=""
-for serial_path in /sys/block/*/device/serial; do
+for serial_path in /sys/block/*/serial /sys/block/*/device/serial; do
   [ -r "$serial_path" ] || continue
   [ "$(cat "$serial_path" 2>/dev/null || true)" = SHREEOSPERF ] || continue
   block_name="${serial_path#/sys/block/}"
