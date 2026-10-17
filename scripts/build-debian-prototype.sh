@@ -210,6 +210,9 @@ if [ "$LIVE_PROFILE" = plasma ]; then
   install -Dm0755 \
     "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-install-bios-grub" \
     "$BUILD_DIR/config/includes.chroot/usr/local/libexec/shreeos-install-bios-grub"
+  install -Dm0644 \
+    "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-storage-checks.sh" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/libexec/shreeos-installer-storage-checks.sh"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/applications/shreeos-installer.desktop" \
     "$BUILD_DIR/config/includes.chroot/usr/share/applications/"
   cp "$REPO_ROOT/branding/icons/installer.svg" \

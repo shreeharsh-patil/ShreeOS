@@ -126,9 +126,14 @@ measurement_protocol_sha256="$(
     prototype/debian-live/performance-targets.tsv \
     scripts/aggregate-performance-runs.py \
     scripts/compare-performance-runs.py \
+    scripts/performance-environment.py \
     scripts/verify-performance-manifest.py \
+    scripts/verify-performance-baseline.py \
+    scripts/write-performance-provenance.py \
     tests/prototype/test-performance-report.sh | sha256sum | awk '{print $1}'
 )"
+python3 "$REPO_ROOT/scripts/performance-environment.py" >"$TEST_DIR/environment-metadata.txt"
+python3 "$REPO_ROOT/scripts/performance-environment.py" --snapshot "$TEST_DIR/environment-before.json"
 qemu_version="$(qemu-system-x86_64 --version | head -n 1 | tr -d '\r')"
 qemu_package_version="$(dpkg-query -W -f='${Version}' qemu-system-x86)"
 seabios_package_version="$(dpkg-query -W -f='${Version}' seabios)"
@@ -366,6 +371,13 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
+if ! python3 "$REPO_ROOT/scripts/performance-environment.py" \
+  --delta "$TEST_DIR/environment-before.json" >"$TEST_DIR/environment-deltas.txt"; then
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  exit 1
+fi
+
 # Metrics are stored as key<TAB>value. Several values (top RSS, top CPU, the
 # systemd blame list) legitimately contain spaces, so a space-delimited parse
 # would truncate them and silently weaken the report.
@@ -391,6 +403,7 @@ awk 'index($0, "SHREEOS_PERF ") {
   printf '# host_kernel=%s\n' "$host_kernel"
   printf '# host_cpu_model=%s\n' "$host_cpu_model"
   printf '# host_mem_total_kib=%s\n' "$host_mem_total_kib"
+  cat "$TEST_DIR/environment-metadata.txt"
   printf '# firmware=%s\n' "$firmware"
   printf '# qemu_profile=%s\n' "$qemu_profile"
   printf '# qemu_command=%s\n' "$qemu_command"
@@ -405,6 +418,7 @@ awk 'index($0, "SHREEOS_PERF ") {
 [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MONITOR_LOG" ] || cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"; }
 [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MENU_SCREEN" ] || cp -f "$MENU_SCREEN" "$QEMU_LOG_DIR/grub-menu.ppm"; }
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/metrics.tsv" "$QEMU_LOG_DIR/metrics.tsv"
+[ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/environment-deltas.txt" "$QEMU_LOG_DIR/environment-deltas.txt"
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/performance-candidate.tsv" "$QEMU_LOG_DIR/performance-candidate.tsv"
 [ -s "$TEST_DIR/metrics.tsv" ] || { echo 'No SHREEOS_PERF metrics were captured; logs and empty metrics were retained.' >&2; exit 1; }
 
@@ -540,7 +554,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  for environment_field in qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel host_cpu_model host_mem_total_kib firmware qemu_profile; do
+  for environment_field in qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel host_cpu_model host_mem_total_kib cgroup_version cgroup_cpuset_cpus_effective cgroup_cpuset_cpu_count cgroup_cpu_quota_cores cgroup_memory_max_bytes cgroup_memory_high_bytes cgroup_memory_swap_max_bytes cgroup_pids_max process_capeff process_capbnd process_nonewprivs process_seccomp process_seccomp_filters firmware qemu_profile; do
     baseline_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$BASELINE")"
     measured_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$TEST_DIR/performance-candidate.tsv")"
     if [ -z "$baseline_environment" ] || [ "$baseline_environment" != "$measured_environment" ]; then

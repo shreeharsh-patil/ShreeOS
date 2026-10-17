@@ -264,6 +264,23 @@ class SessionStartupTests(unittest.TestCase):
         )
         self.assertIn('if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then', builder)
 
+    def test_performance_probe_timeout_covers_all_bounded_waits(self):
+        probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
+        service = (ROOT / "prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service").read_text(encoding="utf-8")
+        constants = dict((name, int(value)) for name, value in re.findall(
+            r"^([A-Z_]+)=(\d+)$", probe, re.MULTILINE
+        ))
+        timeout = re.search(r"^TimeoutStartSec=(\d+)$", service, re.MULTILINE)
+        self.assertIsNotNone(timeout, "performance probe service must have a bounded start timeout")
+        required_budget = sum(constants[name] for name in (
+            "DESKTOP_WAIT_SECONDS", "SETTLE_SECONDS",
+            "BOOT_TOTAL_WAIT_SECONDS", "WINDOW_SECONDS",
+        )) + 60
+        self.assertGreaterEqual(
+            int(timeout.group(1)), required_budget,
+            "service timeout must cover additive probe waits plus 60 seconds of command overhead",
+        )
+
 
 class PowerProfileTests(unittest.TestCase):
     STUBS = {
@@ -541,9 +558,15 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn("expected_changes=", baseline)
         self.assertIn("aggregate-performance-runs.py", baseline)
         self.assertIn("baseline-evidence/run-3/performance-candidate.tsv", baseline)
-        self.assertIn("shreeos-performance-baseline-${{ github.run_id }}", baseline)
+        self.assertIn("shreeos-performance-baseline-${{ github.run_id }}-${{ github.run_attempt }}", baseline)
+        self.assertIn("--privileged", baseline)
+        self.assertIn("measure-baseline:", baseline)
+        self.assertIn("container:\n      image: debian:trixie-slim\n    steps:", baseline)
+        self.assertIn("performance-sample-3.tsv", baseline)
+        self.assertIn("write-performance-provenance.py", baseline)
         self.assertIn('CAPTURE_ONLY=1 QEMU_LOG_DIR=', baseline)
         self.assertIn('qemu-system-x86=1:10.0.13+ds-0+deb13u1', baseline)
+        self.assertIn("gh run download \"$GITHUB_RUN_ID\"", baseline)
 
     def test_idle_cpu_treats_iowait_as_idle_and_storage_only_targets_the_tagged_scratch_disk(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
@@ -559,6 +582,11 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn('baseline_probe_timer_sha256=', report)
         self.assertIn('baseline_probe_time_helper_sha256=', report)
         self.assertIn('measurement_protocol_sha256=', report)
+        self.assertIn('scripts/performance-environment.py', report)
+        self.assertIn('--snapshot "$TEST_DIR/environment-before.json"', report)
+        self.assertIn('--delta "$TEST_DIR/environment-before.json"', report)
+        self.assertIn('environment-deltas.txt', report)
+        self.assertIn('scripts/verify-performance-baseline.py', report)
         self.assertIn("qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel", report)
         self.assertIn("# host_cpu_model=%s", report)
         self.assertIn("# qemu_command=%s", report)
@@ -571,6 +599,13 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn("scripts/verify-performance-manifest.py", report)
         self.assertIn("tests/prototype/test-performance-report.sh | sha256sum", report)
         self.assertIn('informational only; backing storage varies by runner', report)
+
+    def test_release_performance_verifies_run_bound_baseline_before_comparison(self):
+        release = (ROOT / ".github/workflows/shreeos-release.yml").read_text(encoding="utf-8")
+        self.assertIn("Verify the committed performance baseline against its successful workflow run", release)
+        self.assertIn("scripts/verify-performance-baseline.py", release)
+        self.assertIn("tests/prototype/performance-baseline.provenance.json", release)
+        self.assertIn("actions: read", release)
 
     def test_unknown_profile_cannot_falsely_mark_desktop_ready(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")

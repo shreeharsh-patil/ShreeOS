@@ -16,7 +16,11 @@ REQUIRED_METADATA = (
     "measurement_protocol_sha256", "qemu_version",
     "qemu_package_version", "seabios_package_version", "bios_rom_sha256",
     "host_kernel", "host_cpu_model", "host_mem_total_kib", "firmware",
-    "qemu_profile", "sample_count",
+    "cgroup_version", "cgroup_cpuset_cpus_effective", "cgroup_cpuset_cpu_count",
+    "cgroup_cpu_quota_cores", "cgroup_memory_max_bytes",
+    "cgroup_memory_high_bytes", "cgroup_memory_swap_max_bytes", "cgroup_pids_max",
+    "process_capeff", "process_capbnd", "process_nonewprivs", "process_seccomp",
+    "process_seccomp_filters", "qemu_profile", "sample_count",
 )
 MATCHED_ENVIRONMENT = tuple(key for key in REQUIRED_METADATA if key not in {
     "source_commit", "iso_sha256", "sample_count",

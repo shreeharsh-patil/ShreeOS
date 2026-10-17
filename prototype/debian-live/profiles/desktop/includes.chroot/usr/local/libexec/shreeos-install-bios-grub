@@ -6,9 +6,11 @@ fail() {
   exit 1
 }
 
-for tool in findmnt lsblk blkid readlink chroot awk tr; do
+for tool in findmnt lsblk blkid readlink chroot awk tr fsck.fat; do
   command -v "$tool" >/dev/null 2>&1 || fail "required command is missing: $tool"
 done
+
+. /usr/local/libexec/shreeos-installer-storage-checks.sh
 [ "$#" -eq 2 ] || [ "$#" -eq 3 ] ||
   fail "Calamares did not provide the target root and firmware type"
 
@@ -48,6 +50,8 @@ esp_type="$(lsblk --noheadings --nodeps --output PARTTYPE "$esp" | tr '[:upper:]
 esp_filesystem="$(lsblk --noheadings --nodeps --output FSTYPE "$esp" | tr -d '[:space:]')"
 [ "$esp_filesystem" = vfat ] ||
   fail "the mounted /boot/efi partition must use FAT32 (found: ${esp_filesystem:-unformatted})"
+shreeos_require_fat32 "$esp" ||
+  fail "the mounted /boot/efi partition must contain a valid FAT32 filesystem"
 
 parent="$(lsblk --noheadings --nodeps --output PKNAME "$esp" | tr -d '[:space:]')"
 [ -n "$parent" ] || fail "cannot resolve the disk containing the mounted ESP"

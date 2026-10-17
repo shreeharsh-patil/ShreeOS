@@ -255,6 +255,10 @@ class CommandTests(unittest.TestCase):
                         / "etc/calamares/modules/shellprocess.conf").read_text(encoding="utf-8")
         helper = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
                   / "usr/local/libexec/shreeos-install-bios-grub").read_text(encoding="utf-8")
+        storage_checks = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                          / "usr/local/libexec/shreeos-installer-storage-checks.sh").read_text(
+                              encoding="utf-8"
+                          )
         self.assertIn("efiBootLoader: grub", bootloader)
         self.assertIn("efiBootloaderId: debian", bootloader)
         self.assertIn("installEFIFallback: true", bootloader)
@@ -274,6 +278,10 @@ class CommandTests(unittest.TestCase):
         self.assertIn('[ "$#" -eq 2 ] || [ "$#" -eq 3 ]', helper)
         self.assertIn("--validate-only", helper)
         self.assertIn('"$esp_filesystem" = vfat', helper)
+        self.assertIn('shreeos_require_fat32 "$esp"', helper)
+        self.assertIn("fsck.fat -b -v", storage_checks)
+        self.assertIn('LC_ALL=C fsck.fat', storage_checks)
+        self.assertIn('"$data_clusters" -lt 65525', storage_checks)
         self.assertIn('"$root_filesystem" = ext4', helper)
         self.assertIn('"$firmware_type" = efi', helper)
         self.assertIn('findmnt --noheadings --raw --output SOURCE --target "$target_root"', helper)
@@ -286,10 +294,66 @@ class CommandTests(unittest.TestCase):
             builder,
             r'install -Dm0755 \\\s+"\$CONFIG_SOURCE/profiles/desktop/includes\.chroot/usr/local/libexec/shreeos-install-bios-grub" \\\s+"\$BUILD_DIR/config/includes\.chroot/usr/local/libexec/shreeos-install-bios-grub"',
         )
+        self.assertIn("shreeos-installer-storage-checks.sh", builder)
         self.assertIn("grub-pc-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
                                       / "shreeos-plasma.list.chroot").read_text(encoding="utf-8"))
         self.assertIn("grub-efi-amd64-bin", (ROOT / "prototype/debian-live/profiles/plasma/package-lists"
                                              / "shreeos-plasma.list.chroot").read_text(encoding="utf-8"))
+
+    def test_efi_preflight_accepts_only_valid_fat32_subtypes(self):
+        checks = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                  / "usr/local/libexec/shreeos-installer-storage-checks.sh")
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            stub_bin = directory / "bin"
+            stub_bin.mkdir()
+            report_file = directory / "fsck-report.txt"
+            args_file = directory / "fsck-args.txt"
+            fsck = stub_bin / "fsck.fat"
+            fsck.write_text(
+                "#!/bin/sh\n"
+                "printf 'LC_ALL=%s\\n' \"$LC_ALL\" > \"$FSCK_TEST_ARGS\"\n"
+                "printf '%s\\n' \"$@\" >> \"$FSCK_TEST_ARGS\"\n"
+                "cat \"$FSCK_TEST_REPORT\"\n"
+                "exit \"${FSCK_TEST_STATUS:-0}\"\n",
+                encoding="utf-8",
+            )
+            if os.name == "nt":
+                subprocess.run([shell(), "-c", 'chmod +x "$1"', "sh", shell_path(fsck)],
+                               check=True, capture_output=True, text=True)
+                env = dict(
+                    os.environ,
+                    SHREEOS_TEST_BIN=shell_path(stub_bin),
+                    FSCK_TEST_ARGS=shell_path(args_file),
+                    FSCK_TEST_REPORT=shell_path(report_file),
+                )
+                command = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; . "$1"; shreeos_require_fat32 "$2"'
+            else:
+                fsck.chmod(0o755)
+                env = dict(
+                    os.environ,
+                    PATH=f'{stub_bin.as_posix()}{os.pathsep}{os.environ["PATH"]}',
+                    FSCK_TEST_ARGS=args_file.as_posix(),
+                    FSCK_TEST_REPORT=report_file.as_posix(),
+                )
+                command = '. "$1"; shreeos_require_fat32 "$2"'
+
+            cases = (
+                ("FAT16", "2 FATs, 16 bit entries\\n70000 data clusters\\n", False),
+                ("undersized FAT32", "2 FATs, 32 bit entries\\n65524 data clusters\\n", False),
+                ("valid FAT32", "2 FATs, 32 bit entries\\n65525 data clusters\\n", True),
+            )
+            for label, report, accepted in cases:
+                with self.subTest(filesystem=label):
+                    report_file.write_text(report.replace("\\n", "\n"), encoding="utf-8")
+                    invocation = [shell(), "-c", command, "sh", shell_path(checks), "/dev/test-esp"]
+                    result = subprocess.run(invocation, env=env, capture_output=True,
+                                            text=True, timeout=10)
+                    self.assertEqual(result.returncode == 0, accepted, result.stderr)
+                    self.assertEqual(
+                        args_file.read_text(encoding="utf-8").splitlines(),
+                        ["LC_ALL=C", "-b", "-v", "/dev/test-esp"],
+                    )
 
     def test_installer_docs_require_uefi_origin_and_define_crossboot_matrix(self):
         acceptance = (ROOT / "release/INSTALL-ACCEPTANCE.md").read_text(encoding="utf-8")

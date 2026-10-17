@@ -134,6 +134,8 @@ jobs:
           bash tests/prototype/test-performance-targets.sh
           python3 tests/release/test-performance-aggregation.py
           python3 tests/release/test-performance-comparison.py
+          python3 tests/release/test-performance-environment.py
+          python3 tests/release/test-performance-baseline-provenance.py
           python3 tests/prototype/test-search-calculator.py
           python3 tests/prototype/test-workspace-overview.py
 
@@ -621,6 +623,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: bash scripts/fetch-release-assets.sh "${{ needs.build.outputs.artifact }}"
+
+      - name: Verify the committed performance baseline against its successful workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ -s tests/prototype/performance-baseline.tsv ]]; then
+            python3 scripts/verify-performance-baseline.py \
+              --repository "$GH_REPO" \
+              --baseline tests/prototype/performance-baseline.tsv \
+              --provenance tests/prototype/performance-baseline.provenance.json \
+              --download-dir "$RUNNER_TEMP/shreeos-performance-baseline"
+          elif [[ "$REQUIRE_PERFORMANCE_BASELINE" == true ]]; then
+            printf 'A measured untouched-build baseline is required for this release run.\n' >&2
+            exit 1
+          fi
 
       - name: Measure the controlled 2 vCPU / 4 GiB idle footprint
         run: |

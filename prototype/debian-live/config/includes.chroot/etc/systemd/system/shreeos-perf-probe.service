@@ -15,5 +15,7 @@ StandardError=journal+console
 Nice=19
 CPUSchedulingPolicy=batch
 IOSchedulingClass=idle
-TimeoutStartSec=300
+# Cover the probe's worst-case desktop wait, settle delay, boot-summary retry,
+# and CPU sampling window with room for normal command overhead.
+TimeoutStartSec=600
 RemainAfterExit=yes

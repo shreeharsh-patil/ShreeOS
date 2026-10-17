@@ -11,13 +11,16 @@ defaults:
     shell: bash --noprofile --norc -euo pipefail {0}
 
 jobs:
-  measure:
-    name: Build commit 9313ebb and measure under controlled QEMU
+  build-baseline:
+    name: Build pinned untouched baseline ISO
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 300
     container:
       image: debian:trixie-slim
+      # live-build mounts proc, sysfs and devpts inside its chroot.
       options: --privileged
+    outputs:
+      artifact_name: ${{ steps.identity.outputs.artifact_name }}
     steps:
       - name: Install Git before checkout so both source commits are recorded
         run: |
@@ -41,36 +44,36 @@ jobs:
           persist-credentials: false
           path: baseline-source
 
-      - name: Install build and QEMU dependencies
+      - name: Install pinned live-build and image tooling
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             live-build=1:20250505+deb13u1 \
             debootstrap xorriso squashfs-tools dpkg-dev \
             grub-common grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
-            qemu-system-x86=1:10.0.13+ds-0+deb13u1 \
-            qemu-system-gui=1:10.0.13+ds-0+deb13u1 \
-            qemu-utils=1:10.0.13+ds-0+deb13u1 seabios=1.16.3-2 \
             ovmf xvfb xauth rsync util-linux \
             ca-certificates debian-archive-keyring python3 librsvg2-bin git
-          dpkg-query -W qemu-system-x86 qemu-system-gui qemu-utils seabios
 
-      - name: Confirm the exact baseline source commit
+      - name: Confirm the exact source and harness commits
+        env:
+          EXPECTED_BASELINE_COMMIT: 9313ebb042cf71bb148441037940b130d49920d1
+          HARNESS_COMMIT: ${{ steps.checkout_harness.outputs.commit }}
+          BASELINE_COMMIT: ${{ steps.checkout_baseline.outputs.commit }}
         run: |
-          expected=9313ebb042cf71bb148441037940b130d49920d1
-          actual='${{ steps.checkout_baseline.outputs.commit }}'
-          [[ "$actual" == "$expected" ]]
-          printf 'Untouched baseline source: %s\n' "$actual"
+          [[ "$BASELINE_COMMIT" == "$EXPECTED_BASELINE_COMMIT" ]]
+          [[ "$HARNESS_COMMIT" == "$GITHUB_SHA" ]]
+          printf 'Untouched baseline source: %s\n' "$BASELINE_COMMIT"
+          printf 'Measurement harness source: %s\n' "$HARNESS_COMMIT"
 
-      - name: Build the untouched baseline ISO
+      - name: Build the untouched baseline ISO with the shared measurement probe
+        env:
+          HARNESS_COMMIT: ${{ steps.checkout_harness.outputs.commit }}
         run: |
-          mkdir -p baseline-evidence
+          mkdir -p baseline-build
           cd baseline-source
-          # Compare like-for-like by installing the current diagnostic probe,
-          # service, timer and shared parser into the baseline image. The one
-          # build-script edit only switches probe activation from a target
-          # dependency to the post-target timer; product packages and desktop
-          # configuration remain from the pinned baseline commit.
+          # Apply only the shared diagnostic probe and its activation change.
+          # Product packages and desktop configuration remain at the pinned
+          # untouched source commit.
           probe_path=prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe
           unit_path=prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service
           timer_path=prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.timer
@@ -108,18 +111,16 @@ jobs:
           }
           {
             printf 'baseline_source=9313ebb042cf71bb148441037940b130d49920d1\n'
+            printf 'measurement_harness_commit=%s\n' "$HARNESS_COMMIT"
             sha256sum "$probe_path" "$unit_path" "$timer_path" "$time_helper_path" "$builder_path"
-          } > ../baseline-evidence/instrumentation.txt
-          # Commit 9313ebb sources /etc/os-release into the same shell as the
-          # ShreeOS VERSION variable. VERSION is optional in os-release; omit
-          # only that host display field so it cannot rename the baseline ISO
-          # as Debian "13 (trixie)". Keep the real Debian ID and codename.
+          } > ../baseline-build/instrumentation.txt
+          # The pinned baseline uses /etc/os-release's optional VERSION field
+          # as its ShreeOS display name. Keep Debian ID/codename but omit that
+          # one host display field during the build.
           os_release_source="$(mktemp)"
           os_release_mounted=0
           cleanup_os_release() {
-            if [[ "$os_release_mounted" == 1 ]]; then
-              umount /etc/os-release
-            fi
+            if [[ "$os_release_mounted" == 1 ]]; then umount /etc/os-release; fi
             rm -f -- "$os_release_source"
           }
           trap cleanup_os_release EXIT
@@ -131,33 +132,95 @@ jobs:
           ! grep -q '^VERSION=' /etc/os-release
           SHREEOS_VERSION_FILE="$PWD/VERSION" \
           GITHUB_SHA=9313ebb042cf71bb148441037940b130d49920d1 \
-            bash scripts/build-shreeos.sh 2>&1 | tee ../baseline-evidence/build.log
+            bash scripts/build-shreeos.sh 2>&1 | tee ../baseline-build/build.log
           iso="out/shreeos($(tr -d '[:space:]' < VERSION)).iso"
           test -s "$iso"
           (cd out && sha256sum -c "$(basename "$iso").sha256")
           iso_name="$(basename "$iso")"
           stem="$(basename "$iso" .iso)"
-          cp "$iso" "../baseline-evidence/$iso_name"
-          cp "out/$iso_name.sha256" "../baseline-evidence/$iso_name.sha256"
-          cp "out/$stem-packages.txt" "../baseline-evidence/$stem-packages.txt"
-          cp "out/$stem-build-info.txt" "../baseline-evidence/$stem-build-info.txt"
-          # Preserve the manifest if this baseline builder emitted one as part
-          # of the raw evidence; do not alter baseline inputs to add a sidecar.
+          cp "$iso" "../baseline-build/$iso_name"
+          cp "out/$iso_name.sha256" "../baseline-build/$iso_name.sha256"
+          cp "out/$stem-packages.txt" "../baseline-build/$stem-packages.txt"
+          cp "out/$stem-build-info.txt" "../baseline-build/$stem-build-info.txt"
           if [[ -s "out/$stem-manifest.json" ]]; then
-            cp "out/$stem-manifest.json" "../baseline-evidence/$stem-manifest.json"
+            cp "out/$stem-manifest.json" "../baseline-build/$stem-manifest.json"
           fi
 
-      - name: Measure the untouched ISO with the current harness
+      - name: Name the exact build handoff artifact
+        id: identity
+        run: echo "artifact_name=shreeos-performance-baseline-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload baseline ISO and build diagnostics for the measurement job
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shreeos-performance-baseline-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: baseline-build/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 1
+
+  measure-baseline:
+    name: Measure baseline in the unprivileged Stage E container profile
+    needs: build-baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    container:
+      image: debian:trixie-slim
+    steps:
+      - name: Install Git before checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
+      - name: Check out the current measurement harness
+        id: checkout_harness
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned QEMU, SeaBIOS and measurement tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            qemu-system-x86=1:10.0.13+ds-0+deb13u1 \
+            qemu-system-gui=1:10.0.13+ds-0+deb13u1 \
+            qemu-utils=1:10.0.13+ds-0+deb13u1 seabios=1.16.3-2 \
+            xorriso squashfs-tools util-linux ovmf xvfb xauth python3 unzip gh
+          dpkg-query -W qemu-system-x86 qemu-system-gui qemu-utils seabios
+
+      - name: Recover the exact baseline build artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_ARTIFACT: ${{ needs.build-baseline.outputs.artifact_name }}
+        run: |
+          mkdir -p baseline-build baseline-evidence
+          gh run download "$GITHUB_RUN_ID" --repo "$GH_REPO" \
+            --name "$BUILD_ARTIFACT" --dir baseline-build
+          cp -a baseline-build/. baseline-evidence/
+          iso="$(find baseline-build -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "$iso" && test -s "$iso"
+          (cd baseline-build && sha256sum -c "$(basename "$iso").sha256")
+          printf '%s\n' "$iso" > "$RUNNER_TEMP/shreeos-baseline-iso-path"
+
+      - name: Measure the untouched ISO with three controlled QEMU captures
         env:
           MEASURED_SOURCE_COMMIT: 9313ebb042cf71bb148441037940b130d49920d1
           ALLOW_PERFORMANCE_INSTRUMENTATION_OVERLAY: '1'
+          HARNESS_COMMIT: ${{ steps.checkout_harness.outputs.commit }}
         run: |
-          iso="baseline-source/out/shreeos($(tr -d '[:space:]' < baseline-source/VERSION)).iso"
+          [[ "$HARNESS_COMMIT" == "$GITHUB_SHA" ]]
+          iso="$(cat "$RUNNER_TEMP/shreeos-baseline-iso-path")"
           capture_failed=0
           for sample in 1 2 3; do
             if ! CAPTURE_ONLY=1 QEMU_LOG_DIR="baseline-evidence/run-$sample" \
-              bash measurement-harness/tests/prototype/test-performance-report.sh "$iso"; then
-              printf 'Baseline capture %s failed; retaining its diagnostics and continuing to remaining samples.\n' "$sample" >&2
+              bash tests/prototype/test-performance-report.sh "$iso"; then
+              printf 'Baseline capture %s failed; retaining diagnostics and continuing to remaining samples.\n' "$sample" >&2
               capture_failed=1
             fi
           done
@@ -165,33 +228,56 @@ jobs:
             printf 'At least one baseline sample was invalid; aggregate baseline cannot be published.\n' >&2
             exit 1
           fi
-          python3 measurement-harness/scripts/aggregate-performance-runs.py \
+          python3 scripts/aggregate-performance-runs.py \
             --output baseline-evidence/performance-baseline.tsv \
             --report-output baseline-evidence/performance-summary.md \
             baseline-evidence/run-1/performance-candidate.tsv \
             baseline-evidence/run-2/performance-candidate.tsv \
             baseline-evidence/run-3/performance-candidate.tsv
           test "$(awk -F= '$1 == "# source_commit" { print $2 }' baseline-evidence/performance-baseline.tsv)" = "$MEASURED_SOURCE_COMMIT"
+          test "$(awk -F= '$1 == "# sample_count" { print $2 }' baseline-evidence/performance-baseline.tsv)" = 3
 
-      - name: Upload raw baseline evidence
+      - name: Prepare run-bound reusable baseline artifact
+        if: success()
+        env:
+          HARNESS_COMMIT: ${{ steps.checkout_harness.outputs.commit }}
+        run: |
+          bundle=baseline-bundle
+          mkdir -p "$bundle"
+          cp baseline-evidence/performance-baseline.tsv "$bundle/performance-baseline.tsv"
+          cp baseline-evidence/run-1/performance-candidate.tsv "$bundle/performance-sample-1.tsv"
+          cp baseline-evidence/run-2/performance-candidate.tsv "$bundle/performance-sample-2.tsv"
+          cp baseline-evidence/run-3/performance-candidate.tsv "$bundle/performance-sample-3.tsv"
+          artifact_name="shreeos-performance-baseline-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 scripts/write-performance-provenance.py \
+            --output "$bundle/provenance.json" \
+            --baseline "$bundle/performance-baseline.tsv" \
+            --sample "$bundle/performance-sample-1.tsv" \
+            --sample "$bundle/performance-sample-2.tsv" \
+            --sample "$bundle/performance-sample-3.tsv" \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --harness-commit "$HARNESS_COMMIT" \
+            --artifact-name "$artifact_name"
+          cp "$bundle/provenance.json" baseline-evidence/provenance.json
+
+      - name: Upload raw baseline ISO, QEMU logs and reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-0.4.0-untouched-performance-baseline-${{ github.run_id }}
+          name: shreeos-0.4.0-untouched-performance-baseline-${{ github.run_id }}-${{ github.run_attempt }}
           path: baseline-evidence/
           if-no-files-found: warn
+          overwrite: true
           retention-days: 90
 
-      - name: Prepare the measured baseline for the release comparison
-        if: success()
-        run: |
-          test -s baseline-evidence/performance-baseline.tsv
-
-      - name: Upload the reusable measured baseline
+      - name: Upload the reusable measured baseline and raw sample TSVs
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shreeos-performance-baseline-${{ github.run_id }}
-          path: baseline-evidence/performance-baseline.tsv
+          name: shreeos-performance-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: baseline-bundle/
           if-no-files-found: error
+          overwrite: true
           retention-days: 90
