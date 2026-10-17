@@ -182,7 +182,10 @@ run_boot_test() {
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
-  local deadline=$((SECONDS + 420))
+  local screenshot_captured=0 cleanup_signal_sent=0
+  local qemu_timeout=420
+  if [ "$PROFILE" = plasma ]; then qemu_timeout=1800; fi
+  local deadline=$((SECONDS + qemu_timeout))
   local memory=2048
   if [ "$PROFILE" = plasma ]; then memory=4096; fi
   if [ "$mode" = uefi ]; then
@@ -217,7 +220,7 @@ run_boot_test() {
     )
   fi
 
-  xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 420s qemu-system-x86_64 \
+  setsid xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
     -machine q35 -m "$memory" -smp 2 -vga virtio -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \
@@ -268,7 +271,8 @@ PY
     sleep 1
   done
   if grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-    python3 - "$monitor_socket" "$screen_dump" <<'PY'
+    if python3 - "$monitor_socket" "$screen_dump" >>"$emulator_log" 2>&1 <<'PY'
+import os
 import socket
 import sys
 import time
@@ -284,18 +288,65 @@ for _ in range(10):
         time.sleep(1)
 else:
     raise SystemExit("QEMU monitor socket did not become available to stop the guest")
-client.recv(4096)
-client.sendall(b"sendkey shift\n")
-client.recv(4096)
-# Give LightDM/XFCE time to finish rendering after the live-boot marker.
-time.sleep(30)
-client.sendall(f"screendump {output}\n".encode())
-client.recv(4096)
-client.sendall(b"quit\n")
-client.close()
+
+def read_prompt():
+    response = bytearray()
+    deadline = time.monotonic() + 10
+    while b"(qemu) " not in response:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"QEMU monitor prompt timed out: {response.decode(errors='replace')}")
+        client.settimeout(remaining)
+        chunk = client.recv(4096)
+        if not chunk:
+            raise ConnectionError("QEMU monitor closed before returning a prompt")
+        response.extend(chunk)
+    text = response.decode(errors="replace")
+    if "Error:" in text or "Could not" in text:
+        raise RuntimeError(f"QEMU monitor command failed: {text.strip()}")
+
+def command(value):
+    client.sendall((value + "\n").encode())
+    read_prompt()
+
+try:
+    read_prompt()
+    command("sendkey shift")
+    # Give Plasma or XFCE time to finish rendering after the live-boot marker.
+    time.sleep(30)
+    command(f"screendump {output}")
+    if not os.path.isfile(output) or os.path.getsize(output) == 0:
+        raise RuntimeError(f"QEMU did not create desktop screenshot: {output}")
+    client.sendall(b"quit\n")
+except Exception:
+    try:
+        client.sendall(b"quit\n")
+    except OSError:
+        pass
+    raise
+finally:
+    client.close()
 PY
+    then
+      screenshot_captured=1
+    else
+      printf 'QEMU desktop screenshot capture failed; stopping the guest.\n' >>"$emulator_log"
+      kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+    fi
+  fi
+  if (( screenshot_captured )) && kill -0 -- "-$emulator_pid" 2>/dev/null; then
+    kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+    cleanup_signal_sent=1
   fi
   wait "$emulator_pid" || status=$?
+  if (( cleanup_signal_sent )) && [[ "$status" -eq 143 ]]; then status=0; fi
+
+  if [ "$status" -ne 0 ]; then
+    echo "${mode} QEMU exited with status $status before validation completed." >&2
+    [ ! -s "$log" ] || cat "$log" >&2
+    [ ! -s "$emulator_log" ] || cat "$emulator_log" >&2
+    return 1
+  fi
 
   if [ -n "$QEMU_LOG_DIR" ]; then
     if [ -f "$log" ]; then
@@ -322,6 +373,11 @@ PY
     return 1
   fi
   if [ "$PROFILE" = desktop ] || [ "$PROFILE" = plasma ]; then
+    if [ ! -s "$screen_dump" ]; then
+      echo "${mode} boot reached the health marker, but QEMU did not create a desktop screenshot." >&2
+      [ ! -s "$emulator_log" ] || cat "$emulator_log" >&2
+      return 1
+    fi
     python3 - "$screen_dump" "$PROFILE" <<'PY'
 import pathlib
 import sys
