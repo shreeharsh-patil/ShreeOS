@@ -181,8 +181,16 @@ static int rejected_peer_flood_is_coalesced(const char *socket_path, const char 
 }
 
 static int connect_and_hold(const char *socket_path) {
+    int fd;
+
     /* An idle authenticated socket occupies a daemon client slot until closed. */
-    return connect_socket(socket_path);
+    for (int attempt = 0; attempt < 100; attempt++) {
+        fd = connect_socket(socket_path);
+        if (fd >= 0) return fd;
+        if (errno != ECONNREFUSED && errno != ENOENT) return -1;
+        usleep(10000);
+    }
+    return -1;
 }
 
 static int per_uid_rejection_log_is_coalesced(const char *socket_path, const char *log_path) {
