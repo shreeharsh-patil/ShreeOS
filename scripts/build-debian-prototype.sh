@@ -533,6 +533,7 @@ manifest = {
     "live_build": os.environ["LIVE_BUILD_VERSION"],
     "commit": os.environ["SOURCE_COMMIT"],
     "git_dirty": os.environ["GIT_DIRTY"] == "1",
+    "products": ["live", "installed"],
     "iso": os.environ["ISO_NAME"],
     "sha256": digest,
     "size_bytes": size_bytes,

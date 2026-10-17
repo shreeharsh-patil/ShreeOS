@@ -223,16 +223,34 @@ class CommandTests(unittest.TestCase):
         self.assertIn("requiredPartitionTableType: gpt", partition)
         self.assertIn("enableLuksAutomatedPartitioning: false", partition)
         self.assertRegex(partition, r"(?m)^lvm:\s*\n\s+enable: false$")
+        self.assertRegex(partition, r"(?s)directoryFilesystemRestrictions:.*?directory: \"/\".*?allowedFilesystemTypes: \[\"ext4\"\]")
+        self.assertRegex(partition, r"(?s)mountpoint: \"efi\".*?allowedFilesystemTypes: \[\"fat32\"\]")
         self.assertIn("mountPoint: /boot/efi", partition)
         self.assertIn("recommendedSize: 512MiB", partition)
         self.assertRegex(partition, r"(?s)partitionLayout:.*?type: \"21686148-6449-6E6F-744E-656564454649\".*?filesystem: unformatted.*?mountPoint: /.*?size: 100%")
         self.assertIn("efi:", partition)
+
+    def test_installer_rejects_bios_mode_before_starting_calamares(self):
+        includes = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot")
+        launcher = (includes / "usr/local/bin/shreeos-installer").read_text(encoding="utf-8")
+        privileged = (includes / "usr/local/libexec/shreeos-installer-privileged").read_text(
+            encoding="utf-8"
+        )
+        guard = "/sys/firmware/efi"
+        self.assertIn(guard, launcher)
+        self.assertIn(guard, privileged)
+        self.assertLess(launcher.index(guard), launcher.index("exec /usr/local/libexec/shreeos-installer-privileged"))
+        self.assertLess(privileged.index(guard), privileged.index("/usr/bin/calamares"))
 
     def test_calamares_3314_runs_validated_bios_grub_install_after_efi_install(self):
         bootloader = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
                      / "etc/calamares/modules/bootloader.conf").read_text(encoding="utf-8")
         settings = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
                     / "etc/calamares/settings.conf").read_text(encoding="utf-8")
+        preflight_config = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
+                            / "etc/calamares/modules/shellprocess-storage-preflight.conf").read_text(
+                                encoding="utf-8"
+                            )
         shellprocess = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
                         / "etc/calamares/modules/shellprocess.conf").read_text(encoding="utf-8")
         helper = (ROOT / "prototype/debian-live/profiles/desktop/includes.chroot"
@@ -241,13 +259,22 @@ class CommandTests(unittest.TestCase):
         self.assertIn("efiBootloaderId: debian", bootloader)
         self.assertIn("installEFIFallback: true", bootloader)
         self.assertNotIn("installHybridGRUB", bootloader)
+        self.assertRegex(settings, r"(?s)- mount\s+- shellprocess@storage-preflight\s+- unpackfs")
         self.assertRegex(settings, r"(?s)- bootloader\s+- packages\s+- shellprocess")
+        self.assertIn("id: storage-preflight", settings)
+        self.assertIn("config: shellprocess-storage-preflight.conf", settings)
+        self.assertIn("dontChroot: true", preflight_config)
+        self.assertIn("--validate-only", preflight_config)
+        self.assertNotIn("-/bin/sh", preflight_config)
         self.assertIn("dontChroot: true", shellprocess)
         self.assertIn("/usr/local/libexec/shreeos-install-bios-grub", shellprocess)
         self.assertIn("${ROOT}", shellprocess)
         self.assertIn("${gs[firmwareType]}", shellprocess)
         self.assertIn('findmnt --noheadings --raw --output SOURCE --target "$target_root/boot/efi"', helper)
-        self.assertIn('"$#" -eq 2', helper)
+        self.assertIn('[ "$#" -eq 2 ] || [ "$#" -eq 3 ]', helper)
+        self.assertIn("--validate-only", helper)
+        self.assertIn('"$esp_filesystem" = vfat', helper)
+        self.assertIn('"$root_filesystem" = ext4', helper)
         self.assertIn('"$firmware_type" = efi', helper)
         self.assertIn('findmnt --noheadings --raw --output SOURCE --target "$target_root"', helper)
         self.assertIn('"$root_disk" = "$disk"', helper)

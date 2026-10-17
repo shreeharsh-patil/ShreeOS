@@ -120,6 +120,7 @@ jobs:
           bash tests/release/test-version-contract.sh
           python3 tests/release/test-unified-workflow-triggers.py
           python3 tests/release/test-unified-artifact-cache.py
+          python3 tests/release/test-capture-native-package-evidence.py
           python3 tests/release/test-install-acceptance-artifact.py
           bash tests/smoke/test-verify-stage.sh
 

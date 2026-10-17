@@ -9,7 +9,14 @@ fail() {
 for tool in findmnt lsblk blkid readlink chroot awk tr; do
   command -v "$tool" >/dev/null 2>&1 || fail "required command is missing: $tool"
 done
-[ "$#" -eq 2 ] || fail "Calamares did not provide the target root and firmware type"
+[ "$#" -eq 2 ] || [ "$#" -eq 3 ] ||
+  fail "Calamares did not provide the target root and firmware type"
+
+validate_only=0
+if [ "$#" -eq 3 ]; then
+  [ "$3" = --validate-only ] || fail "unsupported helper option: $3"
+  validate_only=1
+fi
 
 target_root="$1"
 firmware_type="$2"
@@ -38,6 +45,9 @@ esp="$(readlink -f -- "$esp_source")"
 esp_type="$(lsblk --noheadings --nodeps --output PARTTYPE "$esp" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 [ "$esp_type" = c12a7328-f81f-11d2-ba4b-00a0c93ec93b ] ||
   fail "the mounted /boot/efi partition is not GPT EFI System type"
+esp_filesystem="$(lsblk --noheadings --nodeps --output FSTYPE "$esp" | tr -d '[:space:]')"
+[ "$esp_filesystem" = vfat ] ||
+  fail "the mounted /boot/efi partition must use FAT32 (found: ${esp_filesystem:-unformatted})"
 
 parent="$(lsblk --noheadings --nodeps --output PKNAME "$esp" | tr -d '[:space:]')"
 [ -n "$parent" ] || fail "cannot resolve the disk containing the mounted ESP"
@@ -56,6 +66,9 @@ root_partition="$(readlink -f -- "$root_source")"
 [ -b "$root_partition" ] || fail "the installed root source is not a block device: $root_source"
 root_type="$(lsblk --noheadings --nodeps --output TYPE "$root_partition" | tr -d '[:space:]')"
 [ "$root_type" = part ] || fail "the installed root must be a direct disk partition (found $root_type)"
+root_filesystem="$(lsblk --noheadings --nodeps --output FSTYPE "$root_partition" | tr -d '[:space:]')"
+[ "$root_filesystem" = ext4 ] ||
+  fail "the installed root must use ext4 (found: ${root_filesystem:-unknown})"
 root_parent="$(lsblk --noheadings --nodeps --output PKNAME "$root_partition" | tr -d '[:space:]')"
 [ -n "$root_parent" ] || fail "cannot resolve the disk containing the installed root"
 root_disk="$(readlink -f -- "/dev/$root_parent")"
@@ -71,6 +84,12 @@ bios_boot_count="$(printf '%s\n' "$bios_boot_parts" | awk 'NF { count++ } END { 
 bios_boot_partition="$(printf '%s\n' "$bios_boot_parts" | awk 'NF { print; exit }')"
 bios_boot_filesystem="$(lsblk --noheadings --nodeps --output FSTYPE "$bios_boot_partition" | tr -d '[:space:]')"
 [ -z "$bios_boot_filesystem" ] || fail "the BIOS Boot Partition must remain unformatted"
+
+if [ "$validate_only" -eq 1 ]; then
+  printf 'ShreeOS installer preflight passed for target disk %s\n' "$disk"
+  exit 0
+fi
+
 [ -d "$target_root/usr/lib/grub/i386-pc" ] || fail "the installed target is missing BIOS GRUB modules"
 [ -s "$target_root/boot/grub/grub.cfg" ] || fail "the installed target has no generated GRUB configuration"
 

@@ -76,6 +76,7 @@ def verify_bundle(
         "base_distribution": suite,
         "base_snapshot": snapshot,
         "live_build": live_build,
+        "products": ["live", "installed"],
         "iso": iso_path.name,
         "sha256": digest,
         "size_bytes": size_bytes,

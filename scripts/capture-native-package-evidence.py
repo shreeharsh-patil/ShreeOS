@@ -56,6 +56,20 @@ def normalize_member_path(name: str) -> str:
     return name.rstrip("/")
 
 
+def classify_tar_member(member: tarfile.TarInfo, package_path: Path, member_path: str) -> str:
+    if member.isdir():
+        return "directory"
+    if member.issym():
+        return "symlink"
+    if member.islnk():
+        return "hardlink"
+    if member.isfile():
+        return "file"
+    raise ValueError(
+        f"{package_path.name}:{member_path} has unsupported archive entry type {member.type!r}"
+    )
+
+
 def inspect_package(path: Path, output: Path, expected: dict[str, Any], version: str) -> dict[str, Any]:
     if not path.is_file() or path.stat().st_size == 0:
         raise ValueError(f"Missing Debian package: {path}")
@@ -91,7 +105,7 @@ def inspect_package(path: Path, output: Path, expected: dict[str, Any], version:
                 )
             entry: dict[str, Any] = {
                 "path": member_path,
-                "type": "directory" if member.isdir() else "symlink" if member.issym() else "file",
+                "type": classify_tar_member(member, path, member_path),
                 "mode": f"{member.mode:04o}",
                 "uid": member.uid,
                 "gid": member.gid,
@@ -101,7 +115,7 @@ def inspect_package(path: Path, output: Path, expected: dict[str, Any], version:
                 if content is None:
                     raise ValueError(f"Could not read {member_path} from {path.name}")
                 entry["sha256"] = hashlib.sha256(content.read()).hexdigest()
-            if member.issym():
+            if member.issym() or member.islnk():
                 entry["target"] = member.linkname
             entries.append(entry)
 
@@ -118,10 +132,13 @@ def inspect_package(path: Path, output: Path, expected: dict[str, Any], version:
                 )
             entry = {
                 "path": member_path,
+                "type": classify_tar_member(member, path, f"DEBIAN/{member_path}"),
                 "mode": f"{member.mode:04o}",
                 "uid": member.uid,
                 "gid": member.gid,
             }
+            if member.issym() or member.islnk():
+                entry["target"] = member.linkname
             if member.isfile():
                 content = archive.extractfile(member)
                 if content is None:
@@ -131,13 +148,23 @@ def inspect_package(path: Path, output: Path, expected: dict[str, Any], version:
     if expected.get("maintainer_scripts"):
         scripts = {entry["path"]: entry for entry in control_entries}
         for script, mode in expected["maintainer_scripts"].items():
-            if scripts.get(script, {}).get("mode") != mode:
+            entry = scripts.get(script, {})
+            if (
+                entry.get("type") != "file"
+                or entry.get("mode") != mode
+                or not entry.get("sha256")
+            ):
                 raise ValueError(f"{path.name} is missing maintainer script {script} with mode {mode}")
 
     members = {entry["path"]: entry for entry in entries}
     for member_path, mode in expected["executables"].items():
         entry = members.get(member_path)
-        if entry is None or entry["type"] != "file" or entry["mode"] != mode:
+        if (
+            entry is None
+            or entry["type"] != "file"
+            or entry["mode"] != mode
+            or not entry.get("sha256")
+        ):
             raise ValueError(f"{path.name} is missing executable {member_path} with mode {mode}")
     for member_path in expected.get("absent", []):
         if member_path in members:

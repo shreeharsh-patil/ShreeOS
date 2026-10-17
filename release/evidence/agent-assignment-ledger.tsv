@@ -1,0 +1,201 @@
+slot	division	logical_assignment	status	executor	evidence	notes
+001	Git, branches, pull requests and integration	Preserve original checkout state, user edits, stashes, and untracked files	passed	coordinator	original checkout and stashes preserved	Original D:\ShreeOS remains untouched; isolated PR worktree used.
+002	Git, branches, pull requests and integration	Inventory open PRs and non-merged remote branches	passed	branch_consolidation_audit	PR #28; master 5084369; remote branch inventory	PR #28 was the only open PR; no branch protections or required reviews were configured.
+003	Git, branches, pull requests and integration	Review PR #28 merge base and unique commits	queued	unassigned		Queued; no result claimed yet.
+004	Git, branches, pull requests and integration	Verify PR #28 source branch history and fast-forward integrity	queued	unassigned		Queued; no result claimed yet.
+005	Git, branches, pull requests and integration	Check mergeability, reviews, protection, and required checks	queued	unassigned		Queued; no result claimed yet.
+006	Git, branches, pull requests and integration	Review closed PR work for already-integrated unique changes	queued	unassigned		Queued; no result claimed yet.
+007	Git, branches, pull requests and integration	Compare PR file changes against master for duplicate implementations	queued	unassigned		Queued; no result claimed yet.
+008	Git, branches, pull requests and integration	Check branch naming and stale remote references	queued	unassigned		Queued; no result claimed yet.
+009	Git, branches, pull requests and integration	Reconcile GitHub branch state with local refs	queued	unassigned		Queued; no result claimed yet.
+010	Git, branches, pull requests and integration	Audit commit authorship and provenance for integration changes	queued	unassigned		Queued; no result claimed yet.
+011	Git, branches, pull requests and integration	Check merge queue and allowed merge methods	queued	unassigned		Queued; no result claimed yet.
+012	Git, branches, pull requests and integration	Prepare exact-head merge evidence checklist	queued	unassigned		Queued; no result claimed yet.
+013	Git, branches, pull requests and integration	Verify no force-push or destructive history rewrite occurred	queued	unassigned		Queued; no result claimed yet.
+014	Git, branches, pull requests and integration	Identify safe clean integration checkout for post-merge work	queued	unassigned		Queued; no result claimed yet.
+015	Git, branches, pull requests and integration	Record source SHA and expected merge SHA after merge	queued	unassigned		Queued; no result claimed yet.
+016	Git, branches, pull requests and integration	Refresh remote state immediately before integration	queued	unassigned		Queued; no result claimed yet.
+017	Git, branches, pull requests and integration	Review conflict risk for release workflow changes	queued	unassigned		Queued; no result claimed yet.
+018	Git, branches, pull requests and integration	Verify README and release docs align with merged tree	queued	unassigned		Queued; no result claimed yet.
+019	Git, branches, pull requests and integration	Track remaining unmerged branches after PR #28	queued	unassigned		Queued; no result claimed yet.
+020	Git, branches, pull requests and integration	Archive final branch consolidation evidence	queued	unassigned		Queued; no result claimed yet.
+021	Debian packaging, dependencies and native integration	Review package dependency declarations against runtime commands	passed	package_artifact_audit	scripts/control.in; scripts/package-unified-native.sh; audit report	Static dependency and package layout contracts align; actual current-head package artifact check remains pending.
+022	Debian packaging, dependencies and native integration	Check package version and architecture metadata	queued	unassigned		Queued; no result claimed yet.
+023	Debian packaging, dependencies and native integration	Audit sole ownership of /usr/bin/shreeinfo	queued	unassigned		Queued; no result claimed yet.
+024	Debian packaging, dependencies and native integration	Verify native package exact dependency on shreeos-tools	queued	unassigned		Queued; no result claimed yet.
+025	Debian packaging, dependencies and native integration	Inspect maintainer scripts and package file modes	queued	unassigned		Queued; no result claimed yet.
+026	Debian packaging, dependencies and native integration	Validate regular-file hashing for executable payloads	queued	unassigned		Queued; no result claimed yet.
+027	Debian packaging, dependencies and native integration	Reject unsupported special tar entries in package evidence	running	package_artifact_audit + coordinator	tests/release/test-capture-native-package-evidence.py	FIFO rejection, hardlink classification, regular executable hashes, and maintainer-script type checks pass locally; CI and built packages pending.
+028	Debian packaging, dependencies and native integration	Test crafted FIFO and hardlink package archive cases	queued	unassigned		Queued; no result claimed yet.
+029	Debian packaging, dependencies and native integration	Check package evidence records .deb hashes and ISO identity	queued	unassigned		Queued; no result claimed yet.
+030	Debian packaging, dependencies and native integration	Verify dpkg status and dpkg --audit evidence contract	queued	unassigned		Queued; no result claimed yet.
+031	Debian packaging, dependencies and native integration	Compare package manifest versions with installed package database	queued	unassigned		Queued; no result claimed yet.
+032	Debian packaging, dependencies and native integration	Check shreeos-tools and native-tools payload separation	queued	unassigned		Queued; no result claimed yet.
+033	Debian packaging, dependencies and native integration	Inspect systemd unit ownership, mode, and sandbox settings	queued	unassigned		Queued; no result claimed yet.
+034	Debian packaging, dependencies and native integration	Review package install and upgrade behavior	queued	unassigned		Queued; no result claimed yet.
+035	Debian packaging, dependencies and native integration	Check package removal and maintainer-script behavior	queued	unassigned		Queued; no result claimed yet.
+036	Debian packaging, dependencies and native integration	Verify release manifest package component mapping	running	package_artifact_audit + coordinator	tests/release/test-unified-artifact-cache.py; tests/release/test-capture-native-package-evidence.py	Manifest contract and archive-type checks fixed; Stage B build and real .deb evidence pending.
+037	Debian packaging, dependencies and native integration	Audit package cache reuse and stale artifact rejection	queued	unassigned		Queued; no result claimed yet.
+038	Debian packaging, dependencies and native integration	Validate package artifacts on current exact-head build	queued	unassigned		Queued; no result claimed yet.
+039	Debian packaging, dependencies and native integration	Review Debian Trixie dependency compatibility	queued	unassigned		Queued; no result claimed yet.
+040	Debian packaging, dependencies and native integration	Confirm package evidence is retained with exact build provenance	queued	unassigned		Queued; no result claimed yet.
+041	Linux kernel, bootloader, BIOS, UEFI and drivers	Review supported Debian kernel package baseline	queued	unassigned		Queued; no result claimed yet.
+042	Linux kernel, bootloader, BIOS, UEFI and drivers	Check UEFI installer entry guard before authorization	running	coordinator	tests/prototype/test-desktop-config.py; tests/prototype/test-system-features.py	UEFI early guards added; exact-head CI and live installer acceptance pending.
+043	Linux kernel, bootloader, BIOS, UEFI and drivers	Check privileged installer UEFI guard before Calamares	queued	unassigned		Queued; no result claimed yet.
+044	Linux kernel, bootloader, BIOS, UEFI and drivers	Audit UEFI GRUB installation configuration	queued	unassigned		Queued; no result claimed yet.
+045	Linux kernel, bootloader, BIOS, UEFI and drivers	Audit BIOS GRUB helper target disk validation	queued	unassigned		Queued; no result claimed yet.
+046	Linux kernel, bootloader, BIOS, UEFI and drivers	Verify GPT BIOS Boot Partition type and filesystem checks	queued	unassigned		Queued; no result claimed yet.
+047	Linux kernel, bootloader, BIOS, UEFI and drivers	Check EFI System Partition mount and fallback configuration	queued	unassigned		Queued; no result claimed yet.
+048	Linux kernel, bootloader, BIOS, UEFI and drivers	Review initramfs generation and required modules	queued	unassigned		Queued; no result claimed yet.
+049	Linux kernel, bootloader, BIOS, UEFI and drivers	Check kernel command line and live boot flags	queued	unassigned		Queued; no result claimed yet.
+050	Linux kernel, bootloader, BIOS, UEFI and drivers	Audit Secure Boot claims against actual signing evidence	queued	unassigned		Queued; no result claimed yet.
+051	Linux kernel, bootloader, BIOS, UEFI and drivers	Review graphics and firmware package selection	queued	unassigned		Queued; no result claimed yet.
+052	Linux kernel, bootloader, BIOS, UEFI and drivers	Check storage and USB driver availability	queued	unassigned		Queued; no result claimed yet.
+053	Linux kernel, bootloader, BIOS, UEFI and drivers	Review network driver and NetworkManager integration	queued	unassigned		Queued; no result claimed yet.
+054	Linux kernel, bootloader, BIOS, UEFI and drivers	Audit boot menu selection and timeout behavior	queued	unassigned		Queued; no result claimed yet.
+055	Linux kernel, bootloader, BIOS, UEFI and drivers	Inspect BIOS and UEFI QEMU test configuration	queued	unassigned		Queued; no result claimed yet.
+056	Linux kernel, bootloader, BIOS, UEFI and drivers	Check installed disk detached-media boot procedure	queued	unassigned		Queued; no result claimed yet.
+057	Linux kernel, bootloader, BIOS, UEFI and drivers	Verify firmware-mode evidence capture fields	queued	unassigned		Queued; no result claimed yet.
+058	Linux kernel, bootloader, BIOS, UEFI and drivers	Review GRUB recovery and failed boot diagnostics	queued	unassigned		Queued; no result claimed yet.
+059	Linux kernel, bootloader, BIOS, UEFI and drivers	Check unsupported multi-disk layout handling	queued	unassigned		Queued; no result claimed yet.
+060	Linux kernel, bootloader, BIOS, UEFI and drivers	Run real BIOS and UEFI boot acceptance when artifact is available	queued	unassigned		Queued; no result claimed yet.
+061	KDE Plasma, UI, desktop services and responsiveness	Check Debian Trixie Plasma package baseline and freeze policy	passed	coordinator	Debian Trixie package source; KDE Plasma 6.8.0 announcement	Keep established Debian 13 Plasma package baseline for ShreeOS 0.4.0.
+062	KDE Plasma, UI, desktop services and responsiveness	Audit Plasma session startup and display manager settings	queued	unassigned		Queued; no result claimed yet.
+063	KDE Plasma, UI, desktop services and responsiveness	Review X11 live session versus installed session documentation	queued	unassigned		Queued; no result claimed yet.
+064	KDE Plasma, UI, desktop services and responsiveness	Check Plasma panel, dock, and wallpaper configuration	queued	unassigned		Queued; no result claimed yet.
+065	KDE Plasma, UI, desktop services and responsiveness	Audit desktop autostart and first-login behavior	queued	unassigned		Queued; no result claimed yet.
+066	KDE Plasma, UI, desktop services and responsiveness	Review accessibility and keyboard navigation basics	queued	unassigned		Queued; no result claimed yet.
+067	KDE Plasma, UI, desktop services and responsiveness	Check branding assets and icon packaging	queued	unassigned		Queued; no result claimed yet.
+068	KDE Plasma, UI, desktop services and responsiveness	Review desktop launchers for safe fixed commands	queued	unassigned		Queued; no result claimed yet.
+069	KDE Plasma, UI, desktop services and responsiveness	Check Dolphin, Konsole, and core desktop applications	queued	unassigned		Queued; no result claimed yet.
+070	KDE Plasma, UI, desktop services and responsiveness	Inspect session shutdown and reboot actions	queued	unassigned		Queued; no result claimed yet.
+071	KDE Plasma, UI, desktop services and responsiveness	Audit Plasma service enablement and background load	queued	unassigned		Queued; no result claimed yet.
+072	KDE Plasma, UI, desktop services and responsiveness	Check user configuration ownership and permissions	queued	unassigned		Queued; no result claimed yet.
+073	KDE Plasma, UI, desktop services and responsiveness	Review language, locale, and keyboard defaults	queued	unassigned		Queued; no result claimed yet.
+074	KDE Plasma, UI, desktop services and responsiveness	Test desktop recovery after interrupted first login	queued	unassigned		Queued; no result claimed yet.
+075	KDE Plasma, UI, desktop services and responsiveness	Check desktop feature tests and skipped cases	queued	unassigned		Queued; no result claimed yet.
+076	KDE Plasma, UI, desktop services and responsiveness	Review UI consistency with ShreeOS visual identity	queued	unassigned		Queued; no result claimed yet.
+077	KDE Plasma, UI, desktop services and responsiveness	Inspect notifications and system tray integration	queued	unassigned		Queued; no result claimed yet.
+078	KDE Plasma, UI, desktop services and responsiveness	Check Wayland and X11 support claims	queued	unassigned		Queued; no result claimed yet.
+079	KDE Plasma, UI, desktop services and responsiveness	Run live KDE desktop acceptance on built ISO	queued	unassigned		Queued; no result claimed yet.
+080	KDE Plasma, UI, desktop services and responsiveness	Record Plasma responsiveness evidence on reference VM	queued	unassigned		Queued; no result claimed yet.
+081	CPU, RAM, startup and storage performance	Review performance measurement harness protocol and sample markers	blocked	baseline_workflow_audit	historical baseline runs 38944404085 and 38997208842	Both attempts failed without usable samples; dispatch a fresh run after builds finish.
+082	CPU, RAM, startup and storage performance	Validate baseline workflow provenance and exact source SHA	queued	unassigned		Queued; no result claimed yet.
+083	CPU, RAM, startup and storage performance	Capture three valid baseline samples on the pinned VM profile	queued	unassigned		Queued; no result claimed yet.
+084	CPU, RAM, startup and storage performance	Check aggregate baseline schema and variance rules	queued	unassigned		Queued; no result claimed yet.
+085	CPU, RAM, startup and storage performance	Audit candidate comparison for paired conditions and thresholds	queued	unassigned		Queued; no result claimed yet.
+086	CPU, RAM, startup and storage performance	Verify CPU utilization measurement boundaries	queued	unassigned		Queued; no result claimed yet.
+087	CPU, RAM, startup and storage performance	Review RAM and peak-memory measurement fields	queued	unassigned		Queued; no result claimed yet.
+088	CPU, RAM, startup and storage performance	Check startup timing marker definitions	queued	unassigned		Queued; no result claimed yet.
+089	CPU, RAM, startup and storage performance	Inspect storage direct-I/O test and cache bypass claims	queued	unassigned		Queued; no result claimed yet.
+090	CPU, RAM, startup and storage performance	Check QEMU workload consistency across samples	queued	unassigned		Queued; no result claimed yet.
+091	CPU, RAM, startup and storage performance	Validate timeout diagnostics and partial-output retention	queued	unassigned		Queued; no result claimed yet.
+092	CPU, RAM, startup and storage performance	Review performance protocol fingerprint coverage	queued	unassigned		Queued; no result claimed yet.
+093	CPU, RAM, startup and storage performance	Compare candidate and baseline with the same harness revision	queued	unassigned		Queued; no result claimed yet.
+094	CPU, RAM, startup and storage performance	Check measurement run isolation from concurrent builders	queued	unassigned		Queued; no result claimed yet.
+095	CPU, RAM, startup and storage performance	Inspect performance report completeness and warnings	queued	unassigned		Queued; no result claimed yet.
+096	CPU, RAM, startup and storage performance	Verify performance artifact retention and checksums	queued	unassigned		Queued; no result claimed yet.
+097	CPU, RAM, startup and storage performance	Review regressions against established release thresholds	queued	unassigned		Queued; no result claimed yet.
+098	CPU, RAM, startup and storage performance	Measure Plasma idle responsiveness on reference hardware	queued	unassigned		Queued; no result claimed yet.
+099	CPU, RAM, startup and storage performance	Measure boot duration from real ISO boot	queued	unassigned		Queued; no result claimed yet.
+100	CPU, RAM, startup and storage performance	Publish only measurements backed by valid raw samples	queued	unassigned		Queued; no result claimed yet.
+101	Calamares, installation and recovery	Check installer privilege boundary and fixed executable path	blocked	installer_acceptance_audit	release/INSTALL-ACCEPTANCE.md; acceptance verifier	Human guided and manual installs, credentials, APT, and detached-disk boots remain required.
+102	Calamares, installation and recovery	Verify BIOS-mode rejection occurs before Calamares opens	queued	unassigned		Queued; no result claimed yet.
+103	Calamares, installation and recovery	Review guided GPT partition layout against GRUB helper requirements	queued	unassigned		Queued; no result claimed yet.
+104	Calamares, installation and recovery	Review manual layout requirements and unsupported configurations	queued	unassigned		Queued; no result claimed yet.
+105	Calamares, installation and recovery	Determine safe pre-unpack validation for manual partition choices	running	installer_preflight_review + coordinator	partition.conf; settings.conf; shellprocess-storage-preflight.conf; test-system-features.py	Manual root/ESP filesystems are constrained; preflight executes after mount before unpackfs; runtime installation still pending.
+106	Calamares, installation and recovery	Inspect LUKS and LVM visibility and support claims	queued	unassigned		Queued; no result claimed yet.
+107	Calamares, installation and recovery	Audit EFI partition creation and mount point	queued	unassigned		Queued; no result claimed yet.
+108	Calamares, installation and recovery	Review user and password prompts remain interactive	queued	unassigned		Queued; no result claimed yet.
+109	Calamares, installation and recovery	Check live credentials are not reused by installed user setup	queued	unassigned		Queued; no result claimed yet.
+110	Calamares, installation and recovery	Inspect Calamares module order and failure behavior	queued	unassigned		Queued; no result claimed yet.
+111	Calamares, installation and recovery	Review fstab preservation and restoration around installer run	queued	unassigned		Queued; no result claimed yet.
+112	Calamares, installation and recovery	Check installer cancellation and lock cleanup behavior	queued	unassigned		Queued; no result claimed yet.
+113	Calamares, installation and recovery	Audit install target disk selection and same-disk constraints	queued	unassigned		Queued; no result claimed yet.
+114	Calamares, installation and recovery	Validate BIOS GRUB post-install helper call ordering	queued	unassigned		Queued; no result claimed yet.
+115	Calamares, installation and recovery	Review install logs and failure messages for actionable detail	queued	unassigned		Queued; no result claimed yet.
+116	Calamares, installation and recovery	Test guided installation on a disposable VM disk	queued	unassigned		Queued; no result claimed yet.
+117	Calamares, installation and recovery	Test manual direct ext4 installation on a disposable VM disk	queued	unassigned		Queued; no result claimed yet.
+118	Calamares, installation and recovery	Boot installed disk detached from ISO in UEFI mode	queued	unassigned		Queued; no result claimed yet.
+119	Calamares, installation and recovery	Boot installed disk detached from ISO in legacy BIOS mode	queued	unassigned		Queued; no result claimed yet.
+120	Calamares, installation and recovery	Complete human credential and APT acceptance checklist	queued	unassigned		Queued; no result claimed yet.
+121	Security, permissions and hardware daemon auditing	Review privilege escalation policy scope for installer	running	security_boundary_audit + installer_preflight_review + coordinator	installer launchers; Calamares preflight; hardware daemon source and unit	Early UEFI and storage-layout guards added; final CI and live acceptance pending; partition formatting is not rolled back on preflight failure.
+122	Security, permissions and hardware daemon auditing	Audit installer argument rejection and environment handling	queued	unassigned		Queued; no result claimed yet.
+123	Security, permissions and hardware daemon auditing	Review hardware daemon Unix peer credential checks	passed	security_boundary_audit	hardware/daemon/security.c; daemon test source; systemd unit	Static boundary review found no actionable authorization or sandbox issue; runtime tests still pending.
+124	Security, permissions and hardware daemon auditing	Check socket ownership, mode, and group access	queued	unassigned		Queued; no result claimed yet.
+125	Security, permissions and hardware daemon auditing	Audit systemd sandboxing and capability restrictions	queued	unassigned		Queued; no result claimed yet.
+126	Security, permissions and hardware daemon auditing	Review native daemon request validation and error handling	queued	unassigned		Queued; no result claimed yet.
+127	Security, permissions and hardware daemon auditing	Check nonmember access denial tests	queued	unassigned		Queued; no result claimed yet.
+128	Security, permissions and hardware daemon auditing	Review package files for unintended setuid or writable paths	queued	unassigned		Queued; no result claimed yet.
+129	Security, permissions and hardware daemon auditing	Audit secrets and credential handling in build workflows	queued	unassigned		Queued; no result claimed yet.
+130	Security, permissions and hardware daemon auditing	Verify no installer passwords are automated or logged	queued	unassigned		Queued; no result claimed yet.
+131	Security, permissions and hardware daemon auditing	Check workflow permissions and token scopes	queued	unassigned		Queued; no result claimed yet.
+132	Security, permissions and hardware daemon auditing	Review artifact checksum and source identity binding	queued	unassigned		Queued; no result claimed yet.
+133	Security, permissions and hardware daemon auditing	Audit tar archive path and member type handling	queued	unassigned		Queued; no result claimed yet.
+134	Security, permissions and hardware daemon auditing	Inspect shell scripts for unsafe evaluation and path use	queued	unassigned		Queued; no result claimed yet.
+135	Security, permissions and hardware daemon auditing	Review dependency pinning and snapshot provenance	queued	unassigned		Queued; no result claimed yet.
+136	Security, permissions and hardware daemon auditing	Check release artifact publication permissions	queued	unassigned		Queued; no result claimed yet.
+137	Security, permissions and hardware daemon auditing	Verify no security claim exceeds collected evidence	queued	unassigned		Queued; no result claimed yet.
+138	Security, permissions and hardware daemon auditing	Review security scan output at exact PR head	queued	unassigned		Queued; no result claimed yet.
+139	Security, permissions and hardware daemon auditing	Run hardware daemon test suite and preserve results	queued	unassigned		Queued; no result claimed yet.
+140	Security, permissions and hardware daemon auditing	Repeat final security audit on merged release candidate	queued	unassigned		Queued; no result claimed yet.
+141	CI/CD, workflows, caching and reproducibility	Check Stage A static workflow contracts and tests	running	coordinator	GitHub Actions runs 39018652791/52801/52802/52812/52842	These runs are for edf9f09 and will be superseded by the next pushed source SHA.
+142	CI/CD, workflows, caching and reproducibility	Audit Stage B build job manifest assertion contract	queued	unassigned		Queued; no result claimed yet.
+143	CI/CD, workflows, caching and reproducibility	Verify products manifest field emitted and validated	queued	unassigned		Queued; no result claimed yet.
+144	CI/CD, workflows, caching and reproducibility	Review artifact cache fingerprint input completeness	queued	unassigned		Queued; no result claimed yet.
+145	CI/CD, workflows, caching and reproducibility	Check workflow trigger coverage for pull request and release	queued	unassigned		Queued; no result claimed yet.
+146	CI/CD, workflows, caching and reproducibility	Audit cancellation of superseded heavy runs	queued	unassigned		Queued; no result claimed yet.
+147	CI/CD, workflows, caching and reproducibility	Verify exact-head SHA in every accepted workflow result	queued	unassigned		Queued; no result claimed yet.
+148	CI/CD, workflows, caching and reproducibility	Review CI concurrency groups and runner pressure	queued	unassigned		Queued; no result claimed yet.
+149	CI/CD, workflows, caching and reproducibility	Check package and ISO artifact upload paths	queued	unassigned		Queued; no result claimed yet.
+150	CI/CD, workflows, caching and reproducibility	Inspect workflow failure summaries and retained logs	queued	unassigned		Queued; no result claimed yet.
+151	CI/CD, workflows, caching and reproducibility	Audit release workflow publication gating conditions	queued	unassigned		Queued; no result claimed yet.
+152	CI/CD, workflows, caching and reproducibility	Verify manual workflow inputs cannot bypass acceptance	queued	unassigned		Queued; no result claimed yet.
+153	CI/CD, workflows, caching and reproducibility	Review reproducible build environment versions	queued	unassigned		Queued; no result claimed yet.
+154	CI/CD, workflows, caching and reproducibility	Check timestamp and source dirtiness manifest behavior	queued	unassigned		Queued; no result claimed yet.
+155	CI/CD, workflows, caching and reproducibility	Validate shellcheck and Python syntax sweep coverage	queued	unassigned		Queued; no result claimed yet.
+156	CI/CD, workflows, caching and reproducibility	Review test command inclusion for new regression suite	queued	unassigned		Queued; no result claimed yet.
+157	CI/CD, workflows, caching and reproducibility	Check artifact expiration and evidence retention policy	queued	unassigned		Queued; no result claimed yet.
+158	CI/CD, workflows, caching and reproducibility	Audit workflow permissions and environment protection	queued	unassigned		Queued; no result claimed yet.
+159	CI/CD, workflows, caching and reproducibility	Re-run all required workflows after final source change	queued	unassigned		Queued; no result claimed yet.
+160	CI/CD, workflows, caching and reproducibility	Record final green-check matrix and any non-required skips	queued	unassigned		Queued; no result claimed yet.
+161	QEMU, ISO, hardware compatibility and automated testing	Review QEMU boot harness timeout and process cleanup	queued	unassigned		Queued; no result claimed yet.
+162	QEMU, ISO, hardware compatibility and automated testing	Check bounded GRUB menu Enter retries and marker polling	queued	unassigned		Queued; no result claimed yet.
+163	QEMU, ISO, hardware compatibility and automated testing	Verify boot failure marker stops retries immediately	queued	unassigned		Queued; no result claimed yet.
+164	QEMU, ISO, hardware compatibility and automated testing	Review initial menu screenshot and serial log retention	queued	unassigned		Queued; no result claimed yet.
+165	QEMU, ISO, hardware compatibility and automated testing	Check BIOS firmware ROM hash and profile capture	queued	unassigned		Queued; no result claimed yet.
+166	QEMU, ISO, hardware compatibility and automated testing	Audit UEFI firmware and variable-store inputs	queued	unassigned		Queued; no result claimed yet.
+167	QEMU, ISO, hardware compatibility and automated testing	Verify ISO checksum before boot testing	queued	unassigned		Queued; no result claimed yet.
+168	QEMU, ISO, hardware compatibility and automated testing	Check virtual disk creation and cleanup isolation	queued	unassigned		Queued; no result claimed yet.
+169	QEMU, ISO, hardware compatibility and automated testing	Review console and XFCE experiment coverage	queued	unassigned		Queued; no result claimed yet.
+170	QEMU, ISO, hardware compatibility and automated testing	Inspect Plasma ISO boot test result and evidence	queued	unassigned		Queued; no result claimed yet.
+171	QEMU, ISO, hardware compatibility and automated testing	Validate live boot reaches desktop-ready marker	queued	unassigned		Queued; no result claimed yet.
+172	QEMU, ISO, hardware compatibility and automated testing	Check screenshots correspond to current exact-head artifact	queued	unassigned		Queued; no result claimed yet.
+173	QEMU, ISO, hardware compatibility and automated testing	Review QEMU logs for monitor and I/O errors	queued	unassigned		Queued; no result claimed yet.
+174	QEMU, ISO, hardware compatibility and automated testing	Verify all test-created artifacts remain out of source package	queued	unassigned		Queued; no result claimed yet.
+175	QEMU, ISO, hardware compatibility and automated testing	Inspect TCG performance timing limits and retry behavior	queued	unassigned		Queued; no result claimed yet.
+176	QEMU, ISO, hardware compatibility and automated testing	Check ISO integrity and SquashFS extraction validation	queued	unassigned		Queued; no result claimed yet.
+177	QEMU, ISO, hardware compatibility and automated testing	Review memory and CPU settings in automated VM jobs	queued	unassigned		Queued; no result claimed yet.
+178	QEMU, ISO, hardware compatibility and automated testing	Confirm QEMU jobs do not overlap baseline measurement	queued	unassigned		Queued; no result claimed yet.
+179	QEMU, ISO, hardware compatibility and automated testing	Run BIOS and UEFI boot workflows on final source SHA	queued	unassigned		Queued; no result claimed yet.
+180	QEMU, ISO, hardware compatibility and automated testing	Retain final ISO boot evidence with artifact identity	queued	unassigned		Queued; no result claimed yet.
+181	Release engineering, evidence and documentation	Maintain this 200-slot logical assignment ledger transparently	running	coordinator	release/INSTALL-ACCEPTANCE.md; current release workflow	Release remains gated on exact master artifact and human acceptance.
+182	Release engineering, evidence and documentation	Audit release acceptance verifier source identity requirements	queued	unassigned		Queued; no result claimed yet.
+183	Release engineering, evidence and documentation	Check acceptance record distinguishes built, booted, installed, and released	queued	unassigned		Queued; no result claimed yet.
+184	Release engineering, evidence and documentation	Verify current PR artifacts cannot satisfy master acceptance gate	queued	unassigned		Queued; no result claimed yet.
+185	Release engineering, evidence and documentation	Review release notes and version contract for 0.4.0	queued	unassigned		Queued; no result claimed yet.
+186	Release engineering, evidence and documentation	Check canonical ISO filename and checksum naming	queued	unassigned		Queued; no result claimed yet.
+187	Release engineering, evidence and documentation	Verify manifest products identifies live and installed deliverables	queued	unassigned		Queued; no result claimed yet.
+188	Release engineering, evidence and documentation	Audit release assets for duplicate or stale files	queued	unassigned		Queued; no result claimed yet.
+189	Release engineering, evidence and documentation	Check source commit, ISO digest, and artifact provenance agree	queued	unassigned		Queued; no result claimed yet.
+190	Release engineering, evidence and documentation	Review human installer acceptance procedure and evidence fields	queued	unassigned		Queued; no result claimed yet.
+191	Release engineering, evidence and documentation	Document remaining manual partition and firmware limitations	queued	unassigned		Queued; no result claimed yet.
+192	Release engineering, evidence and documentation	Verify benchmark report includes conditions and source hashes	queued	unassigned		Queued; no result claimed yet.
+193	Release engineering, evidence and documentation	Check release artifact upload is tied to accepted master run	queued	unassigned		Queued; no result claimed yet.
+194	Release engineering, evidence and documentation	Review GitHub Release creation method and gating sequence	queued	unassigned		Queued; no result claimed yet.
+195	Release engineering, evidence and documentation	Prepare final merge record with PR and merge SHA	queued	unassigned		Queued; no result claimed yet.
+196	Release engineering, evidence and documentation	Confirm merged master CI and artifact match merge commit	queued	unassigned		Queued; no result claimed yet.
+197	Release engineering, evidence and documentation	Retain build logs, checksums, screenshots, and test reports	queued	unassigned		Queued; no result claimed yet.
+198	Release engineering, evidence and documentation	Write final A-J technical report with evidence links	queued	unassigned		Queued; no result claimed yet.
+199	Release engineering, evidence and documentation	Identify external manual actions needed before acceptance	queued	unassigned		Queued; no result claimed yet.
+200	Release engineering, evidence and documentation	Publish only after every mandatory gate has current evidence	queued	unassigned		Queued; no result claimed yet.

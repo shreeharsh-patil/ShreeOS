@@ -94,6 +94,7 @@ class UnifiedArtifactCacheTests(unittest.TestCase):
             "base_distribution": self.suite,
             "base_snapshot": self.snapshot,
             "live_build": self.live_build,
+            "products": ["live", "installed"],
             "commit": self.commit,
             "git_dirty": False,
             "iso": self.iso.name,
@@ -137,6 +138,20 @@ class UnifiedArtifactCacheTests(unittest.TestCase):
         manifest["base_snapshot"] = "20250101T000000Z"
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "base_snapshot"):
+            self._verify()
+
+    def test_rejects_manifest_without_declared_products(self) -> None:
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        del manifest["products"]
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "products"):
+            self._verify()
+
+    def test_rejects_manifest_with_unexpected_products(self) -> None:
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["products"] = ["live"]
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "products"):
             self._verify()
 
     def test_rejects_missing_required_package_sidecar_entry(self) -> None:

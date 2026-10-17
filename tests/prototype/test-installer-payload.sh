@@ -70,7 +70,7 @@ text = open(sys.argv[1]).read()
 # The YAML sequence lists module names under "sequence:"; pull every list item.
 names = []
 for line in text.splitlines():
-    match = re.match(r"\s*-\s*([A-Za-z0-9_.-]+)\s*$", line)
+    match = re.match(r"\s*-\s*([A-Za-z0-9_.@-]+)\s*$", line)
     if match:
         names.append(match.group(1))
 print("\n".join(names))
@@ -81,6 +81,11 @@ PY
 
 missing=()
 for module in "${sequence_modules[@]}"; do
+  if [ "$module" = shellprocess@storage-preflight ]; then
+    [ -s "$extract_dir/etc/calamares/modules/shellprocess-storage-preflight.conf" ] ||
+      fail 'the installer sequence has no storage preflight config'
+    continue
+  fi
   # Modules known to be provided by the local overrides or shipped in the image.
   if [ -s "$extract_dir/etc/calamares/modules/$module.conf" ]; then
     continue
