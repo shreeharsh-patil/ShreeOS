@@ -51,7 +51,7 @@ class QemuHarnessTests(unittest.TestCase):
     def test_performance_timeout_preserves_live_serial_and_guest_diagnostics(self):
         script = PERFORMANCE_HARNESS.read_text(encoding="utf-8")
         self.assertIn("setsid xvfb-run", script)
-        self.assertIn("-serial stdio -no-reboot", script)
+        self.assertIn('"-serial" "stdio" "-no-reboot"', script)
         self.assertIn("deadline=$((SECONDS + 1500))", script)
         self.assertIn("qemu_timeout=1800", script)
         self.assertIn('command("sendkey home")', script)

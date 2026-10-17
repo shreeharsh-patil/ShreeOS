@@ -508,7 +508,7 @@ class MeasurementProvenanceTests(unittest.TestCase):
         for tool in ("unsquashfs", "xvfb-run", "sha256sum"):
             self.assertIn(tool, report)
         self.assertIn('CAPTURE_ONLY:-0', report)
-        self.assertIn('-bios "$BIOS_ROM"', report)
+        self.assertIn('"-bios" "$BIOS_ROM"', report)
         self.assertIn('dpkg-query -W -f=', report)
         self.assertIn('bios_rom_sha256=', report)
 
