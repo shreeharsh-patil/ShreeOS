@@ -63,6 +63,10 @@ grep -Fq 'lsblk -ndo TYPE' "$boot_check"
 grep -Fq 'NetworkManager.service' "$boot_check"
 grep -Fq 'nmcli -t -f TYPE,STATE device status' "$boot_check"
 grep -Fq 'continuing with offline boot' "$boot_check"
+if grep -Fq "fail 'the Ethernet interface did not receive a default route'" "$boot_check"; then
+  echo 'Offline network must not fail live boot validation.' >&2
+  exit 1
+fi
 grep -Fq 'SHREEOS_BOOT_CHECK: Ethernet DHCP route is active' \
   "$REPO_ROOT/tests/prototype/test-iso.sh"
 grep -Fq 'unexpectedly has sudo access' "$boot_check"
