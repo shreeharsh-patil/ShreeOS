@@ -590,6 +590,31 @@ class MeasurementProvenanceTests(unittest.TestCase):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
         self.assertIn("shreeos_extract_boot_total", probe)
         self.assertIn("Could not parse a positive systemd boot duration", probe)
+        self.assertIn('LC_ALL=C systemd-analyze time 2>&1', probe)
+        self.assertIn("Bootup is not yet finished", probe)
+        self.assertIn("BOOT_TOTAL_WAIT_SECONDS=180", probe)
+
+    def test_meminfo_parser_matches_proc_field_labels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory) / "meminfo"
+            fixture.write_text("MemTotal:       4194304 kB\nMemAvailable:   2097152 kB\n",
+                               encoding="utf-8")
+            for key, expected in (("MemTotal", "4194304"),
+                                  ("MemAvailable", "2097152")):
+                with self.subTest(key=key):
+                    result = subprocess.run(
+                        [shell(), "-c", '. "$1"; shreeos_extract_meminfo_kib "$2" "$3"',
+                         "sh", shell_path(PERFORMANCE_TIME), key, shell_path(fixture)],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), expected)
+
+    def test_performance_qemu_has_restricted_dhcp_without_host_or_external_access(self):
+        report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
+        self.assertIn('"-nic" "user,restrict=on,model=virtio-net-pci"', report)
+        self.assertIn("isolated-user-network", report)
+        self.assertNotIn('"-nic" "none"', report)
 
     def test_systemd_total_parser_handles_trailing_graphical_parenthetical(self):
         sample = ("Startup finished in 4.321s (firmware) + 1.234s (loader) + "

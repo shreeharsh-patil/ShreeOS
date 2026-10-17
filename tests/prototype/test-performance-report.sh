@@ -4,7 +4,7 @@
 # baseline.
 #
 # Controlled conditions, identical for baseline and candidate:
-#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, fixed window, no network.
+#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, restricted user network.
 #
 # The image writes SHREEOS_PERF lines to its console from
 # /usr/local/sbin/shreeos-perf-probe, which runs once on live media only. This
@@ -139,7 +139,7 @@ host_kernel="$(uname -sr)"
 host_cpu_model="$(awk -F: '/^model name[[:space:]]*:/ { sub(/^[[:space:]]+/, "", $2); print $2; exit }' /proc/cpuinfo)"
 host_mem_total_kib="$(awk '$1 == "MemTotal:" { print $2; exit }' /proc/meminfo)"
 firmware="SeaBIOS:$BIOS_ROM:sha256=$bios_rom_sha256"
-qemu_profile='q35;4096MiB;2-vCPU;virtio-graphics;no-network;fresh-2GiB-virtio-raw-disk;cache=none;explicit-SeaBIOS;CD-ROM-first;1280x800'
+qemu_profile='q35;4096MiB;2-vCPU;virtio-graphics;isolated-user-network;fresh-2GiB-virtio-raw-disk;cache=none;explicit-SeaBIOS;CD-ROM-first;1280x800'
 
 qemu-img create -q -f raw "$TARGET_DISK" 2G
 
@@ -148,7 +148,8 @@ qemu-img create -q -f raw "$TARGET_DISK" 2G
 deadline=$((SECONDS + 1500))
 qemu_timeout=1800
 qemu_args=(
-  "-machine" "q35" "-m" "4096" "-smp" "2" "-vga" "virtio" "-nic" "none"
+  "-machine" "q35" "-m" "4096" "-smp" "2" "-vga" "virtio"
+  "-nic" "user,restrict=on,model=virtio-net-pci"
   "-bios" "$BIOS_ROM"
   "-drive" "file=$TARGET_DISK,format=raw,if=none,id=perf-disk,cache=none"
   "-device" "virtio-blk-pci,drive=perf-disk,serial=SHREEOSPERF"
@@ -377,7 +378,7 @@ awk 'index($0, "SHREEOS_PERF ") {
 {
   printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
   printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
-  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed\n'
+  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,isolated-user-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed\n'
   printf '# probe_sha256=%s\n' "$probe_sha256"
   printf '# probe_service_sha256=%s\n' "$probe_service_sha256"
   printf '# probe_timer_sha256=%s\n' "$probe_timer_sha256"
@@ -439,7 +440,7 @@ REPORT="$TEST_DIR/performance-report.md"
   # shellcheck disable=SC2016
   printf 'Image: `%s`\n' "$(basename -- "$ISO")"
   printf 'Measured: %s (UTC)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, QEMU BIOS, no network; serial-tagged QEMU scratch disk, 64 MiB sequential direct write/read\n\n'
+  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, QEMU BIOS, isolated user-mode network with no host or external routing; serial-tagged QEMU scratch disk, 64 MiB sequential direct write/read\n\n'
   printf '| Metric | Measured |\n| --- | --- |\n'
   while IFS=$'\t' read -r key value; do
     [ -n "$key" ] || continue
@@ -504,7 +505,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed' ]; then
+  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,isolated-user-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed' ]; then
     printf 'Baseline was not measured under the controlled release conditions.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))

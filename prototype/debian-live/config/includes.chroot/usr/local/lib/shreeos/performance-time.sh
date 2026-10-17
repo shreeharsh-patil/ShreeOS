@@ -1,6 +1,10 @@
 #!/bin/sh
 # Shared systemd duration parsing for the live performance probe.
 
+shreeos_extract_meminfo_kib() {
+  awk -v key="${1}:" '$1 == key { print $2; exit }' "${2:-/proc/meminfo}"
+}
+
 shreeos_extract_boot_total() {
   printf '%s\n' "$1" | awk '
     index($0, "=") {
