@@ -229,13 +229,14 @@ run_boot_test() {
   local emulator_pid=$!
   sleep 20
   if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-    if python3 - "$monitor_socket" "$menu_dump" "$splash_dump" >>"$emulator_log" 2>&1 <<'PY'
+    if python3 - "$monitor_socket" "$menu_dump" "$splash_dump" "$log" >>"$emulator_log" 2>&1 <<'PY'
 import socket
 import sys
 import time
 import os
+from pathlib import Path
 
-monitor, output, splash = sys.argv[1:]
+monitor, output, splash, serial = sys.argv[1:]
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(3)
 for _ in range(10):
@@ -266,12 +267,27 @@ def command(value):
     client.sendall((value + "\n").encode())
     read_prompt()
 
+def boot_marker_seen():
+    try:
+        contents = Path(serial).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "SHREEOS_LIVE_BOOT_OK" in contents or "SHREEOS_BOOT_CHECK: FAIL:" in contents
+
 try:
     read_prompt()
     command(f"screendump {output}")
     command("sendkey home")
-    command("sendkey ret")
-    time.sleep(3)
+    # Retry Enter while TCG catches up. Check the serial marker so the final
+    # keypress does not continue after boot validation has finished.
+    for attempt in range(4):
+        if boot_marker_seen():
+            break
+        command("sendkey ret")
+        for _ in range(10):
+            if boot_marker_seen():
+                break
+            time.sleep(1)
     command(f"screendump {splash}")
     for path in (output, splash):
         if not os.path.isfile(path) or os.path.getsize(path) == 0:

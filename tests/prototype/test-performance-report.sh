@@ -126,6 +126,7 @@ measurement_protocol_sha256="$(
     prototype/debian-live/performance-targets.tsv \
     scripts/aggregate-performance-runs.py \
     scripts/compare-performance-runs.py \
+    scripts/verify-performance-manifest.py \
     tests/prototype/test-performance-report.sh | sha256sum | awk '{print $1}'
 )"
 qemu_version="$(qemu-system-x86_64 --version | head -n 1 | tr -d '\r')"
@@ -169,12 +170,13 @@ emulator_pid=$!
 # explicit keypress the baseline can remain at the menu indefinitely in QEMU.
 sleep 20
 if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
-  python3 - "$MONITOR" "$MENU_SCREEN" <<'PY' >>"$MONITOR_LOG" 2>&1
+  python3 - "$MONITOR" "$MENU_SCREEN" "$SERIAL" <<'PY' >>"$MONITOR_LOG" 2>&1
 import socket
 import sys
 import time
+from pathlib import Path
 
-monitor, screen = sys.argv[1:]
+monitor, screen, serial = sys.argv[1:]
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(3)
 for _ in range(10):
@@ -198,16 +200,35 @@ def read_prompt():
         if not chunk:
             raise ConnectionError("QEMU monitor closed during GRUB selection")
         response.extend(chunk)
+    text = response.decode(errors="replace")
+    if "Error:" in text or "Could not" in text:
+        raise RuntimeError(f"QEMU monitor command failed: {text.strip()}")
+    return text
 
 def command(value):
     client.sendall((value + "\n").encode())
-    read_prompt()
+    return read_prompt()
+
+def marker_seen():
+    try:
+        return "SHREEOS_PERF_END" in Path(serial).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
 
 try:
     read_prompt()
     command(f"screendump {screen}")
     command("sendkey home")
-    command("sendkey ret")
+    # TCG can take longer than the initial menu delay to accept input. Retry
+    # Enter a few times, checking the real serial stream between attempts.
+    for attempt in range(4):
+        if marker_seen():
+            break
+        command("sendkey ret")
+        for _ in range(10):
+            if marker_seen():
+                break
+            time.sleep(1)
 finally:
     client.close()
 PY
@@ -381,6 +402,7 @@ awk 'index($0, "SHREEOS_PERF ") {
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
 [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MONITOR_LOG" ] || cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"; }
+[ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MENU_SCREEN" ] || cp -f "$MENU_SCREEN" "$QEMU_LOG_DIR/grub-menu.ppm"; }
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/metrics.tsv" "$QEMU_LOG_DIR/metrics.tsv"
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/performance-candidate.tsv" "$QEMU_LOG_DIR/performance-candidate.tsv"
 [ -s "$TEST_DIR/metrics.tsv" ] || { echo 'No SHREEOS_PERF metrics were captured; logs and empty metrics were retained.' >&2; exit 1; }

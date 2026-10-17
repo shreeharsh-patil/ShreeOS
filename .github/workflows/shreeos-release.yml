@@ -152,7 +152,7 @@ jobs:
           python3 branding/scripts/verify-logo-png-exports.py
           git diff --check
 
-      - name: Installer and recovery regressions
+      - name: Legacy installer and recovery regressions
         run: |
           bash tests/installer/test-recovery-initramfs.sh
           bash tests/installer/test-installer-validation.sh

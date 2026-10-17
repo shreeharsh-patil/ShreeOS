@@ -568,6 +568,7 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn('[ "$baseline_probe_time_helper_sha256" != "$probe_time_helper_sha256" ]', report)
         self.assertIn('[ "$baseline_measurement_protocol_sha256" != "$measurement_protocol_sha256" ]', report)
         self.assertIn(".github/workflows/performance-baseline.yml", report)
+        self.assertIn("scripts/verify-performance-manifest.py", report)
         self.assertIn("tests/prototype/test-performance-report.sh | sha256sum", report)
         self.assertIn('informational only; backing storage varies by runner', report)
 

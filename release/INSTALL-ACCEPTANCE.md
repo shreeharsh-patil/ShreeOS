@@ -109,6 +109,7 @@ Limitations: <anything not covered, e.g. encryption, recovery from a failed inst
 These are not covered by the procedure above and remain open release gates:
 
 - LUKS encryption, and the failure path when the encrypted unlock fails.
+- LVM and manual encrypted-root layouts; use direct GPT partitions with an ext4 root for the documented acceptance path.
 - Recovery from an interrupted install and from a full target filesystem.
 - Installing alongside an existing operating system (dual boot).
 - Real hardware: Wi-Fi, Bluetooth, audio, printers, suspend/resume, GPU drivers.

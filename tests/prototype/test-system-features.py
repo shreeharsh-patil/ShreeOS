@@ -221,6 +221,8 @@ class CommandTests(unittest.TestCase):
         self.assertNotIn("createHybridBootloaderLayout", partition)
         self.assertIn("defaultPartitionTableType: gpt", partition)
         self.assertIn("requiredPartitionTableType: gpt", partition)
+        self.assertIn("enableLuksAutomatedPartitioning: false", partition)
+        self.assertRegex(partition, r"(?m)^lvm:\s*\n\s+enable: false$")
         self.assertIn("mountPoint: /boot/efi", partition)
         self.assertIn("recommendedSize: 512MiB", partition)
         self.assertRegex(partition, r"(?s)partitionLayout:.*?type: \"21686148-6449-6E6F-744E-656564454649\".*?filesystem: unformatted.*?mountPoint: /.*?size: 100%")
