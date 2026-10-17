@@ -130,13 +130,13 @@ qemu-img create -q -f raw "$TARGET_DISK" 2G
 deadline=$((SECONDS + 1500))
 qemu_timeout=1800
 qemu_args=(
-  -machine q35 -m 4096 -smp 2 -vga virtio -nic none
-  -bios "$BIOS_ROM"
-  -drive "file=$TARGET_DISK,format=raw,if=none,id=perf-disk,cache=none"
-  -device "virtio-blk-pci,drive=perf-disk,serial=SHREEOSPERF"
-  -cdrom "$ISO" -boot order=d
-  -display gtk -monitor "unix:$MONITOR,server,nowait"
-  -serial stdio -no-reboot
+  "-machine" "q35" "-m" "4096" "-smp" "2" "-vga" "virtio" "-nic" "none"
+  "-bios" "$BIOS_ROM"
+  "-drive" "file=$TARGET_DISK,format=raw,if=none,id=perf-disk,cache=none"
+  "-device" "virtio-blk-pci,drive=perf-disk,serial=SHREEOSPERF"
+  "-cdrom" "$ISO" "-boot" "order=d"
+  "-display" "gtk" "-monitor" "unix:$MONITOR,server,nowait"
+  "-serial" "stdio" "-no-reboot"
 )
 qemu_invocation=(
   setsid xvfb-run -a -s "-screen 0 1280x800x24"

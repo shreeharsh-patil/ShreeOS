@@ -291,6 +291,8 @@ class CommandTests(unittest.TestCase):
         self.assertNotIn('`0666`', hardware_readme)
         self.assertIn('setgid(hardware->gr_gid)', test_source)
         self.assertIn('status.st_gid == expected_gid', test_source)
+        self.assertIn('bool test_socket_open = chmod(socket_path, 0666) == 0;', test_source)
+        self.assertIn('chmod(socket_path, 0660) == 0', test_source)
 
     def test_manual_cross_firmware_layout_names_the_required_gpt_types(self):
         docs = (ROOT / "docs/UNIFIED-IMAGE.md").read_text(encoding="utf-8")
