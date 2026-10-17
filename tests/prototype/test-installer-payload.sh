@@ -64,10 +64,24 @@ import re
 import sys
 
 text = open(sys.argv[1]).read()
-# The YAML sequence lists module names under "sequence:"; pull every list item.
+# The YAML sequence lists module names under "sequence:". Scope the match to
+# that block so the document marker ("---") and list keys such as "- show:"
+# cannot be mistaken for module names.
 names = []
+in_sequence = False
 for line in text.splitlines():
-    match = re.match(r"\s*-\s*([A-Za-z0-9_.@-]+)\s*$", line)
+    if not in_sequence:
+        if re.fullmatch(r"sequence:\s*", line):
+            in_sequence = True
+        continue
+    if (
+        line
+        and not line[0].isspace()
+        and not line.startswith("-")
+        and not line.lstrip().startswith("#")
+    ):
+        break
+    match = re.match(r"\s*-\s+([A-Za-z0-9_.@-]+)\s*$", line)
     if match:
         names.append(match.group(1))
 print("\n".join(names))
