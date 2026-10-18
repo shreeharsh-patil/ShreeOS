@@ -4,7 +4,8 @@
 # baseline.
 #
 # Controlled conditions, identical for baseline and candidate:
-#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, fixed window, no network.
+#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800. A restricted user-mode
+#   network supplies DHCP to the live boot check but blocks host/outside access.
 #
 # The image writes SHREEOS_PERF lines to its console from
 # /usr/local/sbin/shreeos-perf-probe, which runs once on live media only. This
@@ -108,6 +109,7 @@ deadline=$((SECONDS + 900))
 xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 900s qemu-system-x86_64 \
   -machine q35 -m 4096 -smp 2 -vga virtio -nic none \
   -drive "file=$TARGET_DISK,format=raw,if=virtio" \
+  -nic user,model=virtio-net-pci,restrict=on \
   -cdrom "$ISO" -boot order=d \
   -display gtk -monitor "unix:$MONITOR,server,nowait" \
   -serial "file:$SERIAL" -no-reboot >"$TEST_DIR/qemu.log" 2>&1 &
@@ -147,7 +149,11 @@ wait "$emulator_pid" || true
 if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
   echo 'The image never completed its performance probe.' >&2
   tail -n 60 "$SERIAL" >&2 || true
-  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  if [ -n "$QEMU_LOG_DIR" ]; then
+    cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+    [ ! -s "$TEST_DIR/qemu.log" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  fi
+  tail -n 60 "$TEST_DIR/qemu.log" >&2 || true
   exit 1
 fi
 
@@ -164,7 +170,7 @@ grep 'SHREEOS_PERF ' "$SERIAL" | sed 's/^.*SHREEOS_PERF //' |
 {
   printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
   printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
-  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network\n'
+  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,restricted-user-network\n'
   printf '# probe_sha256=%s\n' "$probe_sha256"
   printf '# probe_service_sha256=%s\n' "$probe_service_sha256"
   awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms)$/ {
@@ -187,7 +193,7 @@ REPORT="$TEST_DIR/performance-report.md"
   # shellcheck disable=SC2016
   printf 'Image: `%s`\n' "$(basename -- "$ISO")"
   printf 'Measured: %s (UTC)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, no network\n\n'
+  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, restricted user-mode network (DHCP only; no access to the host or outside network)\n\n'
   printf '| Metric | Measured |\n| --- | --- |\n'
   while IFS=$'\t' read -r key value; do
     [ -n "$key" ] || continue
@@ -248,7 +254,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,no-network' ]; then
+  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,restricted-user-network' ]; then
     printf 'Baseline was not measured under the controlled release conditions.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))
