@@ -45,6 +45,8 @@ grep -Fq 'LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-con
   "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'passwd --status shree' "$boot_check"
 grep -Fq 'live account password is locked' "$boot_check"
+grep -Fq 'Plasma user journal' "$boot_check"
+grep -Fq 'coredumpctl --no-pager list' "$boot_check"
 grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$boot_check"
 grep -Fq 'SHREEOS_BOOT_CHECK: %s' "$boot_check"
 grep -Fq 'StandardOutput=journal+console' \

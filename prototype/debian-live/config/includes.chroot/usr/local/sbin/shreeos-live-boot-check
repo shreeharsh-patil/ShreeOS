@@ -81,6 +81,29 @@ if [ -f /etc/shreeos/image-profile ] &&
     if [ "$elapsed" -ge "$plasma_session_wait_seconds" ]; then
       ps -eo user,pid,args | grep -E '[s]ddm|[p]lasmashell|[k]win_x11|[p]lank' \
         | while IFS= read -r diagnostic; do log "$diagnostic"; done
+      user_uid="$(id -u shree)"
+      log "Plasma user journal (UID $user_uid):"
+      journalctl -b "_UID=$user_uid" --no-pager -n 80 2>/dev/null \
+        | while IFS= read -r diagnostic; do log "$diagnostic"; done
+      log 'Plasma first-login and session logs:'
+      for session_log in \
+        /home/shree/.cache/shreeos-plasma-first-login.log \
+        /home/shree/.cache/shreeos-session-setup.log \
+        /home/shree/.xsession-errors
+      do
+        if [ -r "$session_log" ]; then
+          log "Session output from $session_log:"
+          tail -n 60 "$session_log" \
+            | while IFS= read -r diagnostic; do log "$diagnostic"; done
+        fi
+      done
+      if command -v coredumpctl >/dev/null 2>&1; then
+        log 'Recent Plasma/KWin/dock coredumps:'
+        coredumpctl --no-pager list --no-legend 2>/dev/null \
+          | grep -Ei 'plasmashell|kwin|plank|kscreenlocker' \
+          | tail -n 12 \
+          | while IFS= read -r diagnostic; do log "$diagnostic"; done
+      fi
       fail "SDDM did not start Plasma, the ShreeOS menu bar, and Plank dock within ${plasma_session_wait_seconds} seconds"
     fi
     sleep 1
