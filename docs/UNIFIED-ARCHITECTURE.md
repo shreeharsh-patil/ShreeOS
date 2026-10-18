@@ -93,7 +93,7 @@ down. They are installable, not shipped.
 | Signed ShreeOS-authored `.deb`s and a ShreeOS package repository | `docs/SYSTEM-READINESS.md` |
 | Wayland session | matrix above |
 
-The untouched comparison source is `9313ebb042cf71bb148441037940b130d49920d1`, the pre-optimization revision used for this change. A baseline record must name that source commit, include the measured ISO SHA256, and use the same 2-vCPU, 4096-MiB, VirtIO, 1280x800 conditions with restricted user-mode networking. The virtual DHCP service satisfies the live boot check, while QEMU blocks guest packets from reaching the host or outside network. The release job rejects baseline data without this provenance.
+The untouched comparison source is `9313ebb042cf71bb148441037940b130d49920d1`, the pre-optimization revision used for this change. A baseline record must name that source commit, include the measured ISO SHA256, and use the same 2-vCPU, 4096-MiB, VirtIO, 1280x800 conditions with QEMU user-mode networking for DHCP. The measurement probe itself initiates no network traffic, and baseline and candidate use the same network setup. The release job rejects baseline data without this provenance.
 
 To collect it, build the ISO from that source revision, run the current performance report against the ISO with `MEASURED_SOURCE_COMMIT=9313ebb042cf71bb148441037940b130d49920d1`, then review the archived `performance-candidate.tsv` and commit it as `tests/prototype/performance-baseline.tsv`. The candidate release run is measured separately and compared to this record.
 

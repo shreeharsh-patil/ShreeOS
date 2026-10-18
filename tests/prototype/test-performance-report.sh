@@ -4,8 +4,8 @@
 # baseline.
 #
 # Controlled conditions, identical for baseline and candidate:
-#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800. A restricted user-mode
-#   network supplies DHCP to the live boot check but blocks host/outside access.
+#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800. QEMU user-mode networking
+#   provides DHCP for the live boot check; the probe initiates no network traffic.
 #
 # The image writes SHREEOS_PERF lines to its console from
 # /usr/local/sbin/shreeos-perf-probe, which runs once on live media only. This
@@ -112,7 +112,7 @@ qemu_timeout=1020
 xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
   -machine q35 -m 4096 -smp 2 -vga virtio \
   -drive "file=$TARGET_DISK,format=raw,if=virtio" \
-  -nic user,model=virtio-net-pci,restrict=on \
+  -nic user,model=virtio-net-pci \
   -cdrom "$ISO" -boot order=d \
   -display gtk -monitor "unix:$MONITOR,server,nowait" \
   -serial "file:$SERIAL" -no-reboot >"$TEST_DIR/qemu.log" 2>&1 &
@@ -246,7 +246,7 @@ grep 'SHREEOS_PERF ' "$SERIAL" | sed 's/^.*SHREEOS_PERF //' |
 {
   printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
   printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
-  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,restricted-user-network\n'
+  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,user-mode-network\n'
   printf '# probe_sha256=%s\n' "$probe_sha256"
   printf '# probe_service_sha256=%s\n' "$probe_service_sha256"
   awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms)$/ {
@@ -269,7 +269,7 @@ REPORT="$TEST_DIR/performance-report.md"
   # shellcheck disable=SC2016
   printf 'Image: `%s`\n' "$(basename -- "$ISO")"
   printf 'Measured: %s (UTC)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, restricted user-mode network (DHCP only; no access to the host or outside network)\n\n'
+  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, QEMU user-mode network for DHCP; the probe initiates no network traffic\n\n'
   printf '| Metric | Measured |\n| --- | --- |\n'
   while IFS=$'\t' read -r key value; do
     [ -n "$key" ] || continue
@@ -330,7 +330,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,restricted-user-network' ]; then
+  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,user-mode-network' ]; then
     printf 'Baseline was not measured under the controlled release conditions.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))

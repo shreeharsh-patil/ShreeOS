@@ -391,11 +391,12 @@ class MeasurementProvenanceTests(unittest.TestCase):
         for tool in ("unsquashfs", "xvfb-run", "sha256sum"):
             self.assertIn(tool, report)
 
-    def test_performance_vm_provides_dhcp_without_external_network_access(self):
+    def test_performance_vm_matches_boot_test_network_configuration(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
-        self.assertIn("-nic user,model=virtio-net-pci,restrict=on", report)
+        self.assertIn("-nic user,model=virtio-net-pci", report)
+        self.assertNotIn("restrict=on", report)
         self.assertNotIn("-nic none", report)
-        self.assertIn("restricted-user-network", report)
+        self.assertIn("user-mode-network", report)
         self.assertIn("$QEMU_LOG_DIR/qemu.log", report)
         self.assertIn("screendump {screenshot}", report)
         self.assertIn("$QEMU_LOG_DIR/screen.ppm", report)
