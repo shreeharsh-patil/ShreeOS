@@ -399,6 +399,8 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn("$QEMU_LOG_DIR/qemu.log", report)
         self.assertIn("screendump {screenshot}", report)
         self.assertIn("$QEMU_LOG_DIR/screen.ppm", report)
+        self.assertIn("sendkey home", report)
+        self.assertIn("sendkey ret", report)
 
     def test_performance_runner_rejects_a_different_embedded_probe(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")

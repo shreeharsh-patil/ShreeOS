@@ -118,6 +118,33 @@ xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" 
   -serial "file:$SERIAL" -no-reboot >"$TEST_DIR/qemu.log" 2>&1 &
 emulator_pid=$!
 
+# QEMU's BIOS leaves the ShreeOS GRUB menu waiting for input. Match the ISO
+# boot test by selecting its default live entry before waiting for the probe.
+sleep 20
+if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$SERIAL" 2>/dev/null; then
+  python3 - "$MONITOR" <<'PY' || true
+import socket
+import sys
+import time
+
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.settimeout(3)
+for _ in range(10):
+    try:
+        client.connect(sys.argv[1])
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit(0)
+client.recv(4096)
+client.sendall(b"sendkey home\n")
+time.sleep(1)
+client.sendall(b"sendkey ret\n")
+client.close()
+PY
+fi
+
 while ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; do
   if ! kill -0 "$emulator_pid" 2>/dev/null || (( SECONDS >= deadline )); then
     break
