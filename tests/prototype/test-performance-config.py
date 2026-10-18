@@ -394,8 +394,11 @@ class MeasurementProvenanceTests(unittest.TestCase):
     def test_performance_vm_provides_dhcp_without_external_network_access(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
         self.assertIn("-nic user,model=virtio-net-pci,restrict=on", report)
+        self.assertNotIn("-nic none", report)
         self.assertIn("restricted-user-network", report)
         self.assertIn("$QEMU_LOG_DIR/qemu.log", report)
+        self.assertIn("screendump {screenshot}", report)
+        self.assertIn("$QEMU_LOG_DIR/screen.ppm", report)
 
     def test_performance_runner_rejects_a_different_embedded_probe(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")

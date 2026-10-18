@@ -105,9 +105,12 @@ probe_service_sha256="$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
 qemu-img create -q -f raw "$TARGET_DISK" 2G
 
 # The window is 30 s of measurement plus boot; 15 minutes is a generous ceiling.
+# Keep QEMU alive briefly past the probe deadline so the monitor can capture the
+# last screen and state before the guest is stopped for diagnostics.
 deadline=$((SECONDS + 900))
-xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM 900s qemu-system-x86_64 \
-  -machine q35 -m 4096 -smp 2 -vga virtio -nic none \
+qemu_timeout=1020
+xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
+  -machine q35 -m 4096 -smp 2 -vga virtio \
   -drive "file=$TARGET_DISK,format=raw,if=virtio" \
   -nic user,model=virtio-net-pci,restrict=on \
   -cdrom "$ISO" -boot order=d \
@@ -143,6 +146,49 @@ client.recv(4096)
 client.sendall(b"quit\n")
 client.close()
 PY
+else
+  # A blank serial log cannot distinguish a guest boot hang from a console
+  # routing problem. Preserve the visible screen and QEMU monitor state before
+  # stopping the emulator, so a timeout has actionable evidence.
+  python3 - "$MONITOR" "$TEST_DIR/screen.ppm" "$TEST_DIR/monitor.log" <<'PY' || true
+import socket
+import sys
+import time
+
+monitor, screenshot, output = sys.argv[1:]
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.settimeout(1)
+for _ in range(5):
+    try:
+        client.connect(monitor)
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit(0)
+
+def receive():
+    chunks = []
+    while True:
+        try:
+            chunk = client.recv(4096)
+        except TimeoutError:
+            break
+        if not chunk:
+            break
+        chunks.append(chunk)
+    return b"".join(chunks).decode(errors="replace")
+
+greeting = receive()
+results = [greeting]
+for command in ("info status", f"screendump {screenshot}"):
+    client.sendall((command + "\n").encode())
+    results.append(receive())
+client.sendall(b"quit\n")
+client.close()
+with open(output, "w", encoding="utf-8") as stream:
+    stream.write("\n".join(results))
+PY
 fi
 wait "$emulator_pid" || true
 
@@ -152,8 +198,11 @@ if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
   if [ -n "$QEMU_LOG_DIR" ]; then
     cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
     [ ! -s "$TEST_DIR/qemu.log" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+    [ ! -s "$TEST_DIR/monitor.log" ] || cp -f "$TEST_DIR/monitor.log" "$QEMU_LOG_DIR/monitor.log"
+    [ ! -s "$TEST_DIR/screen.ppm" ] || cp -f "$TEST_DIR/screen.ppm" "$QEMU_LOG_DIR/screen.ppm"
   fi
   tail -n 60 "$TEST_DIR/qemu.log" >&2 || true
+  tail -n 60 "$TEST_DIR/monitor.log" >&2 || true
   exit 1
 fi
 
