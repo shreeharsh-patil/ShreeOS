@@ -109,7 +109,7 @@ qemu-img create -q -f raw "$TARGET_DISK" 2G
 # last screen and state before the guest is stopped for diagnostics.
 deadline=$((SECONDS + 900))
 qemu_timeout=1020
-xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
+setsid xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
   -machine q35 -m 4096 -smp 2 -vga virtio \
   -drive "file=$TARGET_DISK,format=raw,if=virtio" \
   -nic user,model=virtio-net-pci \
@@ -122,27 +122,74 @@ emulator_pid=$!
 # boot test by selecting its default live entry before waiting for the probe.
 sleep 20
 if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$SERIAL" 2>/dev/null; then
-  python3 - "$MONITOR" <<'PY' || true
+  if ! python3 - "$MONITOR" "$TEST_DIR/boot-monitor.log" "$TEST_DIR/boot-screen.ppm" <<'PY'
 import socket
 import sys
 import time
 
+monitor, output, screenshot = sys.argv[1:]
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(3)
 for _ in range(10):
     try:
-        client.connect(sys.argv[1])
+        client.connect(monitor)
         break
     except OSError:
         time.sleep(1)
 else:
-    raise SystemExit(0)
-client.recv(4096)
-client.sendall(b"sendkey home\n")
-time.sleep(1)
-client.sendall(b"sendkey ret\n")
-client.close()
+    raise SystemExit("QEMU monitor socket did not become available for live boot")
+
+def read_prompt():
+    response = bytearray()
+    deadline = time.monotonic() + 10
+    while b"(qemu) " not in response:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"QEMU monitor prompt timed out: {response.decode(errors='replace')}")
+        client.settimeout(remaining)
+        chunk = client.recv(4096)
+        if not chunk:
+            raise ConnectionError("QEMU monitor closed before returning a prompt")
+        response.extend(chunk)
+    text = response.decode(errors="replace")
+    if "Error:" in text or "Could not" in text:
+        raise RuntimeError(f"QEMU monitor command failed: {text.strip()}")
+    return text
+
+def command(value):
+    client.sendall((value + "\n").encode())
+    return read_prompt()
+
+transcript = []
+try:
+    transcript = [read_prompt()]
+    transcript.append(command(f"screendump {screenshot}"))
+    transcript.append(command("sendkey home"))
+    transcript.append(command("sendkey ret"))
+    time.sleep(3)
+    transcript.append(command(f"screendump {screenshot}"))
+except Exception as error:
+    transcript.append(f"{type(error).__name__}: {error}")
+    with open(output, "w", encoding="utf-8") as stream:
+        stream.write("\n".join(transcript))
+    raise
+finally:
+    client.close()
+with open(output, "w", encoding="utf-8") as stream:
+    stream.write("\n".join(transcript))
 PY
+  then
+    kill -TERM -- "-$emulator_pid" 2>/dev/null || kill -TERM "$emulator_pid" 2>/dev/null || true
+    wait "$emulator_pid" || true
+    echo 'Could not select the live boot entry through the QEMU monitor.' >&2
+    if [ -n "$QEMU_LOG_DIR" ]; then
+      mkdir -p "$QEMU_LOG_DIR"
+      [ ! -s "$TEST_DIR/qemu.log" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+      [ ! -s "$TEST_DIR/boot-monitor.log" ] || cp -f "$TEST_DIR/boot-monitor.log" "$QEMU_LOG_DIR/boot-monitor.log"
+      [ ! -s "$TEST_DIR/boot-screen.ppm" ] || cp -f "$TEST_DIR/boot-screen.ppm" "$QEMU_LOG_DIR/boot-screen.ppm"
+    fi
+    exit 1
+  fi
 fi
 
 while ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; do
@@ -225,6 +272,8 @@ if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
   if [ -n "$QEMU_LOG_DIR" ]; then
     cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
     [ ! -s "$TEST_DIR/qemu.log" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+    [ ! -s "$TEST_DIR/boot-monitor.log" ] || cp -f "$TEST_DIR/boot-monitor.log" "$QEMU_LOG_DIR/boot-monitor.log"
+    [ ! -s "$TEST_DIR/boot-screen.ppm" ] || cp -f "$TEST_DIR/boot-screen.ppm" "$QEMU_LOG_DIR/boot-screen.ppm"
     [ ! -s "$TEST_DIR/monitor.log" ] || cp -f "$TEST_DIR/monitor.log" "$QEMU_LOG_DIR/monitor.log"
     [ ! -s "$TEST_DIR/screen.ppm" ] || cp -f "$TEST_DIR/screen.ppm" "$QEMU_LOG_DIR/screen.ppm"
   fi

@@ -402,6 +402,13 @@ class MeasurementProvenanceTests(unittest.TestCase):
         self.assertIn("$QEMU_LOG_DIR/screen.ppm", report)
         self.assertIn("sendkey home", report)
         self.assertIn("sendkey ret", report)
+        self.assertIn('transcript.append(command("sendkey home"))', report)
+        self.assertIn('transcript.append(command("sendkey ret"))', report)
+        self.assertIn('client.sendall((value + "\\n").encode())', report)
+        self.assertIn("return read_prompt()", report)
+        self.assertIn("$QEMU_LOG_DIR/boot-monitor.log", report)
+        self.assertIn('command(f"screendump {screenshot}")', report)
+        self.assertIn('kill -TERM -- "-$emulator_pid"', report)
 
     def test_performance_runner_rejects_a_different_embedded_probe(self):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
