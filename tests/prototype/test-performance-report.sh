@@ -4,7 +4,7 @@
 # baseline.
 #
 # Controlled conditions, identical for baseline and candidate:
-#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, fixed window, no network.
+#   2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, restricted user network.
 #
 # The image writes SHREEOS_PERF lines to its console from
 # /usr/local/sbin/shreeos-perf-probe, which runs once on live media only. This
@@ -71,9 +71,7 @@ MEASURED_SOURCE_COMMIT="${MEASURED_SOURCE_COMMIT:-$manifest_source_commit}"
 }
 
 TEST_DIR="$(mktemp -d)"
-trap 'rm -rf -- "$TEST_DIR"' EXIT
 QEMU_LOG_DIR="${QEMU_LOG_DIR:-}"
-[ -z "$QEMU_LOG_DIR" ] || mkdir -p "$QEMU_LOG_DIR"
 
 SERIAL="$TEST_DIR/serial.log"
 MONITOR="$TEST_DIR/monitor.sock"
@@ -82,6 +80,41 @@ SCREEN="$TEST_DIR/performance-screen.ppm"
 MENU_SCREEN="$TEST_DIR/performance-menu.ppm"
 SQUASHFS="$TEST_DIR/filesystem.squashfs"
 TARGET_DISK="$TEST_DIR/target.raw"
+PIDFILE="$TEST_DIR/qemu.pid"
+emulator_pid=''
+
+save_capture_artifact() {
+  local source="$1" name="$2"
+  if [ -n "$QEMU_LOG_DIR" ] && [ -s "$source" ]; then
+    cp -f "$source" "$QEMU_LOG_DIR/$name" ||
+      printf 'Could not preserve capture artifact: %s\n' "$source" >&2
+  fi
+}
+
+cleanup_capture() {
+  local exit_status=$?
+  trap - EXIT
+  if [ -n "$emulator_pid" ] && kill -0 -- "-$emulator_pid" 2>/dev/null; then
+    kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+    for _ in $(seq 1 25); do
+      kill -0 -- "-$emulator_pid" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL -- "-$emulator_pid" 2>/dev/null || true
+    wait "$emulator_pid" 2>/dev/null || true
+  fi
+  if [ "$exit_status" -ne 0 ]; then
+    save_capture_artifact "$SERIAL" serial.log
+    save_capture_artifact "$TEST_DIR/qemu.log" qemu.log
+    save_capture_artifact "$MONITOR_LOG" monitor.log
+    save_capture_artifact "$SCREEN" performance-screen.ppm
+    save_capture_artifact "$MENU_SCREEN" grub-menu.ppm
+  fi
+  rm -rf -- "$TEST_DIR"
+  return "$exit_status"
+}
+trap cleanup_capture EXIT
+[ -z "$QEMU_LOG_DIR" ] || mkdir -p "$QEMU_LOG_DIR"
 
 # Extract the probe so the contract between image and report can be checked
 # statically as well as observed at runtime.
@@ -97,10 +130,16 @@ cmp -s "$PROBE_SOURCE" "$TEST_DIR/probe" || {
   exit 1
 }
 SERVICE_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service"
+TIMER_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.timer"
 TIME_HELPER_SOURCE="$REPO_ROOT/prototype/debian-live/config/includes.chroot/usr/local/lib/shreeos/performance-time.sh"
 unsquashfs -q -cat "$SQUASHFS" etc/systemd/system/shreeos-perf-probe.service >"$TEST_DIR/probe.service" 2>/dev/null || true
 cmp -s "$SERVICE_SOURCE" "$TEST_DIR/probe.service" || {
   echo 'Image uses a different performance probe unit than the measurement harness; baseline and candidate would not be comparable.' >&2
+  exit 1
+}
+unsquashfs -q -cat "$SQUASHFS" etc/systemd/system/shreeos-perf-probe.timer >"$TEST_DIR/probe.timer" 2>/dev/null || true
+cmp -s "$TIMER_SOURCE" "$TEST_DIR/probe.timer" || {
+  echo 'Image uses a different performance probe timer than the measurement harness; baseline and candidate would not be comparable.' >&2
   exit 1
 }
 unsquashfs -q -cat "$SQUASHFS" usr/local/lib/shreeos/performance-time.sh >"$TEST_DIR/performance-time.sh" 2>/dev/null || true
@@ -110,7 +149,23 @@ cmp -s "$TIME_HELPER_SOURCE" "$TEST_DIR/performance-time.sh" || {
 }
 probe_sha256="$(sha256sum "$PROBE_SOURCE" | awk '{print $1}')"
 probe_service_sha256="$(sha256sum "$SERVICE_SOURCE" | awk '{print $1}')"
+probe_timer_sha256="$(sha256sum "$TIMER_SOURCE" | awk '{print $1}')"
 probe_time_helper_sha256="$(sha256sum "$TIME_HELPER_SOURCE" | awk '{print $1}')"
+measurement_protocol_sha256="$(
+  cd "$REPO_ROOT"
+  sha256sum \
+    .github/workflows/performance-baseline.yml \
+    .github/workflows/shreeos-release.yml \
+    prototype/debian-live/performance-targets.tsv \
+    scripts/aggregate-performance-runs.py \
+    scripts/compare-performance-runs.py \
+    scripts/performance-environment.py \
+    scripts/verify-performance-manifest.py \
+    scripts/verify-performance-baseline.py \
+    scripts/write-performance-provenance.py \
+    tests/prototype/test-performance-report.sh | sha256sum | awk '{print $1}'
+)"
+python3 "$REPO_ROOT/scripts/performance-environment.py" >"$TEST_DIR/environment-metadata.txt"
 qemu_version="$(qemu-system-x86_64 --version | head -n 1 | tr -d '\r')"
 qemu_package_version="$(dpkg-query -W -f='${Version}' qemu-system-x86)"
 seabios_package_version="$(dpkg-query -W -f='${Version}' seabios)"
@@ -121,7 +176,7 @@ host_kernel="$(uname -sr)"
 host_cpu_model="$(awk -F: '/^model name[[:space:]]*:/ { sub(/^[[:space:]]+/, "", $2); print $2; exit }' /proc/cpuinfo)"
 host_mem_total_kib="$(awk '$1 == "MemTotal:" { print $2; exit }' /proc/meminfo)"
 firmware="SeaBIOS:$BIOS_ROM:sha256=$bios_rom_sha256"
-qemu_profile='q35;4096MiB;2-vCPU;virtio-graphics;no-network;fresh-2GiB-virtio-raw-disk;cache=none;explicit-SeaBIOS;CD-ROM-first;1280x800'
+qemu_profile='q35;4096MiB;2-vCPU;virtio-graphics;isolated-user-network;fresh-2GiB-virtio-raw-disk;cache=none;explicit-SeaBIOS;CD-ROM-first;1280x800'
 
 qemu-img create -q -f raw "$TARGET_DISK" 2G
 
@@ -130,13 +185,15 @@ qemu-img create -q -f raw "$TARGET_DISK" 2G
 deadline=$((SECONDS + 1500))
 qemu_timeout=1800
 qemu_args=(
-  -machine q35 -m 4096 -smp 2 -vga virtio -nic none
-  -bios "$BIOS_ROM"
-  -drive "file=$TARGET_DISK,format=raw,if=none,id=perf-disk,cache=none"
-  -device "virtio-blk-pci,drive=perf-disk,serial=SHREEOSPERF"
-  -cdrom "$ISO" -boot order=d
-  -display gtk -monitor "unix:$MONITOR,server,nowait"
-  -serial stdio -no-reboot
+  "-machine" "q35" "-m" "4096" "-smp" "2" "-vga" "virtio"
+  "-nic" "user,restrict=on,model=virtio-net-pci"
+  "-bios" "$BIOS_ROM"
+  "-drive" "file=$TARGET_DISK,format=raw,if=none,id=perf-disk,cache=none"
+  "-device" "virtio-blk-pci,drive=perf-disk,serial=SHREEOSPERF"
+  "-cdrom" "$ISO" "-boot" "order=d"
+  "-pidfile" "$PIDFILE"
+  "-display" "gtk" "-monitor" "unix:$MONITOR,server,nowait"
+  "-serial" "stdio" "-no-reboot"
 )
 qemu_invocation=(
   setsid xvfb-run -a -s "-screen 0 1280x800x24"
@@ -145,19 +202,51 @@ qemu_invocation=(
 )
 printf -v qemu_command '%q ' "${qemu_invocation[@]}"
 qemu_command="${qemu_command% }"
+# Take the cgroup counters after disk creation and setup, immediately before
+# launch, so the delta covers QEMU and guest execution rather than harness work.
+python3 "$REPO_ROOT/scripts/performance-environment.py" --snapshot "$TEST_DIR/environment-before.json"
 "${qemu_invocation[@]}" >"$SERIAL" 2>"$TEST_DIR/qemu.log" &
 emulator_pid=$!
+
+# Read QEMU's own security status while it is alive. The wrapper PID belongs
+# to xvfb-run/timeout, so QEMU writes its PID to this dedicated file.
+for _ in $(seq 1 100); do
+  [ -s "$PIDFILE" ] && break
+  if ! kill -0 "$emulator_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if [ ! -s "$PIDFILE" ]; then
+  echo 'QEMU did not create its PID file; process security metadata is unavailable.' >&2
+  kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+  wait "$emulator_pid" 2>/dev/null || true
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  exit 1
+fi
+qemu_pid="$(cat "$PIDFILE")"
+if ! python3 "$REPO_ROOT/scripts/performance-environment.py" \
+  --process-pid "$qemu_pid" >"$TEST_DIR/qemu-process-metadata.txt"; then
+  echo 'Could not capture the live QEMU process security metadata.' >&2
+  kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+  wait "$emulator_pid" 2>/dev/null || true
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  exit 1
+fi
 
 # Select the normal live entry from the graphical GRUB menu. Without this
 # explicit keypress the baseline can remain at the menu indefinitely in QEMU.
 sleep 20
 if ! grep -Fq 'SHREEOS_PERF_END' "$SERIAL" 2>/dev/null; then
-  python3 - "$MONITOR" "$MENU_SCREEN" <<'PY' >>"$MONITOR_LOG" 2>&1
+  python3 - "$MONITOR" "$MENU_SCREEN" "$SERIAL" <<'PY' >>"$MONITOR_LOG" 2>&1
 import socket
 import sys
 import time
+from pathlib import Path
 
-monitor, screen = sys.argv[1:]
+monitor, screen, serial = sys.argv[1:]
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(3)
 for _ in range(10):
@@ -181,16 +270,35 @@ def read_prompt():
         if not chunk:
             raise ConnectionError("QEMU monitor closed during GRUB selection")
         response.extend(chunk)
+    text = response.decode(errors="replace")
+    if "Error:" in text or "Could not" in text:
+        raise RuntimeError(f"QEMU monitor command failed: {text.strip()}")
+    return text
 
 def command(value):
     client.sendall((value + "\n").encode())
-    read_prompt()
+    return read_prompt()
+
+def marker_seen():
+    try:
+        return "SHREEOS_PERF_END" in Path(serial).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
 
 try:
     read_prompt()
     command(f"screendump {screen}")
     command("sendkey home")
-    command("sendkey ret")
+    # TCG can take longer than the initial menu delay to accept input. Retry
+    # Enter a few times, checking the real serial stream between attempts.
+    for attempt in range(4):
+        if marker_seen():
+            break
+        command("sendkey ret")
+        for _ in range(10):
+            if marker_seen():
+                break
+            time.sleep(1)
 finally:
     client.close()
 PY
@@ -327,6 +435,13 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
+if ! python3 "$REPO_ROOT/scripts/performance-environment.py" \
+  --delta "$TEST_DIR/environment-before.json" >"$TEST_DIR/environment-deltas.txt"; then
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
+  [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
+  exit 1
+fi
+
 # Metrics are stored as key<TAB>value. Several values (top RSS, top CPU, the
 # systemd blame list) legitimately contain spaces, so a space-delimited parse
 # would truncate them and silently weaken the report.
@@ -339,10 +454,12 @@ awk 'index($0, "SHREEOS_PERF ") {
 {
   printf '# source_commit=%s\n' "$MEASURED_SOURCE_COMMIT"
   printf '# iso_sha256=%s\n' "$candidate_iso_sha256"
-  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed\n'
+  printf '# conditions=2-vCPU,4096MiB,virtio,1280x800,isolated-user-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed\n'
   printf '# probe_sha256=%s\n' "$probe_sha256"
   printf '# probe_service_sha256=%s\n' "$probe_service_sha256"
+  printf '# probe_timer_sha256=%s\n' "$probe_timer_sha256"
   printf '# probe_time_helper_sha256=%s\n' "$probe_time_helper_sha256"
+  printf '# measurement_protocol_sha256=%s\n' "$measurement_protocol_sha256"
   printf '# qemu_version=%s\n' "$qemu_version"
   printf '# qemu_package_version=%s\n' "$qemu_package_version"
   printf '# seabios_package_version=%s\n' "$seabios_package_version"
@@ -350,9 +467,14 @@ awk 'index($0, "SHREEOS_PERF ") {
   printf '# host_kernel=%s\n' "$host_kernel"
   printf '# host_cpu_model=%s\n' "$host_cpu_model"
   printf '# host_mem_total_kib=%s\n' "$host_mem_total_kib"
+  cat "$TEST_DIR/environment-metadata.txt"
+  cat "$TEST_DIR/qemu-process-metadata.txt"
   printf '# firmware=%s\n' "$firmware"
   printf '# qemu_profile=%s\n' "$qemu_profile"
   printf '# qemu_command=%s\n' "$qemu_command"
+  awk -F= '/^# cgroup_cpu_stat_(nr_periods|nr_throttled|throttled_usec)_delta=/ || /^# cgroup_cpu_stat_throttled_usec_local_delta=/ || /^# cgroup_memory_events_(low|high|max|oom|oom_kill|oom_group_kill)_visible_max_delta=/ || /^# cgroup_capture_elapsed_usec=/ {
+    sub(/^# /, ""); split($0, field, "="); print field[1] "\t" field[2]
+  }' "$TEST_DIR/environment-deltas.txt"
   awk -F'\t' '$1 ~ /^(mem_used_mib|cpu_busy_pct|boot_total_ms|graphical_reached_ms|desktop_ready|pss_available|units_failed|storage_write_mib_s|storage_read_mib_s)$/ {
     print $1 "\t" $2
   }' "$TEST_DIR/metrics.tsv"
@@ -362,7 +484,9 @@ awk 'index($0, "SHREEOS_PERF ") {
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$SERIAL" "$QEMU_LOG_DIR/serial.log"
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/qemu.log" "$QEMU_LOG_DIR/qemu.log"
 [ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MONITOR_LOG" ] || cp -f "$MONITOR_LOG" "$QEMU_LOG_DIR/monitor.log"; }
+[ -z "$QEMU_LOG_DIR" ] || { [ ! -s "$MENU_SCREEN" ] || cp -f "$MENU_SCREEN" "$QEMU_LOG_DIR/grub-menu.ppm"; }
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/metrics.tsv" "$QEMU_LOG_DIR/metrics.tsv"
+[ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/environment-deltas.txt" "$QEMU_LOG_DIR/environment-deltas.txt"
 [ -z "$QEMU_LOG_DIR" ] || cp -f "$TEST_DIR/performance-candidate.tsv" "$QEMU_LOG_DIR/performance-candidate.tsv"
 [ -s "$TEST_DIR/metrics.tsv" ] || { echo 'No SHREEOS_PERF metrics were captured; logs and empty metrics were retained.' >&2; exit 1; }
 
@@ -398,7 +522,7 @@ REPORT="$TEST_DIR/performance-report.md"
   # shellcheck disable=SC2016
   printf 'Image: `%s`\n' "$(basename -- "$ISO")"
   printf 'Measured: %s (UTC)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, QEMU BIOS, no network; serial-tagged QEMU scratch disk, 64 MiB sequential direct write/read\n\n'
+  printf 'Conditions: 2 vCPU, 4096 MiB RAM, virtio graphics, 1280x800, QEMU BIOS, isolated user-mode network with no host or external routing; serial-tagged QEMU scratch disk, 64 MiB sequential direct write/read\n\n'
   printf '| Metric | Measured |\n| --- | --- |\n'
   while IFS=$'\t' read -r key value; do
     [ -n "$key" ] || continue
@@ -449,7 +573,9 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
   baseline_conditions="$(awk -F= '$1 == "# conditions" { print $2; exit }' "$BASELINE")"
   baseline_probe_sha256="$(awk -F= '$1 == "# probe_sha256" { print $2; exit }' "$BASELINE")"
   baseline_probe_service_sha256="$(awk -F= '$1 == "# probe_service_sha256" { print $2; exit }' "$BASELINE")"
+  baseline_probe_timer_sha256="$(awk -F= '$1 == "# probe_timer_sha256" { print $2; exit }' "$BASELINE")"
   baseline_probe_time_helper_sha256="$(awk -F= '$1 == "# probe_time_helper_sha256" { print $2; exit }' "$BASELINE")"
+  baseline_measurement_protocol_sha256="$(awk -F= '$1 == "# measurement_protocol_sha256" { print $2; exit }' "$BASELINE")"
   if [ "$baseline_source_commit" != "$UNTOUCHED_BASELINE_COMMIT" ]; then
     printf 'Baseline provenance must name untouched source %s.\n' \
       "$UNTOUCHED_BASELINE_COMMIT" >&2
@@ -461,7 +587,7 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed' ]; then
+  if [ "$baseline_conditions" != '2-vCPU,4096MiB,virtio,1280x800,isolated-user-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed' ]; then
     printf 'Baseline was not measured under the controlled release conditions.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))
@@ -478,13 +604,25 @@ elif [ "${RESUME:-0}" = 1 ] && [ -s "$BASELINE" ]; then
     baseline_valid=0
     failures=$((failures + 1))
   fi
+  if ! [[ "$baseline_probe_timer_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ "$baseline_probe_timer_sha256" != "$probe_timer_sha256" ]; then
+    printf 'Baseline performance probe timer hash does not match this candidate.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
   if ! [[ "$baseline_probe_time_helper_sha256" =~ ^[0-9a-f]{64}$ ]] ||
     [ "$baseline_probe_time_helper_sha256" != "$probe_time_helper_sha256" ]; then
     printf 'Baseline boot-time parser hash does not match this candidate.\n' >&2
     baseline_valid=0
     failures=$((failures + 1))
   fi
-  for environment_field in qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel host_cpu_model host_mem_total_kib firmware qemu_profile; do
+  if ! [[ "$baseline_measurement_protocol_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ "$baseline_measurement_protocol_sha256" != "$measurement_protocol_sha256" ]; then
+    printf 'Baseline measurement protocol hash does not match this candidate.\n' >&2
+    baseline_valid=0
+    failures=$((failures + 1))
+  fi
+  for environment_field in qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel host_cpu_model host_mem_total_kib cgroup_version cgroup_limit_scope cgroup_memory_event_scope cgroup_reported_path_shape cgroup_mount_root_path_shape cgroup_cpuset_cpus_effective cgroup_cpuset_cpu_count cgroup_cpu_quota_cores cgroup_memory_max_bytes cgroup_memory_high_bytes cgroup_memory_swap_max_bytes cgroup_pids_max collector_capeff collector_capbnd collector_nonewprivs collector_seccomp collector_seccomp_filters qemu_process_capeff qemu_process_capbnd qemu_process_nonewprivs qemu_process_seccomp qemu_process_seccomp_filters firmware qemu_profile; do
     baseline_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$BASELINE")"
     measured_environment="$(awk -F= -v key="$environment_field" '$1 == "# " key { sub(/^[^=]*=/, ""); print; exit }' "$TEST_DIR/performance-candidate.tsv")"
     if [ -z "$baseline_environment" ] || [ "$baseline_environment" != "$measured_environment" ]; then

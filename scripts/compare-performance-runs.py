@@ -12,9 +12,18 @@ from pathlib import Path
 BASELINE_COMMIT = "9313ebb042cf71bb148441037940b130d49920d1"
 REQUIRED_METADATA = (
     "source_commit", "iso_sha256", "conditions", "probe_sha256",
-    "probe_service_sha256", "probe_time_helper_sha256", "qemu_version",
+    "probe_service_sha256", "probe_timer_sha256", "probe_time_helper_sha256",
+    "measurement_protocol_sha256", "qemu_version",
     "qemu_package_version", "seabios_package_version", "bios_rom_sha256",
     "host_kernel", "host_cpu_model", "host_mem_total_kib", "firmware",
+    "cgroup_limit_scope", "cgroup_memory_event_scope", "cgroup_reported_path_shape",
+    "cgroup_mount_root_path_shape",
+    "cgroup_version", "cgroup_cpuset_cpus_effective", "cgroup_cpuset_cpu_count",
+    "cgroup_cpu_quota_cores", "cgroup_memory_max_bytes",
+    "cgroup_memory_high_bytes", "cgroup_memory_swap_max_bytes", "cgroup_pids_max",
+    "collector_capeff", "collector_capbnd", "collector_nonewprivs", "collector_seccomp",
+    "collector_seccomp_filters", "qemu_process_capeff", "qemu_process_capbnd",
+    "qemu_process_nonewprivs", "qemu_process_seccomp", "qemu_process_seccomp_filters",
     "qemu_profile", "sample_count",
 )
 MATCHED_ENVIRONMENT = tuple(key for key in REQUIRED_METADATA if key not in {
@@ -24,9 +33,31 @@ REQUIRED_METRICS = (
     "mem_used_mib", "cpu_busy_pct", "boot_total_ms", "graphical_reached_ms",
     "desktop_ready", "pss_available", "units_failed", "storage_write_mib_s",
     "storage_read_mib_s",
+    "cgroup_cpu_stat_nr_periods_delta",
+    "cgroup_cpu_stat_nr_throttled_delta",
+    "cgroup_cpu_stat_throttled_usec_delta",
+    "cgroup_cpu_stat_throttled_usec_local_delta",
+    "cgroup_capture_elapsed_usec",
+    "cgroup_memory_events_low_visible_max_delta",
+    "cgroup_memory_events_high_visible_max_delta",
+    "cgroup_memory_events_max_visible_max_delta",
+    "cgroup_memory_events_oom_visible_max_delta",
+    "cgroup_memory_events_oom_kill_visible_max_delta",
+    "cgroup_memory_events_oom_group_kill_visible_max_delta",
+    "cgroup_cpu_throttled_period_pct",
+    "cgroup_cpu_local_throttled_capacity_estimate_pct",
+)
+MEMORY_PRESSURE_COUNTERS = (
+    "cgroup_memory_events_low_visible_max_delta",
+    "cgroup_memory_events_high_visible_max_delta",
+    "cgroup_memory_events_max_visible_max_delta",
+    "cgroup_memory_events_oom_visible_max_delta",
+    "cgroup_memory_events_oom_kill_visible_max_delta",
+    "cgroup_memory_events_oom_group_kill_visible_max_delta",
 )
 COMPARATIVE_METRICS = ("mem_used_mib", "cpu_busy_pct", "boot_total_ms", "graphical_reached_ms")
 REGRESSION_TOLERANCE_PCT = 20.0
+MAX_THROTTLED_PERIOD_PCT = 10.0
 
 
 def read_summary(path: Path) -> tuple[dict[str, str], dict[str, float]]:
@@ -69,6 +100,23 @@ def read_summary(path: Path) -> tuple[dict[str, str], dict[str, float]]:
     for key in ("boot_total_ms", "graphical_reached_ms", "storage_write_mib_s", "storage_read_mib_s"):
         if metrics[key] <= 0:
             raise ValueError(f"aggregate metric {key} must be positive in {path}")
+    for key in MEMORY_PRESSURE_COUNTERS:
+        if metrics[key] != 0:
+            raise ValueError(f"aggregate {path} reports cgroup memory pressure in {key}")
+    if metrics["cgroup_cpu_throttled_period_pct"] > MAX_THROTTLED_PERIOD_PCT:
+        raise ValueError(
+            f"aggregate {path} exceeded the {MAX_THROTTLED_PERIOD_PCT:g}% CPU-throttling limit"
+        )
+    if metrics["cgroup_cpu_local_throttled_capacity_estimate_pct"] > MAX_THROTTLED_PERIOD_PCT:
+        raise ValueError(
+            f"aggregate {path} exceeded the {MAX_THROTTLED_PERIOD_PCT:g}% visible cgroup CPU capacity throttling limit"
+        )
+    counter_fields = [key for key in REQUIRED_METRICS if key.startswith("cgroup_") and key.endswith("_delta")]
+    counter_fields.append("cgroup_capture_elapsed_usec")
+    if any(metrics[key] < 0 or not metrics[key].is_integer() for key in counter_fields):
+        raise ValueError(f"aggregate {path} contains an invalid cgroup counter")
+    if metrics["cgroup_cpu_stat_nr_throttled_delta"] > metrics["cgroup_cpu_stat_nr_periods_delta"]:
+        raise ValueError(f"aggregate {path} has impossible cgroup CPU throttling counters")
     return metadata, metrics
 
 
@@ -105,6 +153,13 @@ def evaluate(candidate_path: Path, baseline_path: Path | None, targets_path: Pat
         details.append(f"{key}: {value:g} {comparison} {limit:g} — {'PASS' if passed else 'FAIL'} ({provenance})")
         if not passed:
             failures.append(f"candidate median missed {key}={value:g} ({comparison} {limit:g})")
+
+    details.append(
+        "Visible cgroup hierarchy pressure: CPU periods throttled "
+        f"{candidate['cgroup_cpu_throttled_period_pct']:.3f}%, local throttling capacity "
+        f"{candidate['cgroup_cpu_local_throttled_capacity_estimate_pct']:.3f}% estimated capacity; maximum visible-ancestor "
+        f"memory low/high/max/OOM event deltas {sum(candidate[key] for key in MEMORY_PRESSURE_COUNTERS):g}."
+    )
 
     if baseline_path is None:
         if require_baseline:

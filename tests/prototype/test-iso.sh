@@ -29,7 +29,7 @@ qemu-img create -q -f raw "$TARGET_DISK" 2G
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.squashfs "$SQUASHFS" >/dev/null
 unsquashfs -s "$SQUASHFS" >/dev/null
 xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.packages "$TEST_DIR/packages.txt" >/dev/null
-for package in apt live-boot live-config-systemd network-manager systemd-sysv; do
+for package in apt live-boot live-config-systemd user-setup network-manager systemd-sysv; do
   grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$TEST_DIR/packages.txt" || {
     echo "ISO package manifest is missing required package: $package" >&2
     exit 1
@@ -181,11 +181,12 @@ run_boot_test() {
   local emulator_log="$TEST_DIR/${mode}-qemu.log"
   local monitor_socket="$TEST_DIR/${mode}-monitor.sock"
   local screen_dump="$TEST_DIR/${PROFILE}-${mode}-screen.ppm"
+  local screen_before_dock_dump="$TEST_DIR/${PROFILE}-${mode}-screen-before-dock.ppm"
   local menu_dump="$TEST_DIR/${PROFILE}-${mode}-menu.ppm" status=0
   local splash_dump="$TEST_DIR/${PROFILE}-${mode}-splash.ppm"
-  local screenshot_captured=0 cleanup_signal_sent=0
+  local screenshot_captured=0 cleanup_signal_sent=0 boot_check_failed=0
   local qemu_timeout=420
-  if [ "$PROFILE" = plasma ]; then qemu_timeout=5400; fi
+  if [ "$PROFILE" = plasma ]; then qemu_timeout=1800; fi
   local deadline=$((SECONDS + qemu_timeout))
   local memory=2048
   if [ "$PROFILE" = plasma ]; then memory=4096; fi
@@ -230,13 +231,14 @@ run_boot_test() {
   local emulator_pid=$!
   sleep 20
   if ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; then
-    if python3 - "$monitor_socket" "$menu_dump" "$splash_dump" >>"$emulator_log" 2>&1 <<'PY'
+    if python3 - "$monitor_socket" "$menu_dump" "$splash_dump" "$log" >>"$emulator_log" 2>&1 <<'PY'
 import socket
 import sys
 import time
 import os
+from pathlib import Path
 
-monitor, output, splash = sys.argv[1:]
+monitor, output, splash, serial = sys.argv[1:]
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(3)
 for _ in range(10):
@@ -260,19 +262,35 @@ def read_prompt():
             raise ConnectionError("QEMU monitor closed before returning a prompt")
         response.extend(chunk)
     text = response.decode(errors="replace")
-    if "Error:" in text or "Could not" in text:
+    lowered = text.lower()
+    if "error:" in lowered or "could not" in lowered or "unknown command" in lowered:
         raise RuntimeError(f"QEMU monitor command failed: {text.strip()}")
 
 def command(value):
     client.sendall((value + "\n").encode())
     read_prompt()
 
+def boot_marker_seen():
+    try:
+        contents = Path(serial).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "SHREEOS_LIVE_BOOT_OK" in contents or "SHREEOS_BOOT_CHECK: FAIL:" in contents
+
 try:
     read_prompt()
     command(f"screendump {output}")
     command("sendkey home")
-    command("sendkey ret")
-    time.sleep(3)
+    # Retry Enter while TCG catches up. Check the serial marker so the final
+    # keypress does not continue after boot validation has finished.
+    for attempt in range(4):
+        if boot_marker_seen():
+            break
+        command("sendkey ret")
+        for _ in range(10):
+            if boot_marker_seen():
+                break
+            time.sleep(1)
     command(f"screendump {splash}")
     for path in (output, splash):
         if not os.path.isfile(path) or os.path.getsize(path) == 0:
@@ -288,6 +306,13 @@ PY
   fi
 
   while ! grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$log" 2>/dev/null; do
+    if grep -Fq 'SHREEOS_BOOT_CHECK: FAIL:' "$log" 2>/dev/null; then
+      printf 'The live boot service reported a validation failure; stopping QEMU.\n' >>"$emulator_log"
+      boot_check_failed=1
+      kill -TERM -- "-$emulator_pid" 2>/dev/null || true
+      cleanup_signal_sent=1
+      break
+    fi
     if ! kill -0 "$emulator_pid" 2>/dev/null || (( SECONDS >= deadline )); then
       break
     fi
@@ -336,9 +361,16 @@ try:
     command("sendkey shift")
     # Give Plasma or XFCE time to finish rendering after the live-boot marker.
     time.sleep(30)
+    # Plank uses auto-hide. Capture before and after moving the guest pointer
+    # to the bottom edge so the screenshot proves the dock actually appeared.
+    before_dock = output.replace("-screen.ppm", "-screen-before-dock.ppm")
+    command(f"screendump {before_dock}")
+    command("mouse_move 0 10000")
+    time.sleep(2)
     command(f"screendump {output}")
-    if not os.path.isfile(output) or os.path.getsize(output) == 0:
-        raise RuntimeError(f"QEMU did not create desktop screenshot: {output}")
+    for path in (before_dock, output):
+        if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            raise RuntimeError(f"QEMU did not create desktop screenshot: {path}")
     client.sendall(b"quit\n")
 except Exception:
     # Avoid leaving QEMU alive until its long safety timeout after a capture error.
@@ -367,6 +399,7 @@ PY
   fi
   wait "$emulator_pid" || status=$?
   if (( cleanup_signal_sent )) && [[ "$status" -eq 143 ]]; then status=0; fi
+  if (( boot_check_failed )); then status=1; fi
 
   if [ -n "$QEMU_LOG_DIR" ]; then
     if [ -f "$log" ]; then
@@ -377,6 +410,9 @@ PY
     fi
     if [ -s "$screen_dump" ]; then
       cp -- "$screen_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-screen.ppm"
+    fi
+    if [ -s "$screen_before_dock_dump" ]; then
+      cp -- "$screen_before_dock_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-screen-before-dock.ppm"
     fi
     if [ -s "$menu_dump" ]; then
       cp -- "$menu_dump" "$QEMU_LOG_DIR/${PROFILE}-${mode}-menu.ppm"
@@ -400,27 +436,33 @@ PY
     return 1
   fi
   if [ "$PROFILE" = desktop ] || [ "$PROFILE" = plasma ]; then
-    if [ ! -s "$screen_dump" ]; then
+    if [ ! -s "$screen_dump" ] || [ ! -s "$screen_before_dock_dump" ]; then
       echo "${mode} boot reached the health marker, but QEMU did not create a desktop screenshot." >&2
       [ ! -s "$emulator_log" ] || cat "$emulator_log" >&2
       return 1
     fi
-    python3 - "$screen_dump" "$PROFILE" <<'PY'
+    python3 - "$screen_dump" "$PROFILE" "$screen_before_dock_dump" <<'PY'
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
 profile = sys.argv[2]
-data = path.read_bytes()
-if not data.startswith(b"P6"):
-    raise SystemExit(f"{profile} screenshot is not a binary PPM: {path}")
-parts = data.split(maxsplit=4)
-if len(parts) != 5:
-    raise SystemExit(f"{profile} screenshot has an invalid PPM header: {path}")
-width, height, maximum = map(int, parts[1:4])
-pixels = parts[4]
-if maximum != 255 or len(pixels) != width * height * 3:
-    raise SystemExit(f"{profile} screenshot has invalid pixel data: {path}")
+before_path = pathlib.Path(sys.argv[3])
+
+def read_ppm(image_path):
+    data = image_path.read_bytes()
+    if not data.startswith(b"P6"):
+        raise SystemExit(f"{profile} screenshot is not a binary PPM: {image_path}")
+    parts = data.split(maxsplit=4)
+    if len(parts) != 5:
+        raise SystemExit(f"{profile} screenshot has an invalid PPM header: {image_path}")
+    image_width, image_height, maximum = map(int, parts[1:4])
+    image_pixels = parts[4]
+    if maximum != 255 or len(image_pixels) != image_width * image_height * 3:
+        raise SystemExit(f"{profile} screenshot has invalid pixel data: {image_path}")
+    return image_width, image_height, image_pixels
+
+width, height, pixels = read_ppm(path)
 lit_pixels = sum(1 for i in range(0, len(pixels), 3)
                  if max(pixels[i:i + 3]) > 24)
 if lit_pixels < width * height // 20:
@@ -432,11 +474,22 @@ wallpaper_pixels = sum(1 for i in range(0, len(desktop_pixels), 3)
                        if max(desktop_pixels[i:i + 3]) > 8)
 if profile in ("desktop", "plasma") and wallpaper_pixels < width * (desktop_bottom - desktop_top) // 2:
     raise SystemExit(f"ShreeOS wallpaper is missing from the desktop area: {path}")
-dock_pixels = pixels[(height - 64) * width * 3:]
-visible_dock_pixels = sum(1 for i in range(0, len(dock_pixels), 3)
-                          if max(dock_pixels[i:i + 3]) > 50)
-if profile in ("desktop", "plasma") and visible_dock_pixels < max(24, width * 64 // 300):
-    raise SystemExit(f"ShreeOS dock is missing from the bottom of the desktop: {path}")
+if profile in ("desktop", "plasma"):
+    before_width, before_height, before_pixels = read_ppm(before_path)
+    if (before_width, before_height) != (width, height):
+        raise SystemExit(f"Before/after desktop screenshots have different sizes: {path}")
+    band_start = (height - min(64, height)) * width * 3
+    before_band = before_pixels[band_start:]
+    after_band = pixels[band_start:]
+    changed_dock_pixels = sum(
+        1 for i in range(0, len(after_band), 3)
+        if max(abs(after_band[i + channel] - before_band[i + channel])
+               for channel in range(3)) > 24
+    )
+    if changed_dock_pixels < max(256, width * 4):
+        raise SystemExit(
+            f"ShreeOS dock did not appear after moving the pointer to the bottom edge: {path}"
+        )
 print(f"{profile} screenshot contains visible content ({width}x{height}).")
 PY
   fi

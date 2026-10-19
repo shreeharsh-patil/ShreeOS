@@ -31,7 +31,9 @@ class PerformanceComparisonTests(unittest.TestCase):
             "conditions": "2-vCPU,4096MiB,virtio,1280x800,no-network,BIOS,SHREEOSPERF-64MiB-rw,host-cache-bypassed",
             "probe_sha256": "c" * 64,
             "probe_service_sha256": "d" * 64,
+            "probe_timer_sha256": "0" * 64,
             "probe_time_helper_sha256": "e" * 64,
+            "measurement_protocol_sha256": "1" * 64,
             "qemu_version": "QEMU emulator version 10.0.13",
             "qemu_package_version": "1:10.0.13+ds-0+deb13u1",
             "seabios_package_version": "1.16.3-2",
@@ -39,6 +41,28 @@ class PerformanceComparisonTests(unittest.TestCase):
             "host_kernel": "Linux 6.12.0",
             "host_cpu_model": "Example CPU",
             "host_mem_total_kib": "8000000",
+            "cgroup_limit_scope": "visible-hierarchy-ancestors",
+            "cgroup_memory_event_scope": "visible-hierarchy-local-events",
+            "cgroup_reported_path_shape": "non-root",
+            "cgroup_mount_root_path_shape": "subpath",
+            "cgroup_version": "2",
+            "cgroup_cpuset_cpus_effective": "0-3",
+            "cgroup_cpuset_cpu_count": "4",
+            "cgroup_cpu_quota_cores": "4",
+            "cgroup_memory_max_bytes": "max",
+            "cgroup_memory_high_bytes": "max",
+            "cgroup_memory_swap_max_bytes": "max",
+            "cgroup_pids_max": "max",
+            "collector_capeff": "00000000a00425fb",
+            "collector_capbnd": "00000000a00425fb",
+            "collector_nonewprivs": "0",
+            "collector_seccomp": "2",
+            "collector_seccomp_filters": "1",
+            "qemu_process_capeff": "00000000a00425fb",
+            "qemu_process_capbnd": "00000000a00425fb",
+            "qemu_process_nonewprivs": "0",
+            "qemu_process_seccomp": "2",
+            "qemu_process_seccomp_filters": "1",
             "firmware": "SeaBIOS:/usr/share/seabios/bios-256k.bin:sha256=" + "f" * 64,
             "qemu_profile": "q35;4096MiB;2-vCPU;explicit-SeaBIOS",
             "sample_count": "3",
@@ -53,6 +77,19 @@ class PerformanceComparisonTests(unittest.TestCase):
             "units_failed": 0,
             "storage_write_mib_s": 50,
             "storage_read_mib_s": 60,
+            "cgroup_cpu_stat_nr_periods_delta": 100,
+            "cgroup_cpu_stat_nr_throttled_delta": 2,
+            "cgroup_cpu_stat_throttled_usec_delta": 250,
+            "cgroup_cpu_stat_throttled_usec_local_delta": 1000,
+            "cgroup_capture_elapsed_usec": 1_000_000,
+            "cgroup_memory_events_low_visible_max_delta": 0,
+            "cgroup_memory_events_high_visible_max_delta": 0,
+            "cgroup_memory_events_max_visible_max_delta": 0,
+            "cgroup_memory_events_oom_visible_max_delta": 0,
+            "cgroup_memory_events_oom_kill_visible_max_delta": 0,
+            "cgroup_memory_events_oom_group_kill_visible_max_delta": 0,
+            "cgroup_cpu_throttled_period_pct": 2,
+            "cgroup_cpu_local_throttled_capacity_estimate_pct": 0.025,
         }
         self.baseline_metrics = {
             **self.candidate_metrics,
@@ -62,6 +99,10 @@ class PerformanceComparisonTests(unittest.TestCase):
             "graphical_reached_ms": 12_000,
             "storage_write_mib_s": 10_000,
             "storage_read_mib_s": 10_000,
+            "cgroup_cpu_stat_nr_periods_delta": 100,
+            "cgroup_cpu_stat_nr_throttled_delta": 3,
+            "cgroup_cpu_stat_throttled_usec_delta": 350,
+            "cgroup_cpu_throttled_period_pct": 3,
         }
         self._write_summary(self.candidate, self.metadata, self.candidate_metrics)
         baseline_metadata = dict(self.metadata)
@@ -111,6 +152,13 @@ class PerformanceComparisonTests(unittest.TestCase):
         self._write_summary(self.candidate, metadata, self.candidate_metrics)
         failures, _ = MODULE.evaluate(self.candidate, self.baseline, self.targets, True)
         self.assertTrue(any("bios_rom_sha256" in failure for failure in failures))
+
+    def test_rejects_a_different_measurement_protocol(self) -> None:
+        metadata = dict(self.metadata)
+        metadata["measurement_protocol_sha256"] = "2" * 64
+        self._write_summary(self.candidate, metadata, self.candidate_metrics)
+        failures, _ = MODULE.evaluate(self.candidate, self.baseline, self.targets, True)
+        self.assertTrue(any("measurement_protocol_sha256" in failure for failure in failures))
 
     def test_required_baseline_must_exist_and_health_invariants_are_checked(self) -> None:
         failures, _ = MODULE.evaluate(self.candidate, None, self.targets, True)

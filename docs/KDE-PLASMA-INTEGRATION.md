@@ -41,6 +41,7 @@ release; the XFCE profile's screenshot gate is still under investigation.
 The new `plasma` profile installs Debian's `kde-plasma-desktop`, SDDM, Dolphin,
 Konsole, Ark, Spectacle, Plasma network/audio widgets, PowerDevil and BlueDevil,
 plus Plank, Kate, Gwenview, Okular and KCalc. Plasma's layout scripting API
+<<<<<<< HEAD
 creates a 28px top menu/status bar with status controls and date/time at the far
 right. The default Plasma style uses a tinted navigation surface; a clearer
 glass style is available in Plasma Style settings, with an opaque fallback when

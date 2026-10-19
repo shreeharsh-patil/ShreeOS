@@ -5,6 +5,10 @@ if [ "$#" -ne 0 ]; then
   echo 'The ShreeOS installer does not accept command-line arguments.' >&2
   exit 2
 fi
+if [ ! -d /sys/firmware/efi ]; then
+  echo 'Boot the ShreeOS live installer in UEFI mode before installing.' >&2
+  exit 1
+fi
 if [ "$(id -u)" -eq 0 ]; then
   exec /usr/local/libexec/shreeos-installer-privileged "$@"
 fi

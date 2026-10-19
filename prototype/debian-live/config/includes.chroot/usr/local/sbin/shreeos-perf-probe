@@ -15,6 +15,7 @@ set -eu
 WINDOW_SECONDS=30
 DESKTOP_WAIT_SECONDS=180
 SETTLE_SECONDS=15
+BOOT_TOTAL_WAIT_SECONDS=180
 PERFORMANCE_TIME_HELPER=/usr/local/lib/shreeos/performance-time.sh
 
 emit() { printf 'SHREEOS_PERF %s=%s\n' "$1" "$2"; }
@@ -56,10 +57,6 @@ emit desktop_startup_wait_s "$waited"
 emit settle_window_s "$SETTLE_SECONDS"
 sleep "$SETTLE_SECONDS"
 
-meminfo_kib() {
-  awk -v key="$1" '$1 == key { print $2; exit }' /proc/meminfo
-}
-
 to_mib() {
   # Integer MiB from KiB, rounding down; never fails on a missing value.
   case "${1:-}" in
@@ -82,7 +79,33 @@ if command -v systemd-analyze >/dev/null 2>&1; then
   fi
   # shellcheck source=/dev/null
   . "$PERFORMANCE_TIME_HELPER"
-  summary="$(systemd-analyze time 2>/dev/null || true)"
+  summary=""
+  boot_waited=0
+  while [ "$boot_waited" -lt "$BOOT_TOTAL_WAIT_SECONDS" ]; do
+    summary="$(LC_ALL=C systemd-analyze time 2>&1 || true)"
+    case "$summary" in
+      *'Startup finished in '*) break ;;
+      *'Bootup is not yet finished'*)
+        sleep 2
+        boot_waited=$((boot_waited + 2))
+        ;;
+      *)
+        emit boot_total_ms 0
+        printf 'systemd-analyze time returned no usable boot summary: %s\n' \
+          "${summary:-no output}" >&2
+        exit 1
+        ;;
+    esac
+  done
+  case "$summary" in
+    *'Startup finished in '*) ;;
+    *)
+      emit boot_total_ms 0
+      printf 'System startup did not finish within %s seconds: %s\n' \
+        "$BOOT_TOTAL_WAIT_SECONDS" "${summary:-no output}" >&2
+      exit 1
+      ;;
+  esac
   if [ -n "$summary" ]; then
     firmware="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(firmware\)).*/\1/p')"
     loader="$(printf '%s\n' "$summary" | sed -n 's/.*\([0-9.][^ ]*\) (\(loader\)).*/\1/p')"
@@ -121,10 +144,10 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 # --- Memory ------------------------------------------------------------------
-total_kib="$(meminfo_kib MemTotal)"
-available_kib="$(meminfo_kib MemAvailable)"
-swap_total_kib="$(meminfo_kib SwapTotal)"
-swap_free_kib="$(meminfo_kib SwapFree)"
+total_kib="$(shreeos_extract_meminfo_kib MemTotal)"
+available_kib="$(shreeos_extract_meminfo_kib MemAvailable)"
+swap_total_kib="$(shreeos_extract_meminfo_kib SwapTotal)"
+swap_free_kib="$(shreeos_extract_meminfo_kib SwapFree)"
 emit mem_total_mib "$(to_mib "$total_kib")"
 emit mem_available_mib "$(to_mib "$available_kib")"
 emit mem_used_mib "$(to_mib $(( ${total_kib:-0} - ${available_kib:-0} )))"

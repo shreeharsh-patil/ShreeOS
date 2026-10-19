@@ -13,6 +13,10 @@ if [ ! -r /run/live/medium/live/filesystem.squashfs ]; then
   echo 'The ShreeOS installer can only run from ShreeOS live media.' >&2
   exit 1
 fi
+if [ ! -d /sys/firmware/efi ]; then
+  echo 'Boot the ShreeOS live installer in UEFI mode before installing.' >&2
+  exit 1
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
   echo 'Installer authorization is required.' >&2

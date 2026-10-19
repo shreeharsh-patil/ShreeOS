@@ -4,6 +4,16 @@ set -eu
 config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 marker="$config_home/shreeos/plasma-defaults-applied"
 [ -e "$marker" ] && exit 0
+config="$config_home/plasma-org.kde.plasma.desktop-appletsrc"
+fresh_profile_marker="$config_home/shreeos/plasma-fresh-profile"
+preserve_existing_profile=0
+if [ ! -e "$fresh_profile_marker" ] && {
+  [ -s "$config" ] ||
+    [ -s "$config_home/kdeglobals" ] ||
+    [ -s "$config_home/plasmarc" ]
+}; then
+  preserve_existing_profile=1
+fi
 
 # Applying a look-and-feel resets plasmashell.  Run the hook outside the
 # Plasma autostart process so that reset cannot terminate the hook itself.
@@ -19,12 +29,19 @@ if [ "${SHREEOS_PLASMA_FIRST_LOGIN_SERVICE:-0}" != 1 ]; then
 fi
 
 mkdir -p "${marker%/*}"
+if [ "$preserve_existing_profile" -eq 1 ]; then
+  logger -t shreeos-plasma-first-login 'Preserving existing Plasma preferences'
+  touch "$marker"
+  exit 0
+fi
+
 # Wait for plasmashell to finish registering its session services before
 # applying the layout. Resetting the layout during Plasma startup can terminate
 # the shell before it has loaded the ShreeOS panel and dock.
 sleep 10
 uid="$(id -u)"
 apply_attempt=0
+shell_pid_before=""
 while [ "$apply_attempt" -lt 30 ]; do
   shell_pid_before="$(pgrep -u "$uid" -x plasmashell | head -n 1 || true)"
   if plasma-apply-lookandfeel --apply org.shreeos.desktop --resetLayout; then
@@ -88,7 +105,6 @@ if [ "$wallpaper_attempt" -ge 30 ]; then
   exit 1
 fi
 
-config="$config_home/plasma-org.kde.plasma.desktop-appletsrc"
 attempt=0
 while [ "$attempt" -lt 30 ]; do
   if grep -Fq 'plugin=org.kde.plasma.systemtray' "$config" &&
@@ -112,4 +128,5 @@ if command -v kwriteconfig6 >/dev/null 2>&1; then
   kwriteconfig6 --file shreeosrc --group Desktop --key PowerProfile balanced
 fi
 
+rm -f "$fresh_profile_marker"
 touch "$marker"

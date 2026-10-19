@@ -4,31 +4,39 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - 'scripts/build-debian-prototype.sh'
-      - 'scripts/package-unified-native.sh'
-      - 'scripts/shreeinfo'
-      - 'scripts/shreeos-native-status'
-      - 'scripts/shreeos-verify-installed'
-      - 'desktop/apps/shree-sysmon.sh'
-      - 'pkgmanager/**'
+      - '.github/workflows/unified-iso.yml'
+      - 'Makefile'
+      - 'VERSION'
+      - 'build.conf'
+      - 'LICENSE'
+      - 'docs/**'
+      - 'release/INSTALL-ACCEPTANCE.md'
+      - 'scripts/**'
+      - 'desktop/**'
       - 'hardware/**'
+      - 'pkgmanager/**'
       - 'prototype/debian-live/**'
       - 'branding/**'
       - 'themes/plasma/**'
-      - 'tests/unified/**'
-      - 'docs/UNIFIED-IMAGE.md'
-      - 'Makefile'
-      - '.github/workflows/unified-iso.yml'
+      - 'tests/**'
   push:
     branches: [master]
     paths:
-      - 'scripts/build-debian-prototype.sh'
-      - 'scripts/package-unified-native.sh'
-      - 'scripts/shreeinfo'
-      - 'scripts/shreeos-native-status'
-      - 'tests/unified/**'
-      - 'Makefile'
       - '.github/workflows/unified-iso.yml'
+      - 'Makefile'
+      - 'VERSION'
+      - 'build.conf'
+      - 'LICENSE'
+      - 'docs/**'
+      - 'release/INSTALL-ACCEPTANCE.md'
+      - 'scripts/**'
+      - 'desktop/**'
+      - 'hardware/**'
+      - 'pkgmanager/**'
+      - 'prototype/debian-live/**'
+      - 'branding/**'
+      - 'themes/plasma/**'
+      - 'tests/**'
   workflow_dispatch:
 
 permissions:
@@ -88,9 +96,14 @@ jobs:
           bash tests/unified/test-iso-contents.sh "$iso"
       - name: Verify ISO provenance and enforce the 1.9 GB size cap
         run: |
+          set -Eeuo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
           iso="out/shreeos(${version}).iso"
+          catalog_report="out/shreeos(${version})-eltorito.txt"
           test "$(stat -c '%s' "$iso")" -lt 1900000000
+          xorriso -indev "$iso" -report_el_torito plain 2>&1 | tee "$catalog_report"
+          grep -Eq '^El Torito boot img[[:space:]]*:[[:space:]]*[0-9]+[[:space:]]+BIOS[[:space:]]+y([[:space:]]|$)' "$catalog_report"
+          grep -Eq '^El Torito boot img[[:space:]]*:[[:space:]]*[0-9]+[[:space:]]+UEFI[[:space:]]+y([[:space:]]|$)' "$catalog_report"
           python3 scripts/verify-unified-artifact.py \
             "$iso" "$iso.sha256" \
             "out/shreeos(${version})-packages.txt" \
@@ -105,6 +118,12 @@ jobs:
           iso="out/shreeos(${version}).iso"
           QEMU_LOG_DIR=build-logs/unified-qemu \
             bash tests/prototype/test-iso.sh "$iso" plasma
+      - name: Prepare checksums for the immutable install-acceptance artifact
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          iso="shreeos(${version}).iso"
+          (cd out && sha256sum --check "$iso.sha256")
+          (cd out && sha256sum -- "$iso" > SHA256SUMS)
       - name: Upload development ISO, checksum and manifests
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -112,11 +131,13 @@ jobs:
           path: |
             out/shreeos*.iso
             out/shreeos*.iso.sha256
+            out/SHA256SUMS
+            out/shreeos*-eltorito.txt
             out/shreeos*-packages.txt
             out/shreeos*-build-info.txt
             out/shreeos*-manifest.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
       - name: Preserve BIOS/UEFI logs and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

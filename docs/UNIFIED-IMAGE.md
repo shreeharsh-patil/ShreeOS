@@ -71,7 +71,10 @@ partitioning, create an unformatted 2 MiB BIOS Boot Partition (type
 (type `c12a7328-f81f-11d2-ba4b-00a0c93ec93b`) mounted at `/boot/efi`, and an
 ext4 root partition. Calamares 3.3.14 creates the guided ESP only when started
 in UEFI mode; the ShreeOS installer then installs BIOS GRUB to the same
-validated GPT target disk. Do not start the installer in BIOS mode. For each
+validated GPT target disk. Guided partitioning keeps LVM and encrypted-root
+choices hidden until their boot paths are supported. For the documented manual
+path, use direct GPT partitions with an ext4 root; manual LVM and encrypted-root
+layouts remain unsupported. Do not start the installer in BIOS mode. For each
 installation, shut down, eject the ISO, then boot the same installed disk in
 both UEFI and legacy BIOS modes. Log in to Plasma and run
 `shreeos-verify-installed`; it must print `SHREEOS_INSTALLED_OK`. Check that

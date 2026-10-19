@@ -208,12 +208,12 @@ class SessionStartupTests(unittest.TestCase):
 
         iso_test = (ROOT / "tests/prototype/test-iso.sh").read_text(encoding="utf-8")
         self.assertIn('local qemu_timeout=420', iso_test)
-        self.assertIn('if [ "$PROFILE" = plasma ]; then qemu_timeout=5400; fi', iso_test)
+        self.assertIn('if [ "$PROFILE" = plasma ]; then qemu_timeout=1800; fi', iso_test)
         self.assertIn('local deadline=$((SECONDS + qemu_timeout))', iso_test)
         self.assertIn('timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64', iso_test)
         # In CI's TCG-backed VM, the guest clock advances far slower than the
-        # host clock. Allow boot, the guest-side gate, and desktop capture.
-        self.assertGreaterEqual(5400, int(wait_limit.group(1)) * 8)
+        # host clock. Allow six times the guest-side session deadline.
+        self.assertGreaterEqual(1800, int(wait_limit.group(1)) * 6)
 
     def assert_backoff(self, name):
         text = (BIN / name).read_text(encoding="utf-8")
@@ -248,6 +248,38 @@ class SessionStartupTests(unittest.TestCase):
         self.assertIn('emit desktop_ready "$ready"', probe)
         self.assertIn("smaps_rollup", probe)
         self.assertIn('emit pss_available "$pss_supported"', probe)
+
+    def test_performance_probe_target_enablement_has_no_ordering_cycle(self):
+        service = (ROOT / "prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service").read_text(encoding="utf-8")
+        timer = (ROOT / "prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.timer").read_text(encoding="utf-8")
+        builder = (ROOT / "scripts/build-debian-prototype.sh").read_text(encoding="utf-8")
+        self.assertNotIn("Wants=graphical.target", service)
+        self.assertIn("After=graphical.target", service)
+        self.assertIn("OnActiveSec=5s", timer)
+        self.assertIn("Unit=shreeos-perf-probe.service", timer)
+        self.assertIn("WantedBy=graphical.target", timer)
+        self.assertIn(
+            '"$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-perf-probe.timer"',
+            builder,
+        )
+        self.assertIn('if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then', builder)
+
+    def test_performance_probe_timeout_covers_all_bounded_waits(self):
+        probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
+        service = (ROOT / "prototype/debian-live/config/includes.chroot/etc/systemd/system/shreeos-perf-probe.service").read_text(encoding="utf-8")
+        constants = dict((name, int(value)) for name, value in re.findall(
+            r"^([A-Z_]+)=(\d+)$", probe, re.MULTILINE
+        ))
+        timeout = re.search(r"^TimeoutStartSec=(\d+)$", service, re.MULTILINE)
+        self.assertIsNotNone(timeout, "performance probe service must have a bounded start timeout")
+        required_budget = sum(constants[name] for name in (
+            "DESKTOP_WAIT_SECONDS", "SETTLE_SECONDS",
+            "BOOT_TOTAL_WAIT_SECONDS", "WINDOW_SECONDS",
+        )) + 60
+        self.assertGreaterEqual(
+            int(timeout.group(1)), required_budget,
+            "service timeout must cover additive probe waits plus 60 seconds of command overhead",
+        )
 
 
 class PowerProfileTests(unittest.TestCase):
@@ -508,7 +540,7 @@ class MeasurementProvenanceTests(unittest.TestCase):
         for tool in ("unsquashfs", "xvfb-run", "sha256sum"):
             self.assertIn(tool, report)
         self.assertIn('CAPTURE_ONLY:-0', report)
-        self.assertIn('-bios "$BIOS_ROM"', report)
+        self.assertIn('"-bios" "$BIOS_ROM"', report)
         self.assertIn('dpkg-query -W -f=', report)
         self.assertIn('bios_rom_sha256=', report)
 
@@ -520,13 +552,22 @@ class MeasurementProvenanceTests(unittest.TestCase):
         baseline = (ROOT / ".github/workflows/performance-baseline.yml").read_text(encoding="utf-8")
         self.assertIn('install -D "../measurement-harness/$probe_path" "$probe_path"', baseline)
         self.assertIn('install -D "../measurement-harness/$unit_path" "$unit_path"', baseline)
+        self.assertIn('install -D "../measurement-harness/$timer_path" "$timer_path"', baseline)
         self.assertIn('install -D "../measurement-harness/$time_helper_path" "$time_helper_path"', baseline)
+        self.assertIn("builder_path=scripts/build-debian-prototype.sh", baseline)
         self.assertIn("expected_changes=", baseline)
         self.assertIn("aggregate-performance-runs.py", baseline)
         self.assertIn("baseline-evidence/run-3/performance-candidate.tsv", baseline)
-        self.assertIn("shreeos-performance-baseline-${{ github.run_id }}", baseline)
+        self.assertIn("shreeos-performance-baseline-${{ github.run_id }}-${{ github.run_attempt }}", baseline)
+        self.assertIn("--privileged", baseline)
+        self.assertIn("measure-baseline:", baseline)
+        self.assertIn("container:\n      image: debian:trixie-slim\n    steps:", baseline)
+        self.assertIn("performance-sample-3.tsv", baseline)
+        self.assertIn("write-performance-provenance.py", baseline)
+        self.assertIn('--raw-evidence "$bundle/raw-evidence"', baseline)
         self.assertIn('CAPTURE_ONLY=1 QEMU_LOG_DIR=', baseline)
         self.assertIn('qemu-system-x86=1:10.0.13+ds-0+deb13u1', baseline)
+        self.assertIn("gh run download \"$GITHUB_RUN_ID\"", baseline)
 
     def test_idle_cpu_treats_iowait_as_idle_and_storage_only_targets_the_tagged_scratch_disk(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
@@ -539,14 +580,34 @@ class MeasurementProvenanceTests(unittest.TestCase):
         report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
         self.assertIn('baseline_probe_sha256=', report)
         self.assertIn('baseline_probe_service_sha256=', report)
+        self.assertIn('baseline_probe_timer_sha256=', report)
         self.assertIn('baseline_probe_time_helper_sha256=', report)
+        self.assertIn('measurement_protocol_sha256=', report)
+        self.assertIn('scripts/performance-environment.py', report)
+        self.assertIn('--snapshot "$TEST_DIR/environment-before.json"', report)
+        self.assertIn('--delta "$TEST_DIR/environment-before.json"', report)
+        self.assertIn('environment-deltas.txt', report)
+        self.assertIn('scripts/verify-performance-baseline.py', report)
         self.assertIn("qemu_version qemu_package_version seabios_package_version bios_rom_sha256 host_kernel", report)
         self.assertIn("# host_cpu_model=%s", report)
         self.assertIn("# qemu_command=%s", report)
         self.assertIn('[ "$baseline_probe_sha256" != "$probe_sha256" ]', report)
         self.assertIn('[ "$baseline_probe_service_sha256" != "$probe_service_sha256" ]', report)
+        self.assertIn('[ "$baseline_probe_timer_sha256" != "$probe_timer_sha256" ]', report)
         self.assertIn('[ "$baseline_probe_time_helper_sha256" != "$probe_time_helper_sha256" ]', report)
+        self.assertIn('[ "$baseline_measurement_protocol_sha256" != "$measurement_protocol_sha256" ]', report)
+        self.assertIn(".github/workflows/performance-baseline.yml", report)
+        self.assertIn("scripts/verify-performance-manifest.py", report)
+        self.assertIn("tests/prototype/test-performance-report.sh | sha256sum", report)
         self.assertIn('informational only; backing storage varies by runner', report)
+
+    def test_release_performance_verifies_run_bound_baseline_before_comparison(self):
+        release = (ROOT / ".github/workflows/shreeos-release.yml").read_text(encoding="utf-8")
+        self.assertIn("Verify the committed performance baseline against its successful workflow run", release)
+        self.assertIn("scripts/verify-performance-baseline.py", release)
+        self.assertIn("tests/prototype/performance-baseline.provenance.json", release)
+        self.assertIn("--evidence-dir tests/prototype/performance-baseline-evidence", release)
+        self.assertIn("actions: read", release)
 
     def test_unknown_profile_cannot_falsely_mark_desktop_ready(self):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
@@ -557,7 +618,8 @@ class MeasurementProvenanceTests(unittest.TestCase):
         release = (ROOT / ".github/workflows/shreeos-release.yml").read_text(encoding="utf-8")
         self.assertIn('container:\n      image: debian:trixie-slim', release)
         self.assertIn('qemu-system-x86=1:10.0.13+ds-0+deb13u1', release)
-        self.assertIn('if ! CAPTURE_ONLY=1 QEMU_LOG_DIR=', release)
+        self.assertIn('if ! MEASURED_SOURCE_COMMIT="${{ needs.build.outputs.source_commit }}" \\', release)
+        self.assertIn('CAPTURE_ONLY=1 QEMU_LOG_DIR=', release)
         self.assertIn('continuing to remaining samples', release)
         self.assertIn('scripts/compare-performance-runs.py', release)
 
@@ -565,6 +627,31 @@ class MeasurementProvenanceTests(unittest.TestCase):
         probe = (ROOT / "prototype/debian-live/config/includes.chroot/usr/local/sbin/shreeos-perf-probe").read_text(encoding="utf-8")
         self.assertIn("shreeos_extract_boot_total", probe)
         self.assertIn("Could not parse a positive systemd boot duration", probe)
+        self.assertIn('LC_ALL=C systemd-analyze time 2>&1', probe)
+        self.assertIn("Bootup is not yet finished", probe)
+        self.assertIn("BOOT_TOTAL_WAIT_SECONDS=180", probe)
+
+    def test_meminfo_parser_matches_proc_field_labels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory) / "meminfo"
+            fixture.write_text("MemTotal:       4194304 kB\nMemAvailable:   2097152 kB\n",
+                               encoding="utf-8")
+            for key, expected in (("MemTotal", "4194304"),
+                                  ("MemAvailable", "2097152")):
+                with self.subTest(key=key):
+                    result = subprocess.run(
+                        [shell(), "-c", '. "$1"; shreeos_extract_meminfo_kib "$2" "$3"',
+                         "sh", shell_path(PERFORMANCE_TIME), key, shell_path(fixture)],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), expected)
+
+    def test_performance_qemu_has_restricted_dhcp_without_host_or_external_access(self):
+        report = (ROOT / "tests/prototype/test-performance-report.sh").read_text(encoding="utf-8")
+        self.assertIn('"-nic" "user,restrict=on,model=virtio-net-pci"', report)
+        self.assertIn("isolated-user-network", report)
+        self.assertNotIn('"-nic" "none"', report)
 
     def test_systemd_total_parser_handles_trailing_graphical_parenthetical(self):
         sample = ("Startup finished in 4.321s (firmware) + 1.234s (loader) + "

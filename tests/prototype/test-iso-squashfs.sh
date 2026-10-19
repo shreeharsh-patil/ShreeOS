@@ -40,7 +40,7 @@ have_package() {
 }
 
 # --- Base system: never removable -------------------------------------------
-for package in apt dpkg systemd systemd-sysv live-boot live-config-systemd \
+for package in apt dpkg systemd systemd-sysv live-boot live-config-systemd user-setup \
   linux-image-amd64 network-manager pipewire-audio; do
   have_package "$package" || { echo "ISO is missing base package: $package" >&2; exit 1; }
 done

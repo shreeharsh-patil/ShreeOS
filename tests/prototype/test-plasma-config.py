@@ -157,6 +157,11 @@ class PlasmaConfigTests(unittest.TestCase):
             self.assertEqual(custom.read_text(), "user-owned layout")
             self.assertEqual(marker.read_text(), "existing profile")
 
+    def test_fresh_profile_marker_is_installed_in_skel(self):
+        marker = INCLUDES / "etc/skel/.config/shreeos/plasma-fresh-profile"
+        self.assertTrue(marker.is_file())
+        self.assertIn("fresh shreeos accounts", marker.read_text().lower())
+
     def test_first_login_handles_restarted_and_in_place_shell_layout_updates(self):
         shell = shutil.which("sh")
         if os.name == "nt":
@@ -189,6 +194,7 @@ class PlasmaConfigTests(unittest.TestCase):
                 "plasma-apply-wallpaperimage": '#!/bin/sh\nprintf "wallpaper\\n" >> "$CALLS"\n',
                 "plasma-apply-colorscheme": '#!/bin/sh\nprintf "colorscheme\\n" >> "$CALLS"\n',
                 "kwriteconfig6": '#!/bin/sh\nprintf "kwriteconfig\\n" >> "$CALLS"\n',
+                "logger": '#!/bin/sh\nprintf "logger\\n" >> "$CALLS"\n',
                 "dpkg-query": '#!/bin/sh\nexit 0\n',
                 "dconf": '#!/bin/sh\nprintf "dconf\\n" >> "$CALLS"\n',
                 "notify-send": '#!/bin/sh\nprintf "notify\\n" >> "$CALLS"\n',
@@ -235,6 +241,7 @@ class PlasmaConfigTests(unittest.TestCase):
             # That must still finish first-login setup and release dock startup.
             marker = config_home / "shreeos/plasma-defaults-applied"
             marker.unlink()
+            (config_home / "shreeos/plasma-fresh-profile").touch()
             calls.write_text("")
             Path(f"{calls}.pgrep-count").unlink()
             stable_env = dict(env, PGREP_MODE="stable")
@@ -243,6 +250,25 @@ class PlasmaConfigTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(marker.is_file())
             self.assertIn("wallpaper", calls.read_text().splitlines())
+
+            # An existing profile without the fresh-account marker may belong
+            # to a user upgrade; preserve its layout when ShreeOS defaults have
+            # not yet been recorded for that account.
+            marker.unlink()
+            (config_home / "shreeos/plasma-fresh-profile").unlink(missing_ok=True)
+            custom_layout = config_home / "plasma-org.kde.plasma.desktop-appletsrc"
+            custom_layout.write_text("user-owned custom layout\n")
+            custom_theme = config_home / "kdeglobals"
+            custom_theme.write_text("user-owned color scheme\n")
+            calls.write_text("")
+            Path(f"{calls}.pgrep-count").unlink()
+            result = subprocess.run(invocation,
+                                    env=stable_env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(custom_layout.read_text(), "user-owned custom layout\n")
+            self.assertEqual(custom_theme.read_text(), "user-owned color scheme\n")
+            self.assertEqual(calls.read_text().splitlines(), ["logger"])
+            self.assertTrue(marker.is_file())
 
 
 if __name__ == "__main__":

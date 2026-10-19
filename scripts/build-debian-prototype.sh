@@ -211,6 +211,12 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/local/bin/"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-privileged" \
     "$BUILD_DIR/config/includes.chroot/usr/local/libexec/"
+  install -Dm0755 \
+    "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-install-bios-grub" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/libexec/shreeos-install-bios-grub"
+  install -Dm0644 \
+    "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/local/libexec/shreeos-installer-storage-checks.sh" \
+    "$BUILD_DIR/config/includes.chroot/usr/local/libexec/shreeos-installer-storage-checks.sh"
   cp "$CONFIG_SOURCE/profiles/desktop/includes.chroot/usr/share/applications/shreeos-installer.desktop" \
     "$BUILD_DIR/config/includes.chroot/usr/share/applications/"
   cp "$REPO_ROOT/branding/icons/installer.svg" \
@@ -319,10 +325,13 @@ fi
 mkdir -p "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants"
 ln -sfn ../shreeos-boot-check.service \
   "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-boot-check.service"
-# The boot performance probe is enabled on live media only. Its own unit carries
-# ConditionPathExists=/run/live/medium, so an installed system never runs it.
-ln -sfn ../shreeos-perf-probe.service \
-  "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-perf-probe.service"
+# Start the performance probe a few seconds after the graphical target is
+# reached. The timer is a quick target dependency; the long-running probe is
+# ordered after graphical.target but is not part of its startup transaction.
+if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then
+  ln -sfn ../shreeos-perf-probe.timer \
+    "$BUILD_DIR/config/includes.chroot/etc/systemd/system/${LIVE_TARGET}.target.wants/shreeos-perf-probe.timer"
+fi
 
 ISO_APPLICATION="ShreeOS Base Prototype"
 ISO_VOLUME="SHREEOS_PROTO"
@@ -375,7 +384,7 @@ ISO_SOURCE="$BUILD_DIR/live-image-amd64.hybrid.iso"
 PACKAGES_SOURCE="$BUILD_DIR/binary/live/filesystem.packages"
 [ -s "$ISO_SOURCE" ] || { echo "live-build did not produce $ISO_SOURCE" >&2; exit 1; }
 [ -s "$PACKAGES_SOURCE" ] || { echo "live-build did not produce its package manifest" >&2; exit 1; }
-for package in apt live-boot live-config-systemd network-manager systemd-sysv; do
+for package in apt live-boot live-config-systemd user-setup network-manager systemd-sysv; do
   grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$PACKAGES_SOURCE" || {
     echo "Built image package manifest is missing required package: $package" >&2
     exit 1
@@ -533,6 +542,7 @@ manifest = {
     "live_build": os.environ["LIVE_BUILD_VERSION"],
     "commit": os.environ["SOURCE_COMMIT"],
     "git_dirty": os.environ["GIT_DIRTY"] == "1",
+    "products": ["live", "installed"],
     "iso": os.environ["ISO_NAME"],
     "sha256": digest,
     "size_bytes": size_bytes,
