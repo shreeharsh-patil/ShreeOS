@@ -21,6 +21,12 @@ def load_search_module():
     gi.repository = repository
     sys.modules["gi"] = gi
     sys.modules["gi.repository"] = repository
+    # Mirror the deployed layout: /usr/local/bin/shreeos-search imports
+    # ui_theme from /usr/local/lib/shreeos.
+    library = (Path(__file__).resolve().parents[2]
+               / "prototype/debian-live/profiles/desktop/includes.chroot/usr/local/lib/shreeos")
+    if str(library) not in sys.path:
+        sys.path.insert(0, str(library))
     path = (Path(__file__).resolve().parents[2]
             / "prototype/debian-live/profiles/desktop/includes.chroot/usr/local/bin/shreeos-search")
     loader = SourceFileLoader("shreeos_search", str(path))

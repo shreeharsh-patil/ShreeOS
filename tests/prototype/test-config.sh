@@ -151,7 +151,7 @@ grep -Fq 'sddm.canPowerOff' \
   "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
 grep -Fq 'width: Screen.width' \
   "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
-grep -Fq 'shreeos-logo.png' \
+grep -Fq 'file:///usr/share/icons/hicolor/scalable/apps/shreeos.svg' \
   "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
 grep -Fq 'Meta+Space' "$plasma_includes/etc/skel/.config/kglobalshortcutsrc"
 grep -Fq 'Exec=/usr/local/bin/shreeos-plasma-first-login' \

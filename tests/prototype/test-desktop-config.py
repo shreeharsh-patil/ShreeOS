@@ -238,8 +238,8 @@ def main() -> int:
             and "/run/live/medium/live/filesystem.squashfs" in first_run.read_text(encoding="utf-8")
             and first_run_entry.get("Desktop Entry", "Exec", fallback="") == "/usr/local/bin/shreeos-first-run"
             and "first-run-complete" in first_run_source
-            and "Open Control Center" in first_run_source
-            and "Open ShreeOS Software" in first_run_source,
+            and "/usr/local/bin/shreeos-control-center" in first_run_source
+            and "/usr/local/bin/shreeos-store" in first_run_source,
             "first-login welcome experience is missing or runs on the temporary live desktop")
     upstream_installer_autostart = configparser.ConfigParser(interpolation=None)
     upstream_installer_autostart.read(
@@ -311,7 +311,8 @@ def main() -> int:
             "desktop image is missing the ShreeOS lock and notification components")
     require("\nonboard\n" in package_list and "\norca\n" in package_list
             and "\nspeech-dispatcher-espeak-ng\n" in package_list
-            and '"Accessibility", ["xfce4-accessibility-settings"]' in controls_source,
+            and '"accessibility", "Accessibility"' in controls_source
+            and '["xfce4-accessibility-settings"]' in controls_source,
             "desktop image is missing screen reader, on-screen keyboard, or accessibility settings")
     require("\nlibrsvg2-common\n" in package_list,
             "desktop image integration must include the SVG icon loader")
