@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include <time.h>
 
-#define SHREED_SOCKET_PATH "/run/shreed.sock"
+#define SHREED_SOCKET_PATH "/run/shreeos/shreed.sock"
 #define SHREED_LOG_PATH "/var/log/shreeos/shreed.log"
 #define SHREED_MAX_CLIENTS 32
 #define SHREED_MAX_SUBSCRIBERS 8

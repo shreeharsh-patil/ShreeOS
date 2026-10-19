@@ -330,6 +330,8 @@ if [ "$SHREEOS_UNIFIED" = 1 ]; then
   ISO_APPLICATION="ShreeOS ${PROTOTYPE_VERSION} Unified Desktop"
   ISO_VOLUME="SHREEOS_040"
 fi
+APT_RECOMMENDS=true
+if [ "$SHREEOS_UNIFIED" = 1 ]; then APT_RECOMMENDS=false; fi
 SNAPSHOT="https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/"
 SECURITY_SNAPSHOT="https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/"
 LIVE_APPEND="boot=live components live-config.components=${LIVE_APPEND_COMPONENTS} live-config.hooks=filesystem live-config.hostname=shreeos live-config.username=shree live-config.user-default-groups=audio,cdrom,dip,floppy,video,plugdev,netdev,powerdev,scanner,bluetooth,shree-hardware live-config.user-fullname=ShreeOS-Live-User live-config.locales=en_US.UTF-8 console=tty0 console=ttyS0,115200n8"
@@ -346,7 +348,7 @@ if [ "$LIVE_PROFILE" = desktop ] || [ "$LIVE_PROFILE" = plasma ]; then LIVE_APPE
     --bootloaders "grub-pc grub-efi" \
     --archive-areas "$ARCHIVE_AREAS" \
     --debian-installer none \
-    --apt-recommends true \
+    --apt-recommends "$APT_RECOMMENDS" \
     --apt-secure true \
     --apt-options "--yes -o Acquire::Retries=5 -o Acquire::Check-Valid-Until=false" \
     --security true \
@@ -381,12 +383,34 @@ for package in apt live-boot live-config-systemd network-manager systemd-sysv; d
 done
 if [ "$LIVE_PROFILE" = plasma ]; then
   for package in kde-plasma-desktop plasma-desktop plasma-workspace kwin-x11 sddm \
-    dolphin konsole ark kde-spectacle plasma-nm plasma-pa powerdevil bluedevil shreeos-tools; do
+    dolphin konsole ark kde-spectacle plasma-nm plasma-pa powerdevil bluedevil \
+    xserver-xorg libgl1-mesa-dri mesa-vulkan-drivers kio-extras systemsettings \
+    xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-kde \
+    desktop-file-utils shared-mime-info hicolor-icon-theme gtk-update-icon-cache \
+    cups-pk-helper system-config-printer-common system-config-printer-udev \
+    smbclient avahi-daemon colord sane-airscan sane-utils ipp-usb onboard-data \
+    sound-icons xbrlapi btrfs-progs squashfs-tools shreeos-tools shreeos-native-tools; do
     grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$PACKAGES_SOURCE" || {
       echo "Plasma package manifest is missing required package: $package" >&2
       exit 1
     }
   done
+  for package in fonts-noto fonts-noto-extra fonts-noto-cjk fonts-noto-cjk-extra \
+    fonts-noto-ui-extra ibus-data; do
+    if grep -Eq "^${package}(:[^[:space:]]+)?([[:space:]]|$)" "$PACKAGES_SOURCE"; then
+      echo "Optimized Plasma image unexpectedly includes omitted recommendation package: $package" >&2
+      exit 1
+    fi
+  done
+fi
+
+if [ "$SHREEOS_UNIFIED" = 1 ]; then
+  iso_size_bytes="$(stat -c '%s' "$ISO_SOURCE")"
+  if (( iso_size_bytes >= 1900000000 )); then
+    printf 'Unified ISO is %s bytes; the release cap is strictly below 1900000000 bytes.\n' \
+      "$iso_size_bytes" >&2
+    exit 1
+  fi
 fi
 
 # Output naming.
@@ -425,9 +449,9 @@ cp -- "$PACKAGES_SOURCE" "${OUTPUT_PREFIX}-packages.txt"
 manifest_version() {
   awk -v pkg="$1" '$1 == pkg { print $2; exit }' "$PACKAGES_SOURCE"
 }
-printf 'version=%s\nkind=%s\nsuite=%s\nsnapshot=%s\nlive_build=%s\nprofile=%s\nfirmware=%s\ntoolsets=%s\narchitecture=x86_64\n' \
+printf 'version=%s\nkind=%s\nsuite=%s\nsnapshot=%s\nlive_build=%s\nprofile=%s\napt_recommends=%s\nfirmware=%s\ntoolsets=%s\narchitecture=x86_64\n' \
   "$PROTOTYPE_VERSION" "$BUILD_KIND" "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION" \
-  "$LIVE_PROFILE" "$FIRMWARE" "$TOOLSETS" \
+  "$LIVE_PROFILE" "$APT_RECOMMENDS" "$FIRMWARE" "$TOOLSETS" \
   > "${OUTPUT_PREFIX}-build-info.txt"
 printf 'kernel=%s\nplasma=%s\nkwin=%s\nsddm=%s\n' \
   "$(manifest_version linux-image-amd64)" "$(manifest_version plasma-workspace)" \
@@ -440,5 +464,87 @@ for package in live-build debootstrap xorriso squashfs-tools \
 done
 if [ "$SHREEOS_UNIFIED" = 1 ]; then
   printf 'edition=unified\nnative_package=shreeos-native-tools\n' >> "${OUTPUT_PREFIX}-build-info.txt"
+  iso_sha256="$(sha256sum "$ISO_OUT" | awk '{print $1}')"
+  iso_size_bytes="$(stat -c '%s' "$ISO_OUT")"
+  if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    source_commit="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+    git_dirty=0
+    if [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]; then
+      git_dirty=1
+    fi
+  else
+    source_commit="${GITHUB_SHA:-}"
+    if ! [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]]; then
+      echo 'Unified build requires Git metadata or a full GITHUB_SHA for provenance.' >&2
+      exit 1
+    fi
+    git_dirty=0
+  fi
+  printf 'artifact=%s\ndebian_suite=%s\ndebian_snapshot=%s\ngit_commit=%s\ngit_dirty=%s\nbuilt_at=%s\nsha256=%s\nsize_bytes=%s\nshreeos_tools=%s\nshreeos_native_tools=%s\n' \
+    "$(basename "$ISO_OUT")" "$DEBIAN_SUITE" "$DEBIAN_SNAPSHOT" \
+    "$source_commit" "$git_dirty" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$iso_sha256" "$iso_size_bytes" \
+    "$(manifest_version shreeos-tools)" "$(manifest_version shreeos-native-tools)" \
+    >> "${OUTPUT_PREFIX}-build-info.txt"
+  ISO_NAME="$(basename "$ISO_OUT")" ISO_PATH="$ISO_OUT" ISO_SHA256="$iso_sha256" \
+    ISO_SIZE="$iso_size_bytes" SOURCE_COMMIT="$source_commit" GIT_DIRTY="$git_dirty" \
+    IMAGE_VERSION="$PROTOTYPE_VERSION" IMAGE_PROFILE="$LIVE_PROFILE" \
+    DEBIAN_SUITE="$DEBIAN_SUITE" DEBIAN_SNAPSHOT="$DEBIAN_SNAPSHOT" \
+    LIVE_BUILD_VERSION="$LIVE_BUILD_VERSION" PACKAGE_MANIFEST="$PACKAGES_SOURCE" \
+    python3 - "${OUTPUT_PREFIX}-manifest.json" <<'PY'
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+
+iso = Path(os.environ["ISO_PATH"])
+with iso.open("rb") as stream:
+    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+size_bytes = iso.stat().st_size
+if digest != os.environ["ISO_SHA256"]:
+    raise SystemExit("unified ISO digest changed while writing provenance")
+if size_bytes != int(os.environ["ISO_SIZE"]):
+    raise SystemExit("unified ISO size changed while writing provenance")
+
+packages = {}
+for raw_line in Path(os.environ["PACKAGE_MANIFEST"]).read_text(encoding="utf-8").splitlines():
+    fields = raw_line.split()
+    if len(fields) >= 2:
+        packages[fields[0]] = fields[1]
+components = {
+    "kernel": packages.get("linux-image-amd64", ""),
+    "plasma": packages.get("plasma-workspace", ""),
+    "kwin": packages.get("kwin-x11", ""),
+    "sddm": packages.get("sddm", ""),
+    "shreeos_tools": packages.get("shreeos-tools", ""),
+    "shreeos_native_tools": packages.get("shreeos-native-tools", ""),
+}
+if any(not value for value in components.values()):
+    raise SystemExit("unified package manifest is missing a required component")
+
+manifest = {
+    "name": "ShreeOS",
+    "version": os.environ["IMAGE_VERSION"],
+    "profile": os.environ["IMAGE_PROFILE"],
+    "architecture": "x86_64",
+    "base_distribution": os.environ["DEBIAN_SUITE"],
+    "base_snapshot": os.environ["DEBIAN_SNAPSHOT"],
+    "live_build": os.environ["LIVE_BUILD_VERSION"],
+    "commit": os.environ["SOURCE_COMMIT"],
+    "git_dirty": os.environ["GIT_DIRTY"] == "1",
+    "iso": os.environ["ISO_NAME"],
+    "sha256": digest,
+    "size_bytes": size_bytes,
+    "components": components,
+}
+Path(sys.argv[1]).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+                             encoding="utf-8")
+PY
+  python3 "$REPO_ROOT/scripts/verify-unified-artifact.py" \
+    "$ISO_OUT" "${ISO_OUT}.sha256" "${OUTPUT_PREFIX}-packages.txt" \
+    "${OUTPUT_PREFIX}-build-info.txt" "${OUTPUT_PREFIX}-manifest.json" \
+    "$PROTOTYPE_VERSION" "$LIVE_PROFILE" x86_64 "$DEBIAN_SUITE" \
+    "$DEBIAN_SNAPSHOT" "$LIVE_BUILD_VERSION"
 fi
 printf 'Built %s %s ISO: %s\n' "$LIVE_PROFILE" "$BUILD_KIND" "$ISO_OUT"

@@ -12,10 +12,11 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
-#include <grp.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t shutdown_requested;
+static bool unauthenticated_rejection_logged;
+static bool per_uid_limit_rejection_logged;
 
 static void handle_signal(int signal_number) {
     (void)signal_number;
@@ -45,15 +46,10 @@ static int create_listener(const char *socket_path) {
     }
     strcpy(address.sun_path, socket_path);
     if (bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0 ||
-        chmod(socket_path, 0666) != 0 || listen(fd, SHREED_MAX_CLIENTS) != 0) {
+        chmod(socket_path, 0660) != 0 || listen(fd, SHREED_MAX_CLIENTS) != 0) {
         close(fd);
         unlink(socket_path);
         return -1;
-    }
-    struct group *group = getgrnam("shree-hardware");
-    if (group) {
-        int ret = chown(socket_path, 0, group->gr_gid);
-        (void)ret;
     }
     return fd;
 }
@@ -162,7 +158,10 @@ static void accept_clients(int listener, shreed_client_t clients[], int log_fd) 
         size_t uid_clients = 0;
         if (!shreed_authorize_peer(fd, &peer_uid)) {
             close(fd);
-            shreed_log(log_fd, "rejected unauthenticated local peer");
+            if (!unauthenticated_rejection_logged) {
+                unauthenticated_rejection_logged = true;
+                shreed_log(log_fd, "rejected unauthenticated local peer; further rejections suppressed");
+            }
             continue;
         }
         for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {
@@ -170,7 +169,10 @@ static void accept_clients(int listener, shreed_client_t clients[], int log_fd) 
         }
         if (uid_clients >= SHREED_MAX_CLIENTS_PER_UID) {
             close(fd);
-            shreed_log(log_fd, "rejected peer exceeding per-UID IPC limit");
+            if (!per_uid_limit_rejection_logged) {
+                per_uid_limit_rejection_logged = true;
+                shreed_log(log_fd, "rejected peer exceeding per-UID IPC limit; further rejections suppressed");
+            }
             continue;
         }
         for (size_t index = 0; index < SHREED_MAX_CLIENTS; index++) {

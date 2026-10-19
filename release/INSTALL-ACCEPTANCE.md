@@ -37,8 +37,14 @@ disks.
    desktop shortcut opens a real application.
 4. Run the installer and complete each step deliberately:
    - language, timezone and keyboard layout
-   - guided "erase disk" on the **disposable disk only**, then a second run using
-     manual partitioning
+   - boot the ISO in **UEFI mode** for both the guided "erase disk" run and a
+     second run on a fresh disposable disk using manual partitioning
+   - the guided GPT layout must contain a 2 MiB unformatted GPT BIOS Boot
+     Partition (type `21686148-6449-6e6f-744e-656564454649`), a 512 MiB FAT32
+     EFI System Partition mounted at `/boot/efi` (type
+     `c12a7328-f81f-11d2-ba4b-00a0c93ec93b`), and an ext4 root partition
+   - for manual GPT partitioning, create those same three partitions and mount
+     the EFI System Partition at `/boot/efi`
    - user creation with a password of your choosing, and a hostname
    - confirm the summary shows only the disposable disk and that no live-session
      credential (`shree`, or a blank/locked password) is preselected
@@ -53,8 +59,10 @@ disks.
    - `id` shows the expected supplementary groups
    - `systemctl --failed` is empty
    - desktop settings persist across logout and login
-8. Repeat step 3's boot on the same disk in the other firmware mode (BIOS if you
-   used UEFI, UEFI if you used BIOS).
+8. Repeat the detached-disk boot on each installed disk in legacy BIOS mode.
+   The supported install flow starts in UEFI mode so Calamares creates the EFI
+   System Partition; the ShreeOS post-install job then adds BIOS GRUB to the
+   same validated GPT target disk. Do not install while booted in BIOS mode.
 
 ## Record format
 

@@ -25,6 +25,15 @@ def read_ini(path):
     return parser
 
 
+def shell_path(path):
+    if os.name != "nt":
+        return str(path)
+    cygpath = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/usr/bin/cygpath.exe"
+    result = subprocess.run([str(cygpath), "-u", str(path)],
+                            check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
 class PlasmaConfigTests(unittest.TestCase):
     def test_every_pinned_app_has_a_launcher_and_an_installed_provider(self):
         dock = read_ini(INCLUDES / "usr/share/shreeos/defaults/plasma-plank.dconf")
@@ -140,12 +149,100 @@ class PlasmaConfigTests(unittest.TestCase):
             marker.write_text("existing profile")
             custom = home / ".config/plasma-org.kde.plasma.desktop-appletsrc"
             custom.write_text("user-owned layout")
-            env = dict(os.environ, HOME=home.as_posix(), XDG_CONFIG_HOME=(home / ".config").as_posix())
-            result = subprocess.run([shell, (INCLUDES / "usr/local/bin/shreeos-plasma-first-login").as_posix()],
+            env = dict(os.environ, HOME=shell_path(home),
+                       XDG_CONFIG_HOME=shell_path(home / ".config"))
+            result = subprocess.run([shell, shell_path(INCLUDES / "usr/local/bin/shreeos-plasma-first-login")],
                                     env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(custom.read_text(), "user-owned layout")
             self.assertEqual(marker.read_text(), "existing profile")
+
+    def test_first_login_handles_restarted_and_in_place_shell_layout_updates(self):
+        shell = shutil.which("sh")
+        if os.name == "nt":
+            shell = str(Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/bin/bash.exe")
+        self.assertTrue(shell and Path(shell).is_file(), "A POSIX shell is required")
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            calls = folder / "calls"
+            config_home = folder / "config"
+            stubs = {
+                "sleep": '#!/bin/sh\nprintf "sleep\\n" >> "$CALLS"\n',
+                "pgrep": (
+                    '#!/bin/sh\n'
+                    'count_file="$CALLS.pgrep-count"\n'
+                    'count=0; [ ! -f "$count_file" ] || count="$(cat "$count_file")"\n'
+                    'count=$((count + 1)); printf "%s\\n" "$count" > "$count_file"\n'
+                    'printf "pgrep:%s\\n" "$count" >> "$CALLS"\n'
+                    '[ "${PGREP_MODE:-restart}" != stable ] || { echo 4321; exit 0; }\n'
+                    'case "$count" in 1|2) echo 4321 ;; 4|5|6) echo 5678 ;; *) exit 1 ;; esac\n'
+                ),
+                "plasma-apply-lookandfeel": (
+                    '#!/bin/sh\nprintf "lookandfeel\\n" >> "$CALLS"\n'
+                    'mkdir -p "$XDG_CONFIG_HOME"\n'
+                    'printf "plugin=org.kde.plasma.systemtray\\nplugin=org.kde.plasma.kickoff\\n'
+                    'plugin=org.kde.plasma.appmenu\\nplugin=org.kde.plasma.digitalclock\\n" '
+                    '> "$XDG_CONFIG_HOME/plasma-org.kde.plasma.desktop-appletsrc"\n'
+                ),
+                "plasma-apply-desktoptheme": '#!/bin/sh\nprintf "desktoptheme\\n" >> "$CALLS"\n',
+                "shreeos-theme": '#!/bin/sh\nprintf "theme\\n" >> "$CALLS"\n',
+                "plasma-apply-wallpaperimage": '#!/bin/sh\nprintf "wallpaper\\n" >> "$CALLS"\n',
+                "plasma-apply-colorscheme": '#!/bin/sh\nprintf "colorscheme\\n" >> "$CALLS"\n',
+                "kwriteconfig6": '#!/bin/sh\nprintf "kwriteconfig\\n" >> "$CALLS"\n',
+                "dpkg-query": '#!/bin/sh\nexit 0\n',
+                "dconf": '#!/bin/sh\nprintf "dconf\\n" >> "$CALLS"\n',
+                "notify-send": '#!/bin/sh\nprintf "notify\\n" >> "$CALLS"\n',
+            }
+            for name, body in stubs.items():
+                stub = folder / name
+                stub.write_text(body)
+                stub.chmod(0o755)
+            if os.name == "nt":
+                stub_paths = [shell_path(stub) for stub in folder.iterdir() if stub.name != "shreeos-plasma-first-login"]
+                subprocess.run([shell, "-c", 'chmod +x "$@"', "sh", *stub_paths],
+                               check=True, capture_output=True, text=True)
+            script_text = (INCLUDES / "usr/local/bin/shreeos-plasma-first-login").read_text()
+            self.assertEqual(script_text.count("/usr/local/bin/shreeos-theme"), 1)
+            script = folder / "shreeos-plasma-first-login"
+            script.write_text(script_text.replace("/usr/local/bin/shreeos-theme", "shreeos-theme"))
+            if os.name == "nt":
+                env = dict(os.environ,
+                           HOME=shell_path(folder / "home"),
+                           XDG_CONFIG_HOME=shell_path(config_home),
+                           SHREEOS_PLASMA_FIRST_LOGIN_SERVICE="1",
+                           CALLS=shell_path(calls),
+                           SHREEOS_TEST_BIN=shell_path(folder))
+                command = 'PATH="$SHREEOS_TEST_BIN:$PATH"; export PATH; exec "$SHREEOS_TEST_SCRIPT"'
+                env["SHREEOS_TEST_SCRIPT"] = shell_path(script)
+                invocation = [shell, "-c", command]
+            else:
+                env = dict(os.environ, PATH=folder.as_posix() + ":" + os.environ["PATH"],
+                           HOME=(folder / "home").as_posix(), XDG_CONFIG_HOME=config_home.as_posix(),
+                           SHREEOS_PLASMA_FIRST_LOGIN_SERVICE="1", CALLS=calls.as_posix())
+                invocation = [shell, script.as_posix()]
+            result = subprocess.run(invocation,
+                                    env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            trace = calls.read_text().splitlines()
+            self.assertLess(trace.index("pgrep:1"), trace.index("lookandfeel"))
+            self.assertLess(trace.index("lookandfeel"), trace.index("pgrep:2"))
+            self.assertLess(trace.index("pgrep:2"), trace.index("pgrep:3"))
+            self.assertLess(trace.index("pgrep:3"), trace.index("pgrep:4"))
+            self.assertLess(trace.index("pgrep:4"), trace.index("pgrep:5"))
+            self.assertLess(trace.index("pgrep:5"), trace.index("wallpaper"))
+
+            # Plasma may update the applet layout without replacing its shell.
+            # That must still finish first-login setup and release dock startup.
+            marker = config_home / "shreeos/plasma-defaults-applied"
+            marker.unlink()
+            calls.write_text("")
+            Path(f"{calls}.pgrep-count").unlink()
+            stable_env = dict(env, PGREP_MODE="stable")
+            result = subprocess.run(invocation,
+                                    env=stable_env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(marker.is_file())
+            self.assertIn("wallpaper", calls.read_text().splitlines())
 
 
 if __name__ == "__main__":

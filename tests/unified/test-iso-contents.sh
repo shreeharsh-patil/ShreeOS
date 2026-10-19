@@ -12,6 +12,7 @@ iso_name="shreeos(${version}).iso"
 [[ "$(basename "$iso")" == "$iso_name" ]]
 test -s "$out/$iso_name.sha256"
 (cd "$out" && sha256sum -c "$iso_name.sha256")
+test "$(stat -c '%s' "$iso")" -lt 1900000000
 grep -Eq '^shreeos-native-tools[[:space:]]' "$out/shreeos(${version})-packages.txt"
 grep -Fxq 'edition=unified' "$out/shreeos(${version})-build-info.txt"
 tmp="$(mktemp -d)"
@@ -25,6 +26,10 @@ for item in \
   usr/bin/shreedctl \
   usr/libexec/shreeos/shreed \
   usr/lib/systemd/system/shreeos-hardware.service \
+  etc/calamares/modules/partition.conf \
+  etc/calamares/modules/bootloader.conf \
+  etc/calamares/modules/shellprocess.conf \
+  usr/local/libexec/shreeos-install-bios-grub \
   usr/bin/shreeos-native-status \
   usr/share/applications/shreeos-native-monitor.desktop \
   usr/share/doc/shreeos-native-tools/lpm/src/main.c \

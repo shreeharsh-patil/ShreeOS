@@ -49,9 +49,27 @@ Type=simple
 ExecStart=/usr/libexec/shreeos/shreed --foreground
 Restart=on-failure
 RestartSec=5s
+User=shreed
+Group=shree-hardware
+RuntimeDirectory=shreeos
+RuntimeDirectoryMode=0750
+LogsDirectory=shreeos
+LogsDirectoryMode=0750
+UMask=0007
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -62,15 +80,19 @@ printf 'enable shreeos-hardware.service\n' > "$pkg/usr/lib/systemd/system-preset
 cat > "$pkg/DEBIAN/postinst" <<'POSTINST'
 #!/bin/sh
 set -e
-if [ "${1:-}" = configure ] && command -v deb-systemd-helper >/dev/null 2>&1; then
-  deb-systemd-helper unmask shreeos-hardware.service >/dev/null 2>&1 || true
-  deb-systemd-helper enable shreeos-hardware.service
-fi
 if ! getent group shree-hardware >/dev/null 2>&1; then
   addgroup --system --quiet shree-hardware
 fi
+if ! getent passwd shreed >/dev/null 2>&1; then
+  adduser --system --quiet --no-create-home --home /nonexistent \
+    --shell /usr/sbin/nologin --ingroup shree-hardware shreed
+fi
 if getent passwd shree >/dev/null 2>&1; then
   adduser --quiet shree shree-hardware
+fi
+if [ "${1:-}" = configure ] && command -v deb-systemd-helper >/dev/null 2>&1; then
+  deb-systemd-helper unmask shreeos-hardware.service >/dev/null 2>&1 || true
+  deb-systemd-helper enable shreeos-hardware.service
 fi
 exit 0
 POSTINST

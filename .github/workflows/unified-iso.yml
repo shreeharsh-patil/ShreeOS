@@ -59,13 +59,16 @@ jobs:
             gcc make libc6-dev \
             debootstrap xorriso squashfs-tools dpkg-dev \
             grub-pc-bin grub-efi-amd64-bin mtools dosfstools \
-            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync \
-            ca-certificates debian-archive-keyring shellcheck python3 librsvg2-bin
+            qemu-system-x86 qemu-system-gui qemu-utils ovmf xvfb xauth rsync util-linux \
+            ca-certificates debian-archive-keyring shellcheck python3 librsvg2-bin git
       - name: Validate native package and static integration
         run: |
           set -Eeuo pipefail
           bash tests/unified/test-native-package.sh
           bash tests/unified/test-install-boundaries.sh
+          if ! getent group shree-hardware >/dev/null 2>&1; then
+            groupadd --system shree-hardware
+          fi
           make -C hardware test
           bash tests/prototype/test-config.sh
           python3 tests/prototype/test-plasma-config.py
@@ -83,6 +86,17 @@ jobs:
           version="$(tr -d '[:space:]' < VERSION)"
           iso="out/shreeos(${version}).iso"
           bash tests/unified/test-iso-contents.sh "$iso"
+      - name: Verify ISO provenance and enforce the 1.9 GB size cap
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          iso="out/shreeos(${version}).iso"
+          test "$(stat -c '%s' "$iso")" -lt 1900000000
+          python3 scripts/verify-unified-artifact.py \
+            "$iso" "$iso.sha256" \
+            "out/shreeos(${version})-packages.txt" \
+            "out/shreeos(${version})-build-info.txt" \
+            "out/shreeos(${version})-manifest.json" \
+            "$version" plasma x86_64 trixie 20260929T000000Z 1:20250505+deb13u1
       - name: Boot BIOS and UEFI Plasma and verify visible desktop
         run: |
           set -Eeuo pipefail
@@ -100,6 +114,7 @@ jobs:
             out/shreeos*.iso.sha256
             out/shreeos*-packages.txt
             out/shreeos*-build-info.txt
+            out/shreeos*-manifest.json
           if-no-files-found: error
           retention-days: 14
       - name: Preserve BIOS/UEFI logs and screenshots

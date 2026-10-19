@@ -329,10 +329,17 @@ expect_preflight_failure() {
 printf 'rootpassword123\n' > "$PREFLIGHT_CREDS"
 expect_preflight_failure 'A username requires a credentials file' "$PREFLIGHT_TARGET" --username=alice
 printf 'rootpassword123\n' > "$PREFLIGHT_CREDS"
-chmod 644 "$PREFLIGHT_CREDS"
-expect_preflight_failure 'mode exactly 0600' "$PREFLIGHT_TARGET" --credentials-file="$PREFLIGHT_CREDS"
+for invalid_mode in 0400 0640 0644 000; do
+  chmod "$invalid_mode" "$PREFLIGHT_CREDS"
+  expect_preflight_failure 'mode exactly 0600' "$PREFLIGHT_TARGET" --credentials-file="$PREFLIGHT_CREDS"
+done
 chmod 600 "$PREFLIGHT_CREDS"
-echo "  [OK] Credentials with mode 0644 are rejected; mode 0600 remains required"
+echo "  [OK] Credential modes other than exact 0600 are rejected"
+PREFLIGHT_CREDS_LINK="$PREFLIGHT_DIR/creds-link.txt"
+ln -s "$PREFLIGHT_CREDS" "$PREFLIGHT_CREDS_LINK"
+expect_preflight_failure 'regular, non-symlink file' "$PREFLIGHT_TARGET" --credentials-file="$PREFLIGHT_CREDS_LINK"
+rm -f "$PREFLIGHT_CREDS_LINK"
+echo "  [OK] Credential symlinks are rejected"
 expect_preflight_failure 'A username requires a second' "$PREFLIGHT_TARGET" --username=alice --credentials-file="$PREFLIGHT_CREDS"
 printf 'rootpassword123\n\n' > "$PREFLIGHT_CREDS"
 expect_preflight_failure 'empty user password' "$PREFLIGHT_TARGET" --username=alice --credentials-file="$PREFLIGHT_CREDS"

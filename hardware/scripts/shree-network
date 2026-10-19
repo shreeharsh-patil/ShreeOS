@@ -16,7 +16,7 @@
 #
 set -euo pipefail
 
-SHREED_SOCK="${SHREED_SOCK:-/run/shreed.sock}"
+SHREED_SOCK="${SHREED_SOCK:-/run/shreeos/shreed.sock}"
 
 # Dynamic network interface discovery (never assume eth0 or wlan0)
 discover_interfaces() {

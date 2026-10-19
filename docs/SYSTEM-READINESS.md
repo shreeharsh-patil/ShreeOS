@@ -21,6 +21,7 @@ Ubuntu, a complete Kali tool collection, or a production-ready release.
 | Installed repository setup relies on Debian helper discovering the mount point from text | Calamares job uses the target root, explicit HTTPS signed sources, and firmware policy | Target provision/idempotence/keyring/policy tests; installed apt update/upgrade still required |
 | Runtime could inherit stale snapshot settings | Explicit runtime freshness/signature checks; snapshot exception stays in build invocation | Configured policy; negative signature/expiry tests on an installed system pending |
 | Specialist applications would make every image unnecessarily large | Optional developer, security and creative sets, build-time or administrator-authorized installed APT selection | Invalid input regression checks; full optional-bundle dependency and installation checks pending |
+| Hardware inventory daemon had a root service identity and world-writable IPC socket | Dedicated `shreed` account, group-only socket mode `0660`, empty capability set and systemd filesystem/network sandbox | Package contract and IPC mode tests added; packaged service boot and authorized/denied client checks still require Linux CI |
 
 ## Local validation
 
