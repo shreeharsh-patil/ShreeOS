@@ -123,6 +123,7 @@ if [ "$PROFILE" = plasma ]; then
     usr/share/plasma/desktoptheme/shreeos-glass/metadata.json \
     usr/share/plasma/desktoptheme/shreeos-glass/widgets/panel-background.svg \
     usr/share/plasma/desktoptheme/shreeos-glass/opaque/widgets/panel-background.svg \
+    usr/share/backgrounds/shreeos/shreeos-ember-flow.png \
     usr/share/backgrounds/shreeos/shreeos-alpenglow.png \
     usr/local/bin/shreeos-open-downloads \
     usr/local/bin/shreeos-open-trash \

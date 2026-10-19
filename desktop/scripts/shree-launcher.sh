@@ -78,12 +78,12 @@ ENTRIES
   [ ! -f "$FILE_CACHE" ] || cat "$FILE_CACHE"
 }
 
-if ! command -v dmenu >/dev/null 2>&1; then
-  printf 'shree-launcher: dmenu is not installed\n' >&2
+if ! command -v shree-dmenu >/dev/null 2>&1; then
+  printf 'shree-launcher: shree-dmenu is not installed\n' >&2
   exit 1
 fi
 
-INPUT=$(get_spotlight_entries | dmenu -p "Spotlight Search" -l 10 -c || true)
+INPUT=$(get_spotlight_entries | shree-dmenu -p "Spotlight Search" -l 10 -c || true)
 [ -n "$INPUT" ] || exit 0
 
 CALC_RES=$(calc_eval "$INPUT" || true)

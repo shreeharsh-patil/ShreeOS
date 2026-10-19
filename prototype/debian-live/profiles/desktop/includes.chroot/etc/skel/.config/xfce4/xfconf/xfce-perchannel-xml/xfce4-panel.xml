@@ -6,10 +6,10 @@
     <property name="panel-1" type="empty">
     <property name="autohide-behavior" type="uint" value="0" />
     <property name="background-rgba" type="array">
-      <value type="double" value="0.92" />
       <value type="double" value="0.96" />
-      <value type="double" value="1.00" />
-      <value type="double" value="0.82" />
+      <value type="double" value="0.94" />
+      <value type="double" value="0.91" />
+      <value type="double" value="0.88" />
     </property>
     <property name="background-style" type="uint" value="1" />
     <property name="enter-opacity" type="uint" value="100" />
@@ -34,7 +34,7 @@
     </property>
     <property name="position" type="string" value="p=6;x=0;y=0" />
     <property name="position-locked" type="bool" value="true" />
-    <property name="size" type="uint" value="34" />
+    <property name="size" type="uint" value="28" />
     </property>
   </property>
   <property name="plugins" type="empty">

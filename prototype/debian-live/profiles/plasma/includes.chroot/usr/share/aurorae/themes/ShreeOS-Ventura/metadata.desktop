@@ -1,0 +1,8 @@
+[DesktopEntry]
+Name=ShreeOS Ventura
+Comment=ShreeOS window controls with softly blurred, rounded titlebars
+X-KDE-PluginInfo-Name=ShreeOS-Ventura
+X-KDE-PluginInfo-Author=ShreeOS Project
+X-KDE-PluginInfo-Website=https://github.com/shreeharsh-patil/ShreeOS
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-License=MIT

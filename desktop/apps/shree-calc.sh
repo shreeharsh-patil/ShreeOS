@@ -7,7 +7,7 @@ set -euo pipefail
 
 run_calc() {
   while true; do
-    EXPR=$(echo "" | dmenu -p "Calculator (e.g. 128 * 4 + 32):" -c)
+    EXPR=$(echo "" | shree-dmenu -p "Calculator (e.g. 128 * 4 + 32):" -c)
     [ -z "$EXPR" ] && break
 
     if command -v bc >/dev/null 2>&1; then

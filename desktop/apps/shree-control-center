@@ -125,7 +125,7 @@ fi
 
 MENU+=$'\nBattery: '"${BAT_INFO}"$'           — Power & battery health\nNotification Center             — View recent alerts & messages\nLock Screen                     — Lock active desktop session\nRestart Computer                — Orderly reboot\nPower Off                       — Clean shutdown'
 
-SELECTED=$(echo "$MENU" | dmenu -p "Control Center" -l 11 -c || true)
+SELECTED=$(echo "$MENU" | shree-dmenu -p "Control Center" -l 11 -c || true)
 [ -z "$SELECTED" ] && exit 0
 
 case "$SELECTED" in
@@ -137,11 +137,11 @@ case "$SELECTED" in
     fi
     ;;
   "Display: Brightness"*)
-    CHOICE=$(printf "25%%\n50%%\n75%%\n100%%\nCustom Percentage" | dmenu -p "Set Display Brightness" -l 5 -c || true)
+    CHOICE=$(printf "25%%\n50%%\n75%%\n100%%\nCustom Percentage" | shree-dmenu -p "Set Display Brightness" -l 5 -c || true)
     [ -z "$CHOICE" ] && exit 0
     VAL=$(echo "$CHOICE" | tr -dc '0-9')
     if [ -z "$VAL" ]; then
-      INPUT_PCT=$(echo "" | dmenu -p "Enter Brightness (1-100):" -c || true)
+      INPUT_PCT=$(echo "" | shree-dmenu -p "Enter Brightness (1-100):" -c || true)
       VAL=$(echo "$INPUT_PCT" | tr -dc '0-9')
     fi
     if [ -n "$VAL" ]; then
@@ -154,7 +154,7 @@ case "$SELECTED" in
     fi
     ;;
   "Sound: Volume"*)
-    CHOICE=$(printf "Mute / Unmute Toggle\n25%%\n50%%\n75%%\n100%%\nAudio Mixer" | dmenu -p "Set Master Volume" -l 6 -c || true)
+    CHOICE=$(printf "Mute / Unmute Toggle\n25%%\n50%%\n75%%\n100%%\nAudio Mixer" | shree-dmenu -p "Set Master Volume" -l 6 -c || true)
     [ -z "$CHOICE" ] && exit 0
     case "$CHOICE" in
       "Mute"*)

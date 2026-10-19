@@ -83,7 +83,7 @@ interactive_menu() {
   fi
 
   local choice
-  choice=$(printf "%b\n" "$menu" | dmenu -p "Network Management" -l 6 -c || true)
+  choice=$(printf "%b\n" "$menu" | shree-dmenu -p "Network Management" -l 6 -c || true)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in
@@ -98,7 +98,7 @@ interactive_menu() {
     *)
       if command -v wpa_supplicant >/dev/null 2>&1; then
         local pw conf_tmp wlan_dev ssid_bytes ssid_hex
-        if ! pw=$(printf "\n" | dmenu -p "Password for ${choice} (leave empty for open network):" -c); then
+        if ! pw=$(printf "\n" | shree-dmenu -p "Password for ${choice} (leave empty for open network):" -c); then
           return 0
         fi
 

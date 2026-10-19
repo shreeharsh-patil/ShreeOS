@@ -1,3 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">
-  <circle cx="6" cy="6" r="5" fill="#6ea4ff"/>
+  <defs>
+    <linearGradient id="ember-dot" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff0bd"/>
+      <stop offset="1" stop-color="#ff9b67"/>
+    </linearGradient>
+  </defs>
+  <circle cx="6" cy="6" r="5" fill="url(#ember-dot)" stroke="#fff" stroke-opacity=".35" stroke-width=".6"/>
 </svg>

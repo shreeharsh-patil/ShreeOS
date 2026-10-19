@@ -45,7 +45,7 @@ interactive_menu() {
   local status choice
   status=$(get_status)
   local options="Power Status: ${status}\nDisplay Sleep (Turn off screen now)\nSystem Suspend (Sleep)\nReboot System Cleanly\nPower Off Computer"
-  choice=$(printf "%b\n" "$options" | dmenu -p "Power Management" -l 5 -c || true)
+  choice=$(printf "%b\n" "$options" | shree-dmenu -p "Power Management" -l 5 -c || true)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in

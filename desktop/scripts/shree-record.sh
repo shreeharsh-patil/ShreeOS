@@ -132,13 +132,13 @@ start_recording() {
 interactive_menu() {
   if is_recording; then
     local choice
-    choice=$(printf "Stop Active Screen Recording\nCancel" | dmenu -p "Screen Recorder Active" -l 2 -c || true)
+    choice=$(printf "Stop Active Screen Recording\nCancel" | shree-dmenu -p "Screen Recorder Active" -l 2 -c || true)
     [ "$choice" = "Stop Active Screen Recording" ] && stop_recording
     return
   fi
 
   local choice
-  choice=$(printf "Start Screen Recording\nCancel" | dmenu -p "Screen Recorder" -l 2 -c || true)
+  choice=$(printf "Start Screen Recording\nCancel" | shree-dmenu -p "Screen Recorder" -l 2 -c || true)
   [ "$choice" = "Start Screen Recording" ] && start_recording
 }
 

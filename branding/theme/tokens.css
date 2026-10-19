@@ -3,17 +3,25 @@
 :root {
   /* Common Accents */
   --shree-accent: #2878FF;
-  --shree-accent-light: #3A88FF;
+  --shree-accent-light: #5E9BFF;
   --shree-accent-hover: #1A62E8;
 
   --shree-success: #30A46C;
   --shree-warning: #F7B955;
   --shree-error: #E54D2E;
 
-  --shree-radius-window: 10px;
-  --shree-radius-control: 6px;
+  --shree-radius-window: 12px;
+  --shree-radius-control: 9px;
   --shree-radius-dock: 16px;
-  --shree-radius-menu: 8px;
+  --shree-radius-menu: 12px;
+
+  /* Glass belongs to navigation and transient controls, not content panes.
+     Override --shree-glass-opacity to move from clearer to more tinted glass. */
+  --shree-glass-opacity-clear: 0.54;
+  --shree-glass-opacity-tinted: 0.88;
+  --shree-glass-opacity: var(--shree-glass-opacity-tinted);
+  --shree-glass-blur: 22px;
+  --shree-glass-saturation: 1.45;
 
   --shree-font-ui: "Inter", -apple-system, system-ui, sans-serif;
   --shree-font-mono: "JetBrains Mono", monospace;
@@ -23,27 +31,27 @@
 }
 
 [data-theme="light"], :root {
-  --shree-bg: #F5F5F7;
-  --shree-surface: #FFFFFF;
-  --shree-surface-secondary: #F3F3F5;
-  --shree-surface-elevated: rgba(255, 255, 255, 0.82);
+  --shree-bg: #F4EFE9;
+  --shree-surface: #FFFDFA;
+  --shree-surface-secondary: #F6F1EC;
+  --shree-surface-elevated: rgba(255, 253, 250, var(--shree-glass-opacity));
   --shree-text-primary: #1D1D1F;
   --shree-text-secondary: #6E6E73;
   --shree-text-muted: #86868B;
-  --shree-border: rgba(0, 0, 0, 0.10);
+  --shree-border: rgba(45, 39, 34, 0.10);
   --shree-shadow-window: 0 12px 32px rgba(0, 0, 0, 0.12);
   --shree-shadow-menu: 0 8px 20px rgba(0, 0, 0, 0.10);
 }
 
 [data-theme="dark"] {
-  --shree-bg: #1C1C1E;
-  --shree-surface: #2C2C2E;
-  --shree-surface-secondary: #1C1C1E;
-  --shree-surface-elevated: rgba(44, 44, 46, 0.88);
+  --shree-bg: #19191B;
+  --shree-surface: #252527;
+  --shree-surface-secondary: #1E1E20;
+  --shree-surface-elevated: rgba(37, 37, 39, var(--shree-glass-opacity));
   --shree-text-primary: #F5F5F7;
   --shree-text-secondary: #A1A1A6;
   --shree-text-muted: #86868B;
-  --shree-border: rgba(255, 255, 255, 0.10);
+  --shree-border: rgba(255, 255, 255, 0.12);
   --shree-shadow-window: 0 16px 40px rgba(0, 0, 0, 0.36);
   --shree-shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.28);
 }

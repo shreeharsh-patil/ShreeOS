@@ -6,7 +6,7 @@
 #   - Pinned apps (Files, Terminal, Browser, Package Manager, Settings)
 #   - Dynamic running applications detection & active indicators (●)
 #   - Click to launch new instance or click to focus existing window
-#   - Configurable icon size (36px, 44px, 48px)
+#   - Configurable icon size (40px, 44px, 50px, 56px)
 #   - Auto-hide support (configured in ~/.config/shreeos/dock.conf)
 #   - Clean tooltips & launch feedback
 #   - Event-driven (waits on X11 _NET_CLIENT_LIST events), 0% idle CPU
@@ -23,7 +23,7 @@ if [ ! -f "$DOCK_CONF" ]; then
 # ShreeOS Dock Configuration
 AUTOHIDE=false
 POSITION=bottom
-ICON_SIZE=44
+ICON_SIZE=50
 PINNED_APPS="shree-files:st:netsurf:shree-pkgmanager:shree-settings"
 EOF
 fi
@@ -32,7 +32,7 @@ fi
 # shellcheck source=/dev/null
 source "$DOCK_CONF" 2>/dev/null || true
 AUTOHIDE="${AUTOHIDE:-false}"
-ICON_SIZE="${ICON_SIZE:-44}"
+ICON_SIZE="${ICON_SIZE:-50}"
 PINNED_APPS="${PINNED_APPS:-shree-files:st:netsurf:shree-pkgmanager:shree-settings}"
 
 # App metadata definition: executable -> Display Name & Icon Monogram
@@ -157,8 +157,8 @@ interactive_dock() {
   [ "$AUTOHIDE" = "true" ] && prompt_label="Dock [Auto-Hide]"
 
   local choice=""
-  if command -v dmenu >/dev/null 2>&1; then
-    choice=$(echo -e "$items" | dmenu -p "$prompt_label" -l 7 -c || true)
+  if command -v shree-dmenu >/dev/null 2>&1; then
+    choice=$(echo -e "$items" | shree-dmenu -p "$prompt_label" -l 7 -c || true)
   else
     echo "=== ShreeOS Floating Dock (${ICON_SIZE}px) ==="
     echo "$items"

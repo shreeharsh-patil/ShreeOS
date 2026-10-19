@@ -50,7 +50,7 @@ interactive_menu() {
   fi
 
   local presets="Mute (0%)\n25% — Low\n50% — Medium\n75% — High\n100% — Maximum\nOpen ALSA Mixer (alsamixer)"
-  choice=$(printf "%b\n" "$presets" | dmenu -p "Volume Control (Current: ${status})" -l 6 -c || true)
+  choice=$(printf "%b\n" "$presets" | shree-dmenu -p "Volume Control (Current: ${status})" -l 6 -c || true)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in

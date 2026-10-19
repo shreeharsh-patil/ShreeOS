@@ -156,7 +156,7 @@ send_file_to_peer() {
 
   if [ -z "$target_file" ] || [ ! -f "$target_file" ]; then
     target_file=$(find "${HOME}/Documents" "${HOME}/Downloads" -maxdepth 2 -type f 2>/dev/null |
-      dmenu -p "Select File to Send" -l 8 -c || true)
+      shree-dmenu -p "Select File to Send" -l 8 -c || true)
   fi
   [ -z "$target_file" ] && return 0
   [ -f "$target_file" ] || {
@@ -172,7 +172,7 @@ send_file_to_peer() {
   fi
 
   local peer_ip
-  peer_ip=$(discover_devices | dmenu -p "Send to Device" -l 5 -c | awk '{print $1}' || true)
+  peer_ip=$(discover_devices | shree-dmenu -p "Send to Device" -l 5 -c | awk '{print $1}' || true)
   [ -z "$peer_ip" ] && return 0
 
   shree-notify "ShreeOS Connect" "Sending $(basename "$target_file") to ${peer_ip}..." --app="Connect"
@@ -192,7 +192,7 @@ interactive_menu() {
 
   local options="[1] Toggle Connect Feature (Currently ${state})\n[2] Send File to Nearby Device\n[3] Discover Network Devices\n[4] View Saved Peer List"
   local choice
-  choice=$(echo -e "$options" | dmenu -p "ShreeOS Connect" -l 4 -c)
+  choice=$(echo -e "$options" | shree-dmenu -p "ShreeOS Connect" -l 4 -c)
   [ -z "$choice" ] && exit 0
 
   case "$choice" in

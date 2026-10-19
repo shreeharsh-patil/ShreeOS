@@ -95,7 +95,7 @@ static DockConfig load_config(void) {
     char line[512];
 
     memset(&cfg, 0, sizeof(cfg));
-    cfg.icon_size = 44;
+    cfg.icon_size = 50;
     load_default_apps(&cfg);
 
     home = getenv("HOME");
@@ -161,6 +161,65 @@ static void launch_app(const char *app) {
 typedef struct {
     unsigned long files, terminal, browser, package, settings, other;
 } DockPalette;
+
+static int theme_is_dark(Display *dpy, Window root) {
+    Atom property = XInternAtom(dpy, "_SHREEOS_THEME", False);
+    Atom actual_type = None;
+    int actual_format = 0;
+    unsigned long item_count = 0, bytes_after = 0;
+    unsigned char *value = NULL;
+    int dark = 1;
+
+    if (XGetWindowProperty(dpy, root, property, 0, 16, False, AnyPropertyType,
+                           &actual_type, &actual_format, &item_count,
+                           &bytes_after, &value) == Success && value && actual_format == 8) {
+        if (item_count >= 5 && strncmp((const char *)value, "light", 5) == 0) dark = 0;
+        XFree(value);
+        return dark;
+    }
+    if (value) XFree(value);
+
+    {
+        const char *mode = getenv("SHREE_THEME_MODE");
+        if (mode && strncmp(mode, "light", 5) == 0) return 0;
+    }
+    return 1;
+}
+
+static double glass_opacity(void) {
+    const char *value = getenv("SHREE_GLASS_OPACITY");
+    char *end = NULL;
+    double opacity;
+    if (!value || !*value) return 0.88;
+    opacity = strtod(value, &end);
+    if (!end || *end != '\0' || opacity < 0.45 || opacity > 0.96) return 0.88;
+    return opacity;
+}
+
+static void set_palette(Display *dpy, int screen, int dark, unsigned long *surface,
+                        unsigned long *tile, unsigned long *tile_hover,
+                        unsigned long *text, unsigned long *accent,
+                        DockPalette *palette) {
+    unsigned long fallback = BlackPixel(dpy, screen);
+    if (dark) {
+        *surface = named_pixel(dpy, screen, "#252527", fallback);
+        *tile = named_pixel(dpy, screen, "#343438", fallback);
+        *tile_hover = named_pixel(dpy, screen, "#45454B", WhitePixel(dpy, screen));
+        *text = named_pixel(dpy, screen, "#FFFDFA", WhitePixel(dpy, screen));
+    } else {
+        *surface = named_pixel(dpy, screen, "#F4EFE9", WhitePixel(dpy, screen));
+        *tile = named_pixel(dpy, screen, "#E7E0D9", WhitePixel(dpy, screen));
+        *tile_hover = named_pixel(dpy, screen, "#D8CFC6", WhitePixel(dpy, screen));
+        *text = named_pixel(dpy, screen, "#29313D", BlackPixel(dpy, screen));
+    }
+    *accent = named_pixel(dpy, screen, "#2878FF", WhitePixel(dpy, screen));
+    palette->files = named_pixel(dpy, screen, "#3289E8", *accent);
+    palette->terminal = named_pixel(dpy, screen, dark ? "#4B5567" : "#667085", *surface);
+    palette->browser = named_pixel(dpy, screen, "#1797B3", *accent);
+    palette->package = named_pixel(dpy, screen, "#8060D9", *accent);
+    palette->settings = named_pixel(dpy, screen, dark ? "#677589" : "#758197", *surface);
+    palette->other = named_pixel(dpy, screen, dark ? "#477A9F" : "#4383A8", *accent);
+}
 
 /* Xlib-only rounded icon surfaces keep the native ISO dependency-free. */
 static void fill_rounded(Display *dpy, Drawable target, GC gc,
@@ -270,6 +329,9 @@ int main(void) {
     int hover = -1;
     int hidden = 0;
     unsigned long surface, tile, tile_hover, text, accent;
+    unsigned long root;
+    Atom theme_atom;
+    int dark;
     DockPalette palette;
 
     if (!dpy) {
@@ -279,6 +341,7 @@ int main(void) {
     signal(SIGCHLD, SIG_IGN);
 
     screen = DefaultScreen(dpy);
+    root = RootWindow(dpy, screen);
     sw = DisplayWidth(dpy, screen);
     sh = DisplayHeight(dpy, screen);
     width = PAD * 2 + cfg.app_count * cfg.icon_size + (cfg.app_count - 1) * GAP;
@@ -286,17 +349,8 @@ int main(void) {
     visible_y = sh - height - BOTTOM_GAP;
     hidden_y = sh - HIDDEN_EDGE;
 
-    surface = named_pixel(dpy, screen, "#2C2C2E", BlackPixel(dpy, screen));
-    tile = named_pixel(dpy, screen, "#3A3A3C", BlackPixel(dpy, screen));
-    tile_hover = named_pixel(dpy, screen, "#48484A", WhitePixel(dpy, screen));
-    text = named_pixel(dpy, screen, "#F5F5F7", WhitePixel(dpy, screen));
-    accent = named_pixel(dpy, screen, "#2878FF", WhitePixel(dpy, screen));
-    palette.files = named_pixel(dpy, screen, "#3289E8", accent);
-    palette.terminal = named_pixel(dpy, screen, "#4B5567", surface);
-    palette.browser = named_pixel(dpy, screen, "#1797B3", accent);
-    palette.package = named_pixel(dpy, screen, "#8060D9", accent);
-    palette.settings = named_pixel(dpy, screen, "#677589", surface);
-    palette.other = named_pixel(dpy, screen, "#477A9F", accent);
+    dark = theme_is_dark(dpy, root);
+    set_palette(dpy, screen, dark, &surface, &tile, &tile_hover, &text, &accent, &palette);
 
     attrs.override_redirect = True;
     attrs.background_pixel = surface;
@@ -313,7 +367,7 @@ int main(void) {
     XSetClassHint(dpy, win, &hint);
     XStoreName(dpy, win, "ShreeOS Dock");
     set_atom(dpy, win, "_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK");
-    set_opacity(dpy, win, 0xE6FFFFFFUL);
+    set_opacity(dpy, win, (unsigned long)(glass_opacity() * 4294967295.0));
 
     font = XLoadQueryFont(dpy, "fixed");
     if (!font) font = XQueryFont(dpy, XGContextFromGC(DefaultGC(dpy, screen)));
@@ -322,7 +376,8 @@ int main(void) {
 
     /* Root ConfigureNotify events let the dock track display resize and
      * resolution changes instead of remaining off-center or offscreen. */
-    XSelectInput(dpy, RootWindow(dpy, screen), StructureNotifyMask);
+    theme_atom = XInternAtom(dpy, "_SHREEOS_THEME", False);
+    XSelectInput(dpy, root, StructureNotifyMask | PropertyChangeMask);
     XMapRaised(dpy, win);
     XFlush(dpy);
 
@@ -330,7 +385,7 @@ int main(void) {
         XNextEvent(dpy, &ev);
         switch (ev.type) {
             case ConfigureNotify:
-                if (ev.xconfigure.window == RootWindow(dpy, screen) &&
+                if (ev.xconfigure.window == root &&
                     ev.xconfigure.width > 0 && ev.xconfigure.height > 0 &&
                     (sw != ev.xconfigure.width || sh != ev.xconfigure.height)) {
                     sw = ev.xconfigure.width;
@@ -339,6 +394,17 @@ int main(void) {
                     hidden_y = sh - HIDDEN_EDGE;
                     XMoveWindow(dpy, win, (sw - width) / 2,
                                 hidden ? hidden_y : visible_y);
+                }
+                break;
+            case PropertyNotify:
+                if (ev.xproperty.window == root && ev.xproperty.atom == theme_atom) {
+                    dark = theme_is_dark(dpy, root);
+                    set_palette(dpy, screen, dark, &surface, &tile, &tile_hover,
+                                &text, &accent, &palette);
+                    XSetWindowBackground(dpy, win, surface);
+                    XClearWindow(dpy, win);
+                    draw_dock(dpy, win, gc, font, &cfg, width, height, hover,
+                              surface, tile, tile_hover, text, accent, &palette);
                 }
                 break;
             case Expose:

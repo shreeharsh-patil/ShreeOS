@@ -46,8 +46,8 @@ run_login_screen() {
   formatted_choices+="[ ⏻ ]  Shutdown Computer\n[ ↺ ]  Restart Computer"
 
   local sel_entry=""
-  if command -v dmenu >/dev/null 2>&1; then
-    sel_entry=$(echo -e "$formatted_choices" | dmenu -p "⟡ ShreeOS" -l 6 -c || true)
+  if command -v shree-dmenu >/dev/null 2>&1; then
+    sel_entry=$(echo -e "$formatted_choices" | shree-dmenu -p "⟡ ShreeOS" -l 6 -c || true)
   fi
 
   [ -z "$sel_entry" ] && sel_entry="[  S  ]  ${USER:-shree}"

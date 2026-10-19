@@ -51,7 +51,7 @@ class PlasmaConfigTests(unittest.TestCase):
                 local = INCLUDES / "usr/share/applications" / f"{app}.desktop"
                 shared = ROOT / "prototype/debian-live/profiles/desktop/includes.chroot/usr/share/applications" / f"{app}.desktop"
                 self.assertTrue(local.is_file() or shared.is_file(), f"Missing app: {app}")
-        self.assertEqual(dock["hide-mode"], "'auto'")
+        self.assertEqual(dock["hide-mode"], "'none'")
         self.assertEqual(dock["zoom-enabled"], "true")
         self.assertIn("plank", packages)
         self.assertIn("dconf-cli", packages)
@@ -86,7 +86,7 @@ class PlasmaConfigTests(unittest.TestCase):
 
     def test_macos_inspired_desktop_contract(self):
         layout = (ROOT / "desktop/plasma/layout.js").read_text()
-        self.assertIn('menuBar.height = 30;', layout)
+        self.assertIn('menuBar.height = 28;', layout)
         self.assertIn('launcher.writeConfig("menuLabel", "ShreeOS")', layout)
         self.assertIn('org.kde.plasma.appmenu', layout)
         self.assertIn('org.kde.plasma.systemtray', layout)
@@ -100,8 +100,8 @@ class PlasmaConfigTests(unittest.TestCase):
         self.assertEqual(dock["theme"], "'ShreeOS-Glass'")
         for variant in ("ShreeOS-Glass", "ShreeOS-Glass-Dark"):
             theme = read_ini(INCLUDES / f"usr/share/plank/themes/{variant}/dock.theme")
-            self.assertEqual(theme["PlankTheme"]["TopRoundness"], "18")
-            self.assertEqual(theme["PlankTheme"]["BottomRoundness"], "18")
+            self.assertEqual(theme["PlankTheme"]["TopRoundness"], "12")
+            self.assertEqual(theme["PlankTheme"]["BottomRoundness"], "12")
 
         shortcuts = read_ini(INCLUDES / "etc/skel/.config/kglobalshortcutsrc")
         self.assertEqual(shortcuts["kwin"]["Overview"].split(",")[0], "Meta+Ctrl+Up")

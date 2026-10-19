@@ -1,5 +1,10 @@
 # ShreeOS Design System & Visual Specification
 
+The current direction follows macOS 27 Golden Gate's layered navigation and
+adjustable glass materials, expressed with ShreeOS colors, icons, and artwork.
+Use translucent glass for navigation and temporary controls; keep document and
+content surfaces calm and legible.
+
 **Design Philosophy:** Calm, minimal, intentional, coherent, highly polished, smooth, visually balanced, consistent, native, and understated.
 
 ---
@@ -12,10 +17,10 @@ ShreeOS avoids pure black or overly saturated backgrounds. Surfaces are organize
 
 | Token | Value | Purpose |
 | :--- | :--- | :--- |
-| `--desktop-bg` | `#F5F5F7` | Wallpaper background canvas |
-| `--surface-primary` | `#FFFFFF` | Main window content, document canvas |
-| `--surface-secondary` | `#F5F5F7` | Sidebars, utility trays, toolbar panels |
-| `--surface-elevated` | `rgba(255, 255, 255, 0.82)` | Menus, popovers, quick settings, dock |
+| `--desktop-bg` | `#F4EFE9` | Wallpaper background canvas |
+| `--surface-primary` | `#FFFDFA` | Main window content, document canvas |
+| `--surface-secondary` | `#F6F1EC` | Sidebars, utility trays, toolbar panels |
+| `--surface-elevated` | `rgba(255, 253, 250, 0.88)` | Tinted glass for menus, popovers, quick settings, dock |
 | `--text-primary` | `#1D1D1F` | Primary headings, body copy, active controls |
 | `--text-secondary` | `#6E6E73` | Subheadings, sidebar labels, metadata |
 | `--text-muted` | `#86868B` | Placeholder text, disabled labels |
@@ -25,10 +30,10 @@ ShreeOS avoids pure black or overly saturated backgrounds. Surfaces are organize
 
 | Token | Value | Purpose |
 | :--- | :--- | :--- |
-| `--desktop-bg` | `#0F0F10` | Desktop backdrop canvas |
-| `--surface-primary` | `#1C1C1E` | Main window surfaces |
-| `--surface-secondary` | `#242426` | Sidebars, tab strips, grouped list rows |
-| `--surface-elevated` | `rgba(35, 35, 38, 0.88)` | Translucent dock, menus, search launcher |
+| `--desktop-bg` | `#19191B` | Desktop backdrop canvas |
+| `--surface-primary` | `#252527` | Main window surfaces |
+| `--surface-secondary` | `#1E1E20` | Sidebars, tab strips, grouped list rows |
+| `--surface-elevated` | `rgba(37, 37, 39, 0.88)` | Tinted glass for dock, menus, search launcher |
 | `--text-primary` | `#F5F5F7` | Primary text |
 | `--text-secondary` | `#A1A1A6` | Secondary metadata |
 | `--text-muted` | `#86868B` | Disabled / timestamp labels |
@@ -36,7 +41,7 @@ ShreeOS avoids pure black or overly saturated backgrounds. Surfaces are organize
 
 ### Accent Color
 
-- **ShreeOS Cool Blue:** `#2878FF` (`#3A88FF` light accent / `#1A62E8` active click)
+- **ShreeOS Cool Blue:** `#2878FF` (`#5E9BFF` light accent / `#1A62E8` active click)
 - **Usage Rule:** Reserved strictly for active selections, focused borders, toggles, and progress indicators. Never applied across large surface backgrounds.
 
 ---
@@ -59,30 +64,33 @@ Monospace Code & Terminal:   12–13px / Regular (400)
 ## 3. Geometry, Elevation & Radii
 
 ```text
-Window Radius:    10–12px (subtle rounded corners, crisp 1px rim)
-Control Radius:   6–8px (buttons, input fields, segmented pills)
-Dock Radius:      14–18px (subtle glass border + blur)
-Menu Radius:      8–10px
+Window Radius:    12px (subtle rounded corners, crisp 1px rim)
+Control Radius:   8–10px (buttons, input fields, segmented pills)
+Dock Radius:      12–16px (soft translucent shelf, visible against wallpaper)
+Menu Radius:      10–12px
 Shadows:          Soft realistic ambient falloff (e.g. 0 8px 24px rgba(0,0,0,0.24))
 ```
+
+Clear-to-tinted glass is a user-facing appearance choice. Use the clearer
+variant over visually rich wallpaper, then increase tint or disable blur when
+contrast, accessibility, or performance settings call for it. Never put glass
+behind long-form or document content.
 
 ---
 
 ## 4. Window System & Controls
 
 - **Titlebar Height:** Compact 28–32px with unified toolbar styling.
-- **Window Controls (Left-Aligned):**
-  - Close: Subtle Crimson `#E54D2E` on hover
-  - Minimize: Subtle Amber `#F7B955` on hover
-  - Maximize: Subtle Teal/Green `#30A46C` on hover
+- **Window Controls (Left-Aligned):** Red, amber and green traffic lights with subtle
+  hover glyphs and accessible hit targets.
 - **Inactive State:** Unfocused windows subtly dim titlebar contrast and soften border prominence.
 
 ### Desktop Composition
 
-- A 30px translucent top panel keeps Applications and the global app menu on the left, the date and clock between two expanding spacers, and system status on the right.
-- A centered rounded Plank dock stays visible at the bottom, with 50px icons, 145% hover magnification, tooltips, and running-app indicators. Users can pin, reorder, and change hiding behavior from the dock preferences.
+- A 28px translucent top menu bar keeps the ShreeOS menu and active app menus on the left, with system status and date/time at the far right.
+- A centered Plank dock stays visible at the bottom, with a compact silver-gray translucent shelf, 50px icons, 145% hover magnification, tooltips, and running-app indicators. Users can pin, reorder, and change hiding behavior from the dock preferences.
 - Four workspaces support quick keyboard navigation and a clear sense of separate work areas.
-- The Plasma desktop starts in ShreeOS Light with an original photographic mountain sunrise wallpaper. Switching to dark appearance updates native and GTK surfaces, icons, terminal colors, and the dock while preserving the wallpaper and pinned apps.
+- The Plasma desktop starts in ShreeOS Light with an original blue, gold, and ember wave wallpaper. Switching to dark appearance updates native and GTK surfaces, icons, terminal colors, and the dock while preserving the wallpaper and pinned apps.
 
 ### Mac-like interaction defaults (Plasma X11 profile)
 
@@ -96,8 +104,8 @@ Shadows:          Soft realistic ambient falloff (e.g. 0 8px 24px rgba(0,0,0,0.2
   user's custom workspace and pinned dock items are never reset. The source-built
   X11 session has its own dependency-light native dock with original vector icons.
 
-These are macOS-inspired interaction patterns, not Apple logos, assets,
-macOS binaries, or a guarantee of native macOS feature compatibility.
+These are macOS-inspired interaction patterns and original ShreeOS artwork,
+not Apple logos, assets, macOS binaries, or a guarantee of native macOS feature compatibility.
 The shipped installer and actual hardware behavior still require boot validation.
 
 ---

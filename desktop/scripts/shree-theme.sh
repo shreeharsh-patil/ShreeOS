@@ -12,27 +12,59 @@ if [ -r "$TOKENS_FILE" ]; then
   source "$TOKENS_FILE"
 fi
 
-: "${SHREE_DARK_DESKTOP_BG:=#1C1C1E}"
-: "${SHREE_DARK_SURFACE_PRIMARY:=#2C2C2E}"
-: "${SHREE_DARK_SURFACE_SECONDARY:=#1C1C1E}"
-: "${SHREE_DARK_SURFACE_ELEVATED:=rgba(44,44,46,0.88)}"
+: "${SHREE_THEME_MODE:=dark}"
+: "${SHREE_DARK_DESKTOP_BG:=#19191B}"
+: "${SHREE_DARK_SURFACE_PRIMARY:=#252527}"
+: "${SHREE_DARK_SURFACE_SECONDARY:=#1E1E20}"
+: "${SHREE_DARK_SURFACE_ELEVATED:=rgba(37,37,39,0.88)}"
 : "${SHREE_DARK_TEXT_PRIMARY:=#F5F5F7}"
 : "${SHREE_DARK_TEXT_SECONDARY:=#A1A1A6}"
 : "${SHREE_DARK_TEXT_MUTED:=#86868B}"
 : "${SHREE_DARK_BORDER_HEX:=#38383A}"
-: "${SHREE_LIGHT_DESKTOP_BG:=#F5F5F7}"
-: "${SHREE_LIGHT_SURFACE_PRIMARY:=#FFFFFF}"
-: "${SHREE_LIGHT_SURFACE_SECONDARY:=#F5F5F7}"
-: "${SHREE_LIGHT_SURFACE_ELEVATED:=rgba(255,255,255,0.85)}"
+: "${SHREE_LIGHT_DESKTOP_BG:=#F4EFE9}"
+: "${SHREE_LIGHT_SURFACE_PRIMARY:=#FFFDFA}"
+: "${SHREE_LIGHT_SURFACE_SECONDARY:=#F6F1EC}"
+: "${SHREE_LIGHT_SURFACE_ELEVATED:=rgba(255,253,250,0.88)}"
 : "${SHREE_LIGHT_TEXT_PRIMARY:=#1D1D1F}"
 : "${SHREE_LIGHT_TEXT_SECONDARY:=#6E6E73}"
 : "${SHREE_LIGHT_TEXT_MUTED:=#86868B}"
 : "${SHREE_LIGHT_BORDER_HEX:=#E5E5EA}"
 : "${SHREE_ACCENT:=#2878FF}"
+: "${SHREE_ACCENT_LIGHT:=#5E9BFF}"
 : "${SHREE_ACCENT_HOVER:=#1A62E8}"
+: "${SHREE_ACCENT_MUTED:=rgba(40,120,255,0.18)}"
 : "${SHREE_SUCCESS:=#30A46C}"
 : "${SHREE_WARNING:=#F7B955}"
 : "${SHREE_ERROR:=#E54D2E}"
+: "${SHREE_GLASS_OPACITY_CLEAR:=0.54}"
+: "${SHREE_GLASS_OPACITY_TINTED:=0.88}"
+: "${SHREE_GLASS_OPACITY:=0.88}"
+: "${SHREE_GLASS_BLUR:=22}"
+: "${SHREE_GLASS_SATURATION:=1.45}"
+: "${SHREE_RADIUS_WINDOW:=12}"
+: "${SHREE_RADIUS_CONTROL:=9}"
+: "${SHREE_RADIUS_DOCK:=16}"
+: "${SHREE_RADIUS_MENU:=12}"
+: "${SHREE_RADIUS_AVATAR:=9999}"
+: "${SHREE_SPACE_XS:=4}"
+: "${SHREE_SPACE_SM:=8}"
+: "${SHREE_SPACE_MD:=12}"
+: "${SHREE_SPACE_LG:=16}"
+: "${SHREE_SPACE_XL:=24}"
+: "${SHREE_SPACE_2XL:=32}"
+: "${SHREE_FONT_UI:=Inter}"
+: "${SHREE_FONT_MONO:=JetBrains Mono}"
+: "${SHREE_FONT_SIZE_TITLE:=20}"
+: "${SHREE_FONT_SIZE_SECTION:=16}"
+: "${SHREE_FONT_SIZE_UI:=13}"
+: "${SHREE_FONT_SIZE_SM:=11}"
+: "${SHREE_DOCK_HEIGHT:=64}"
+: "${SHREE_DOCK_ICON_SIZE:=50}"
+: "${SHREE_TOPBAR_HEIGHT:=28}"
+: "${SHREE_ANIM_FAST:=120ms}"
+: "${SHREE_ANIM_NORMAL:=180ms}"
+: "${SHREE_ANIM_SLOW:=240ms}"
+: "${SHREE_ANIM_CURVE:=cubic-bezier(0.16, 1, 0.3, 1)}"
 
 read_state() {
   local key="$1"
@@ -42,14 +74,20 @@ read_state() {
 get_current_theme() {
   local value
   value=$(read_state THEME)
-  case "$value" in dark|light) printf '%s\n' "$value" ;; *) printf 'dark\n' ;; esac
+  case "$value" in
+    dark|light) printf '%s\n' "$value" ;;
+    *) case "$SHREE_THEME_MODE" in light) printf 'light\n' ;; *) printf 'dark\n' ;; esac ;;
+  esac
 }
 
 get_mode() {
   local value
   value=$(read_state MODE)
   if [ -z "$value" ]; then value=$(get_current_theme); fi
-  case "$value" in dark|light|auto) printf '%s\n' "$value" ;; *) printf 'dark\n' ;; esac
+  case "$value" in
+    dark|light|auto) printf '%s\n' "$value" ;;
+    *) case "$SHREE_THEME_MODE" in light|auto) printf '%s\n' "$SHREE_THEME_MODE" ;; *) printf 'dark\n' ;; esac ;;
+  esac
 }
 
 resolve_auto_theme() {
@@ -70,20 +108,21 @@ write_state() {
 }
 
 write_theme_vars() {
-  local mode="$1"
-  local bg surface surface_sec elevated text text_sec muted border
-  if [ "$mode" = "light" ]; then
+  local mode="$1" effective="$2"
+  local bg surface surface_sec elevated text text_sec muted border border_rgba
+  if [ "$effective" = "light" ]; then
     bg="$SHREE_LIGHT_DESKTOP_BG"; surface="$SHREE_LIGHT_SURFACE_PRIMARY"; surface_sec="$SHREE_LIGHT_SURFACE_SECONDARY"
     elevated="$SHREE_LIGHT_SURFACE_ELEVATED"; text="$SHREE_LIGHT_TEXT_PRIMARY"; text_sec="$SHREE_LIGHT_TEXT_SECONDARY"
-    muted="$SHREE_LIGHT_TEXT_MUTED"; border="$SHREE_LIGHT_BORDER_HEX"
+    muted="$SHREE_LIGHT_TEXT_MUTED"; border="$SHREE_LIGHT_BORDER_HEX"; border_rgba="$SHREE_LIGHT_BORDER"
   else
     bg="$SHREE_DARK_DESKTOP_BG"; surface="$SHREE_DARK_SURFACE_PRIMARY"; surface_sec="$SHREE_DARK_SURFACE_SECONDARY"
     elevated="$SHREE_DARK_SURFACE_ELEVATED"; text="$SHREE_DARK_TEXT_PRIMARY"; text_sec="$SHREE_DARK_TEXT_SECONDARY"
-    muted="$SHREE_DARK_TEXT_MUTED"; border="$SHREE_DARK_BORDER_HEX"
+    muted="$SHREE_DARK_TEXT_MUTED"; border="$SHREE_DARK_BORDER_HEX"; border_rgba="$SHREE_DARK_BORDER"
   fi
 
   cat > "${CONFIG_DIR}/theme-vars.sh" <<EOF
-export SHREE_THEME="$mode"
+export SHREE_THEME="$effective"
+export SHREE_THEME_MODE="$mode"
 export SHREE_BG="$bg"
 export SHREE_SURFACE="$surface"
 export SHREE_SURFACE_SEC="$surface_sec"
@@ -92,19 +131,57 @@ export SHREE_TEXT="$text"
 export SHREE_TEXT_SEC="$text_sec"
 export SHREE_TEXT_MUTED="$muted"
 export SHREE_BORDER="$border"
+export SHREE_BORDER_RGBA="$border_rgba"
 export SHREE_ACCENT="$SHREE_ACCENT"
+export SHREE_ACCENT_LIGHT="$SHREE_ACCENT_LIGHT"
 export SHREE_ACCENT_HOVER="$SHREE_ACCENT_HOVER"
+export SHREE_ACCENT_MUTED="$SHREE_ACCENT_MUTED"
+export SHREE_SUCCESS="$SHREE_SUCCESS"
+export SHREE_WARNING="$SHREE_WARNING"
+export SHREE_ERROR="$SHREE_ERROR"
+export SHREE_GLASS_OPACITY_CLEAR="$SHREE_GLASS_OPACITY_CLEAR"
+export SHREE_GLASS_OPACITY_TINTED="$SHREE_GLASS_OPACITY_TINTED"
+export SHREE_GLASS_OPACITY="$SHREE_GLASS_OPACITY"
+export SHREE_GLASS_BLUR="$SHREE_GLASS_BLUR"
+export SHREE_GLASS_SATURATION="$SHREE_GLASS_SATURATION"
+export SHREE_RADIUS_WINDOW="$SHREE_RADIUS_WINDOW"
+export SHREE_RADIUS_CONTROL="$SHREE_RADIUS_CONTROL"
+export SHREE_RADIUS_DOCK="$SHREE_RADIUS_DOCK"
+export SHREE_RADIUS_MENU="$SHREE_RADIUS_MENU"
+export SHREE_RADIUS_AVATAR="$SHREE_RADIUS_AVATAR"
+export SHREE_SPACE_XS="$SHREE_SPACE_XS"
+export SHREE_SPACE_SM="$SHREE_SPACE_SM"
+export SHREE_SPACE_MD="$SHREE_SPACE_MD"
+export SHREE_SPACE_LG="$SHREE_SPACE_LG"
+export SHREE_SPACE_XL="$SHREE_SPACE_XL"
+export SHREE_SPACE_2XL="$SHREE_SPACE_2XL"
+export SHREE_FONT_UI="$SHREE_FONT_UI"
+export SHREE_FONT_MONO="$SHREE_FONT_MONO"
+export SHREE_FONT_SIZE_TITLE="$SHREE_FONT_SIZE_TITLE"
+export SHREE_FONT_SIZE_SECTION="$SHREE_FONT_SIZE_SECTION"
+export SHREE_FONT_SIZE_UI="$SHREE_FONT_SIZE_UI"
+export SHREE_FONT_SIZE_SM="$SHREE_FONT_SIZE_SM"
+export SHREE_DOCK_HEIGHT="$SHREE_DOCK_HEIGHT"
+export SHREE_DOCK_ICON_SIZE="$SHREE_DOCK_ICON_SIZE"
+export SHREE_TOPBAR_HEIGHT="$SHREE_TOPBAR_HEIGHT"
+export SHREE_ANIM_FAST="$SHREE_ANIM_FAST"
+export SHREE_ANIM_NORMAL="$SHREE_ANIM_NORMAL"
+export SHREE_ANIM_SLOW="$SHREE_ANIM_SLOW"
+export SHREE_ANIM_CURVE="$SHREE_ANIM_CURVE"
 EOF
   chmod 644 "${CONFIG_DIR}/theme-vars.sh"
 }
 
 write_xresources() {
-  local mode="$1" fg bg muted border
+  local mode="$1" fg bg surface_sec muted border dmenu_font
   if [ "$mode" = "light" ]; then
-    fg="$SHREE_LIGHT_TEXT_PRIMARY"; bg="$SHREE_LIGHT_SURFACE_PRIMARY"; muted="$SHREE_LIGHT_TEXT_SECONDARY"; border="$SHREE_LIGHT_BORDER_HEX"
+    fg="$SHREE_LIGHT_TEXT_PRIMARY"; bg="$SHREE_LIGHT_SURFACE_PRIMARY"; surface_sec="$SHREE_LIGHT_SURFACE_SECONDARY"
+    muted="$SHREE_LIGHT_TEXT_SECONDARY"; border="$SHREE_LIGHT_BORDER_HEX"
   else
-    fg="$SHREE_DARK_TEXT_PRIMARY"; bg="$SHREE_DARK_DESKTOP_BG"; muted="$SHREE_DARK_TEXT_SECONDARY"; border="$SHREE_DARK_BORDER_HEX"
+    fg="$SHREE_DARK_TEXT_PRIMARY"; bg="$SHREE_DARK_DESKTOP_BG"; surface_sec="$SHREE_DARK_SURFACE_SECONDARY"
+    muted="$SHREE_DARK_TEXT_SECONDARY"; border="$SHREE_DARK_BORDER_HEX"
   fi
+  dmenu_font="${SHREE_FONT_UI}:size=${SHREE_FONT_SIZE_UI}:weight=medium:antialias=true:autohint=true"
 
   cat > "${CONFIG_DIR}/Xresources.theme" <<EOF
 *.foreground:  $fg
@@ -126,6 +203,11 @@ write_xresources() {
 *.color14:     #30C0B0
 *.color7:      $muted
 *.color15:     $fg
+dmenu.normbg:  $surface_sec
+dmenu.normfg:  $fg
+dmenu.selbg:   $SHREE_ACCENT
+dmenu.selfg:   #FFFFFF
+dmenu.font:    $dmenu_font
 EOF
 
   if command -v xrdb >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
@@ -134,8 +216,8 @@ EOF
 }
 
 apply_theme() {
-  local effective="$1" notify="${2:-true}"
-  write_theme_vars "$effective"
+  local effective="$1" notify="${2:-true}" mode="${3:-$1}"
+  write_theme_vars "$mode" "$effective"
   write_xresources "$effective"
 
   local wp="/usr/share/wallpapers/shreeos-calm-${effective}.svg"
@@ -180,7 +262,7 @@ set_theme() {
   esac
 
   write_state "$mode" "$effective"
-  apply_theme "$effective"
+  apply_theme "$effective" true "$mode"
   printf 'ShreeOS theme: %s (mode: %s)\n' "$effective" "$mode"
 }
 
@@ -190,7 +272,7 @@ refresh_theme() {
   old=$(get_current_theme)
   if [ "$mode" = "auto" ]; then effective=$(resolve_auto_theme); else effective="$mode"; fi
   write_state "$mode" "$effective"
-  apply_theme "$effective" "$([ "$old" = "$effective" ] && printf false || printf true)"
+  apply_theme "$effective" "$([ "$old" = "$effective" ] && printf false || printf true)" "$mode"
 }
 
 watch_theme() {
@@ -203,7 +285,11 @@ watch_theme() {
 }
 
 if [ ! -f "$THEME_FILE" ]; then
-  write_state dark dark
+  initial_mode="$SHREE_THEME_MODE"
+  case "$initial_mode" in dark|light|auto) ;; *) initial_mode=dark ;; esac
+  if [ "$initial_mode" = auto ]; then initial_theme=$(resolve_auto_theme); else initial_theme="$initial_mode"; fi
+  write_state "$initial_mode" "$initial_theme"
+  apply_theme "$initial_theme" false "$initial_mode"
 fi
 
 case "${1:-status}" in

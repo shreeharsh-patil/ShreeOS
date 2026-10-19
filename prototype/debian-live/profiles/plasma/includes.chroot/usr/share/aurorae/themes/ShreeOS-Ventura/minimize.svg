@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <g id="active-center"><circle cx="10" cy="10" r="6.3" fill="#febc2e" stroke="#d49a22" stroke-width="0.6"/></g>
+  <g id="inactive-center"><circle cx="10" cy="10" r="6.3" fill="#c9c7c4" stroke="#aaa8a5" stroke-width="0.6"/></g>
+  <g id="hover-center"><circle cx="10" cy="10" r="6.3" fill="#febc2e"/><path d="M7.3 10h5.4" stroke="#76520b" stroke-width="1.2" stroke-linecap="round"/></g>
+  <g id="pressed-center"><circle cx="10" cy="10" r="6.3" fill="#df9e19"/></g>
+</svg>

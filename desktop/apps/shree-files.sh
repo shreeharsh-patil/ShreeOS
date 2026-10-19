@@ -79,7 +79,7 @@ show_file_info() {
   mime=$(file --mime-type -b "$target" 2>/dev/null || echo "unknown")
 
   local info_text="Name: ${bname}\nPath: ${abs_path}\nType: ${mime}\nSize: ${sz}\nModified: ${mod}\nPermissions: ${perm}\n[Close]"
-  echo -e "$info_text" | dmenu -p "File Info: ${bname}" -l 7 -c >/dev/null 2>&1 || true
+  echo -e "$info_text" | shree-dmenu -p "File Info: ${bname}" -l 7 -c >/dev/null 2>&1 || true
 }
 
 handle_file_action() {
@@ -88,7 +88,7 @@ handle_file_action() {
   bname="$(basename "$target")"
   local actions="Open\nQuick Look (Space)\nGet File Info\nCopy\nCut (Move)\nRename\nMove to Trash\nDelete Permanently\nCopy File Path\nCancel"
   local act
-  act=$(echo -e "$actions" | dmenu -p "Action: ${bname}" -l 10 -c || true)
+  act=$(echo -e "$actions" | shree-dmenu -p "Action: ${bname}" -l 10 -c || true)
   [ -z "$act" ] && return
 
   case "$act" in
@@ -121,7 +121,7 @@ handle_file_action() {
       ;;
     "Rename")
       local new_name
-      new_name=$(echo "$bname" | dmenu -p "Rename to:" -c || true)
+      new_name=$(echo "$bname" | shree-dmenu -p "Rename to:" -c || true)
       new_name="$(basename "$new_name" 2>/dev/null || echo "")"
       if [ -n "$new_name" ] && [ "$new_name" != "." ] && [ "$new_name" != ".." ] && [ "$new_name" != "$bname" ]; then
         mv "$target" "$(dirname "$target")/$new_name"
@@ -133,7 +133,7 @@ handle_file_action() {
       ;;
     "Delete Permanently")
       local confirm
-      confirm=$(printf "Cancel\nConfirm Permanent Deletion" | dmenu -p "Permanently delete ${bname}?" -l 2 -c || true)
+      confirm=$(printf "Cancel\nConfirm Permanent Deletion" | shree-dmenu -p "Permanently delete ${bname}?" -l 2 -c || true)
       if [ "$confirm" = "Confirm Permanent Deletion" ]; then
         rm -rf "$target"
         shree-notify "Files" "Permanently deleted ${bname}" --app="Files"
@@ -228,7 +228,7 @@ browse_directory() {
     echo "└────────────────────────────────────────────────────────────────────────────┘"
 
     local choice
-    choice=$(printf "%s\n" "${items[@]}" | dmenu -p "Files: $(basename "$(pwd)")" -l 10 -c || true)
+    choice=$(printf "%s\n" "${items[@]}" | shree-dmenu -p "Files: $(basename "$(pwd)")" -l 10 -c || true)
     [ -z "$choice" ] && break
 
     case "$choice" in
@@ -263,7 +263,7 @@ browse_directory() {
         ;;
       "➕ [New Folder]")
         local new_folder
-        new_folder=$(echo "" | dmenu -p "New Folder Name:" -c || true)
+        new_folder=$(echo "" | shree-dmenu -p "New Folder Name:" -c || true)
         new_folder="$(basename "$new_folder" 2>/dev/null || echo "")"
         if [ -n "$new_folder" ] && [ "$new_folder" != "." ] && [ "$new_folder" != ".." ]; then
           mkdir -p "$new_folder"
@@ -290,12 +290,12 @@ browse_directory() {
         ;;
       "🔍 [Search Current Folder]")
         local query
-        query=$(echo "" | dmenu -p "Search in $(basename "$(pwd)"):" -c || true)
+        query=$(echo "" | shree-dmenu -p "Search in $(basename "$(pwd)"):" -c || true)
         if [ -n "$query" ]; then
           local matches
           matches=$(find . -iname "*${query}*" 2>/dev/null | head -n 12 || true)
           local picked
-          picked=$(echo -e "$matches" | dmenu -p "Search Results:" -l 6 -c || true)
+          picked=$(echo -e "$matches" | shree-dmenu -p "Search Results:" -l 6 -c || true)
           if [ -n "$picked" ]; then
             if [ -d "$picked" ]; then cd "$picked"; else handle_file_action "$picked"; fi
           fi
@@ -306,7 +306,7 @@ browse_directory() {
         ;;
       "⚙  [Sort by: "*)
         local s_pick
-        s_pick=$(printf "Name (A-Z)\nDate Modified (Newest)\nSize (Largest)" | dmenu -p "Sort Files By" -l 3 -c || true)
+        s_pick=$(printf "Name (A-Z)\nDate Modified (Newest)\nSize (Largest)" | shree-dmenu -p "Sort Files By" -l 3 -c || true)
         case "$s_pick" in
           Date*) SORT_MODE="date" ;;
           Size*) SORT_MODE="size" ;;

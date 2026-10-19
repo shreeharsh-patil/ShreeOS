@@ -23,10 +23,11 @@ image loader; it still needs an image build and boot check. Its
 XFCE session is a staged desktop composition, not yet a custom shell with a
 full notification center. Accessibility settings, Orca screen reader,
 speech-dispatcher with eSpeak NG, and Onboard on-screen keyboard are available
-in the desktop profile; Super+Alt+O starts Orca. The GTK Control Center offers Wi-Fi, Bluetooth and
-airplane-mode controls, audio and dark/light
-appearance switches, a hardware backlight slider and battery indicator when
-supported, notification focus mode, and links to existing XFCE tools. ShreeOS
+in the desktop profile; Super+Alt+O starts Orca. The GTK System Settings window
+uses a searchable category sidebar and detail panes for Wi-Fi, Bluetooth, sound,
+appearance, displays, focus, power, dock, accessibility, and system information.
+It includes wireless and appearance switches, a hardware backlight slider and
+battery indicator when supported, and links to existing XFCE tools. ShreeOS
 Software searches APT and invokes real `apt-get` actions with administrator
 authorization; package changes are disabled in the temporary live session.
 Interactive behavior still needs Linux desktop validation. Power profiles,
@@ -102,11 +103,13 @@ needs verification.
 
 The `plasma` profile is the ShreeOS operating system itself. It installs
 Debian's official KDE Plasma packages with SDDM and ShreeOS-owned session
-defaults. The desktop starts in ShreeOS Light with a photographic mountain
-sunrise wallpaper, a 30px translucent top menu bar, a date/clock between
-expanding spacers, and a centered Plank dock. The dock has 50px icons, 145%
-hover magnification, running-app indicators and persistent pinned
-applications. It uses the X11 session; Plank is not a Wayland dock. Appearance
+defaults. The desktop starts in ShreeOS Light with the original Ember Flow
+abstract wallpaper, a 28px translucent top menu bar with app menus on the left
+and status controls/date on the right, and a centered silver-gray Plank dock.
+The dock has 50px icons, 145% hover magnification, running-app indicators and
+persistent pinned applications. Windows use ShreeOS Aurorae decorations with
+left-side traffic-light controls. It uses the X11 session; Plank is not a
+Wayland dock. Appearance
 switching also updates the dock and icon theme while preserving the wallpaper
 and pinned apps. Build it with `make shreeos` and validate with
 `bash tests/prototype/test-iso.sh "out/shreeos($(tr -d '[:space:]' < ../../VERSION)).iso" plasma`.

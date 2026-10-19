@@ -116,6 +116,10 @@ for bundle in "${selected_toolsets[@]}"; do
 done
 mkdir -p "$BUILD_DIR/config/includes.chroot/etc/shreeos"
 printf '%s\n' "$FIRMWARE" > "$BUILD_DIR/config/includes.chroot/etc/shreeos/firmware-policy"
+cp "$REPO_ROOT/branding/theme/tokens.conf" \
+  "$BUILD_DIR/config/includes.chroot/etc/shreeos/tokens.conf"
+cp "$REPO_ROOT/branding/theme/tokens.css" \
+  "$BUILD_DIR/config/includes.chroot/etc/shreeos/tokens.css"
 
 if [ "$LIVE_PROFILE" = desktop ]; then
   PROFILE_SOURCE="$CONFIG_SOURCE/profiles/desktop"
@@ -242,6 +246,8 @@ if [ "$LIVE_PROFILE" = plasma ]; then
     "$BUILD_DIR/config/includes.chroot/usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js"
   mkdir -p "$BUILD_DIR/config/includes.chroot/usr/share/plasma/desktoptheme"
   cp -a "$REPO_ROOT/themes/plasma/shreeos-glass" \
+    "$BUILD_DIR/config/includes.chroot/usr/share/plasma/desktoptheme/"
+  cp -a "$REPO_ROOT/themes/plasma/shreeos-glass-clear" \
     "$BUILD_DIR/config/includes.chroot/usr/share/plasma/desktoptheme/"
   cp "$REPO_ROOT/branding/wallpapers/shreeos-alpenglow.png" \
     "$BUILD_DIR/config/includes.chroot/usr/share/backgrounds/shreeos/"

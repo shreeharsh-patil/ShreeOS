@@ -72,8 +72,9 @@ CI must exercise it. No claim is made about measured resource improvements.
 
 ## Desktop direction
 
-The reference layout uses an original mountain wallpaper, light translucent
-menu bar, centered rounded dock, left window controls, app menus, search,
+The current Plasma reference uses the original Ember Flow wallpaper, a light
+translucent menu bar with app menus at left and status controls at right, a
+centered silver-gray dock, left-side traffic-light window controls, search,
 four workspaces and native Overview. Magic Lamp/Scale/Slide and dock
 magnification provide familiar Mac-style motion through Linux components.
 It does not include Apple's code, applications, services or proprietary

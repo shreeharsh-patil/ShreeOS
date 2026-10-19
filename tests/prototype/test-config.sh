@@ -194,7 +194,7 @@ grep -Fq '/run/live/medium' \
   "$plasma_includes/usr/local/sbin/shreeos-sddm-live-autologin"
 grep -Fq 'systemctl enable shreeos-sddm-live-autologin.service' \
   "$CONFIG_DIR/profiles/plasma/hooks/9001-shreeos-sddm.hook.chroot"
-grep -Fq 'file:///usr/share/backgrounds/shreeos/shreeos-alpenglow.png' \
+grep -Fq 'file:///usr/share/backgrounds/shreeos/shreeos-ember-flow.png' \
   "$plasma_includes/usr/share/sddm/themes/shreeos/Main.qml"
 test -s "$plasma_includes/etc/skel/.local/share/konsole/ShreeOS.profile"
 grep -Fq 'DefaultProfile=ShreeOS.profile' "$plasma_includes/etc/skel/.config/konsolerc"
@@ -241,7 +241,7 @@ test ! -e "$desktop_includes/etc/skel/.config/autostart/plank.desktop"
 grep -Fq 'shreeos-calm-light.png' \
   "$desktop_includes/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
 grep -Fq 'rsvg-convert --width=1920' "$REPO_ROOT/scripts/build-debian-prototype.sh"
-grep -Fq 'shreeos-alpenglow.png' \
+grep -Fq 'shreeos-ember-flow.png' \
   "$CONFIG_DIR/profiles/plasma/includes.chroot/usr/local/bin/shreeos-plasma-first-login"
 
 # --- Single authoritative version -------------------------------------------------

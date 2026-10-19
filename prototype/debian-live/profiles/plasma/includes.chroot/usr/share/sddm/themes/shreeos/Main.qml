@@ -7,7 +7,7 @@ Rectangle {
     id: root
     width: Screen.width
     height: Screen.height
-    color: "#0b111d"
+    color: "#172334"
 
     property string errorMessage: ""
     property date currentDate: new Date()
@@ -19,7 +19,7 @@ Rectangle {
 
     Image {
         anchors.fill: parent
-        source: "file:///usr/share/backgrounds/shreeos/shreeos-alpenglow.png"
+        source: "file:///usr/share/backgrounds/shreeos/shreeos-ember-flow.png"
         fillMode: Image.PreserveAspectCrop
         smooth: true
         asynchronous: true
@@ -27,7 +27,11 @@ Rectangle {
 
     Rectangle {
         anchors.fill: parent
-        color: "#22080e18"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#17111d34" }
+            GradientStop { position: 0.52; color: "#080d1728" }
+            GradientStop { position: 1.0; color: "#36131a31" }
+        }
     }
 
     // The full-screen clock gives the greeter the quiet, focused feel of a
@@ -71,28 +75,39 @@ Rectangle {
     Rectangle {
         id: loginCard
         anchors.centerIn: parent
-        width: Math.min(400, root.width - 40)
-        height: Math.min(472, root.height - 40)
-        radius: 22
-        color: "#e6141c2b"
+        width: Math.min(372, root.width - 40)
+        height: Math.min(444, root.height - 40)
+        radius: 26
+        color: "#e8f5f1ec"
         border.width: 1
-        border.color: "#35d7e7ff"
+        border.color: "#c9ffffff"
 
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#e61c2940" }
-            GradientStop { position: 1.0; color: "#e6101725" }
+            GradientStop { position: 0.0; color: "#edf8f5f0" }
+            GradientStop { position: 0.52; color: "#e8f2f0ec" }
+            GradientStop { position: 1.0; color: "#e8e8e9ee" }
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 1
+            height: 1
+            radius: 1
+            color: "#dfffffff"
         }
 
         Column {
             anchors.fill: parent
-            anchors.margins: 28
-            spacing: 8
+            anchors.margins: 24
+            spacing: 7
 
             Image {
-                width: 48
-                height: 48
+                width: 52
+                height: 52
                 anchors.horizontalCenter: parent.horizontalCenter
-                source: "file:///usr/share/pixmaps/shreeos-logo.png"
+                source: "file:///usr/share/icons/hicolor/scalable/apps/shreeos.svg"
                 fillMode: Image.PreserveAspectFit
                 smooth: true
             }
@@ -100,16 +115,16 @@ Rectangle {
             Text {
                 text: "ShreeOS"
                 anchors.horizontalCenter: parent.horizontalCenter
-                color: "#f5f8ff"
+                color: "#253244"
                 font.family: "Inter"
-                font.pixelSize: 25
+                font.pixelSize: 24
                 font.weight: Font.DemiBold
             }
 
             Text {
                 text: "A calmer place to work."
                 anchors.horizontalCenter: parent.horizontalCenter
-                color: "#aebbd0"
+                color: "#687487"
                 font.family: "Inter"
                 font.pixelSize: 13
             }
@@ -130,17 +145,17 @@ Rectangle {
 
                 contentItem: Text {
                     text: userPicker.displayText
-                    color: "#f2f5fc"
+                    color: "#2f3c4e"
                     font: userPicker.font
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                 }
 
                 background: Rectangle {
-                    radius: 10
-                    color: "#35172030"
+                    radius: 11
+                    color: "#aafffefa"
                     border.width: 1
-                    border.color: userPicker.activeFocus ? "#6c9fff" : "#35dbe6f5"
+                    border.color: userPicker.activeFocus ? "#4d98d0" : "#aabac8d4"
                 }
             }
 
@@ -154,18 +169,18 @@ Rectangle {
                 font.family: "Inter"
                 font.pixelSize: 13
                 leftPadding: 12
-                color: "#f2f5fc"
-                selectionColor: "#2878ed"
+                color: "#2f3c4e"
+                selectionColor: "#3c87c9"
                 selectedTextColor: "white"
-                placeholderTextColor: "#8290a6"
+                placeholderTextColor: "#8993a1"
                 onAccepted: root.submitLogin()
                 Component.onCompleted: forceActiveFocus()
 
                 background: Rectangle {
-                    radius: 10
-                    color: "#35172030"
+                    radius: 11
+                    color: "#aafffefa"
                     border.width: 1
-                    border.color: passwordField.activeFocus ? "#6c9fff" : "#35dbe6f5"
+                    border.color: passwordField.activeFocus ? "#4d98d0" : "#aabac8d4"
                 }
             }
 
@@ -183,17 +198,17 @@ Rectangle {
 
                 contentItem: Text {
                     text: sessionPicker.displayText
-                    color: "#f2f5fc"
+                    color: "#2f3c4e"
                     font: sessionPicker.font
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                 }
 
                 background: Rectangle {
-                    radius: 10
-                    color: "#35172030"
+                    radius: 11
+                    color: "#aafffefa"
                     border.width: 1
-                    border.color: sessionPicker.activeFocus ? "#6c9fff" : "#35dbe6f5"
+                    border.color: sessionPicker.activeFocus ? "#4d98d0" : "#aabac8d4"
                 }
             }
 
@@ -208,10 +223,10 @@ Rectangle {
                 onClicked: root.submitLogin()
 
                 background: Rectangle {
-                    radius: 10
-                    color: parent.down ? "#2469df" : parent.hovered ? "#3985f7" : "#2878ed"
+                    radius: 11
+                    color: parent.down ? "#3471b5" : parent.hovered ? "#5293d1" : "#4385c6"
                     border.width: 1
-                    border.color: "#638fdd"
+                    border.color: "#7eb3e0"
                     opacity: parent.enabled ? 1.0 : 0.48
                 }
 
@@ -250,7 +265,7 @@ Rectangle {
                     ]
 
                     delegate: Button {
-                        width: 94
+                        width: 90
                         height: 30
                         text: modelData.label
                         visible: modelData.available
@@ -261,6 +276,21 @@ Rectangle {
                             if (modelData.action === "suspend") sddm.suspend()
                             else if (modelData.action === "reboot") sddm.reboot()
                             else sddm.powerOff()
+                        }
+
+                        background: Rectangle {
+                            radius: 9
+                            color: parent.hovered ? "#83ffffff" : "#00ffffff"
+                            border.width: parent.hovered ? 1 : 0
+                            border.color: "#8daab9c7"
+                        }
+
+                        contentItem: Text {
+                            text: parent.text
+                            color: "#425064"
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                 }

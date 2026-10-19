@@ -44,7 +44,7 @@ case "$MODE" in
   select|region) capture_region ;;
   window) capture_window ;;
   interactive)
-    CHOICE=$(printf "Fullscreen Capture\nSelected Region (Click and Drag)\nActive Window Only" | dmenu -p "Take Screenshot" -l 3 -c || true)
+    CHOICE=$(printf "Fullscreen Capture\nSelected Region (Click and Drag)\nActive Window Only" | shree-dmenu -p "Take Screenshot" -l 3 -c || true)
     case "$CHOICE" in
       "Fullscreen"*) "$0" full ;;
       "Selected Region"*) "$0" select ;;

@@ -9,13 +9,13 @@ set -euo pipefail
 ARCHIVE="${1:-}"
 
 if [ -z "$ARCHIVE" ]; then
-  ARCHIVE=$(find . -maxdepth 2 -type f \( -name "*.tar.gz" -o -name "*.tar.xz" -o -name "*.zip" \) 2>/dev/null | dmenu -p "Select Archive to Extract" -l 6 -c || true)
+  ARCHIVE=$(find . -maxdepth 2 -type f \( -name "*.tar.gz" -o -name "*.tar.xz" -o -name "*.zip" \) 2>/dev/null | shree-dmenu -p "Select Archive to Extract" -l 6 -c || true)
 fi
 
 [ -z "$ARCHIVE" ] || [ ! -f "$ARCHIVE" ] && exit 0
 
 ACTIONS="Extract Here (./)\nExtract to Subfolder\nView Contents\nCancel"
-ACTION=$(echo -e "$ACTIONS" | dmenu -p "Archive: $(basename "$ARCHIVE")" -l 4 -c)
+ACTION=$(echo -e "$ACTIONS" | shree-dmenu -p "Archive: $(basename "$ARCHIVE")" -l 4 -c)
 
 case "$ACTION" in
   "Extract Here"*)

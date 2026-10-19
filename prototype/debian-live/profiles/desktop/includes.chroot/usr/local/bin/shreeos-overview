@@ -5,23 +5,29 @@ from __future__ import annotations
 
 import subprocess
 import sys
+sys.path.insert(0, "/usr/local/lib/shreeos")
 
 import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
+from ui_theme import themed_css
 
 
 CSS = """
-window.shreeos-overview { background: #202733; color: #f5f7fb; }
-headerbar.overview-header { background: #202733; border: 0; box-shadow: none; }
-label.overview-title { font-size: 18px; font-weight: 600; color: #f5f7fb; }
-label.overview-caption { color: #aab4c3; font-size: 11px; }
-frame.workspace-card { background: #283342; border: 1px solid #394759; border-radius: 14px; }
-frame.workspace-current { border-color: #5e9bff; }
-button.workspace-switch, button.window-card { background: #303b4b; color: #f5f7fb;
-  border: 1px solid #46566c; border-radius: 9px; padding: 8px; }
-button.workspace-switch:hover, button.window-card:hover { background: #3b4b60; }
+window.shreeos-overview { background: @bg@; color: @text@; font-family: '@font_ui@'; }
+headerbar.overview-header { background: @bg@; border: 0; box-shadow: none; }
+label.overview-title { font-size: @font_size_title@; font-weight: 600; color: @text@; }
+label.overview-caption { color: @text_secondary@; font-size: @font_size_sm@; }
+frame.workspace-card { background: @surface_alt@; border: 1px solid @border_hex@;
+  border-radius: @radius_window@; }
+frame.workspace-current { border: 2px solid @accent@; }
+button.workspace-switch, button.window-card { background: @surface@; color: @text@;
+  border: 1px solid @border_hex@; border-radius: @radius_control@; padding: 8px; }
+frame.workspace-current button.workspace-switch { background: @accent@; color: white; border-color: @accent@; }
+button.workspace-switch:hover, button.window-card:hover { background: @surface_alt@; }
+button.window-card { border-color: transparent; }
+combobox button { border-radius: @radius_control@; }
 """
 
 
@@ -67,7 +73,7 @@ class Overview:
         self.window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         self.window.get_style_context().add_class("shreeos-overview")
 
-        header = Gtk.HeaderBar(title="Workspace Overview")
+        header = Gtk.HeaderBar(title="Workspaces", subtitle="Overview")
         header.set_show_close_button(True)
         header.get_style_context().add_class("overview-header")
         self.window.set_titlebar(header)
@@ -78,7 +84,7 @@ class Overview:
         title = Gtk.Label(label="Your workspaces", xalign=0)
         title.get_style_context().add_class("overview-title")
         outer.pack_start(title, False, False, 0)
-        caption = Gtk.Label(label="Choose a desktop or move an open window.", xalign=0)
+        caption = Gtk.Label(label="Switch desktops, focus a window, or move it to another space.", xalign=0)
         caption.get_style_context().add_class("overview-caption")
         outer.pack_start(caption, False, False, 0)
 
@@ -205,7 +211,7 @@ class Overview:
 
 def main() -> int:
     provider = Gtk.CssProvider()
-    provider.load_from_data(CSS.encode("utf-8"))
+    provider.load_from_data(themed_css(CSS).encode("utf-8"))
     Gtk.StyleContext.add_provider_for_screen(
         Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
     )

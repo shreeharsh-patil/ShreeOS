@@ -24,7 +24,7 @@ for (var panelIndex = 0; panelIndex < previousPanels.length; panelIndex++) {
 var menuBar = new Panel();
 menuBar.location = "top";
 menuBar.lengthMode = "fill";
-menuBar.height = 30;
+menuBar.height = 28;
 menuBar.hiding = "none";
 menuBar.floating = false;
 var launcher = menuBar.addWidget("org.kde.plasma.kickoff");
@@ -34,6 +34,7 @@ launcher.writeConfig("menuLabel", "ShreeOS");
 launcher.writeConfig("compactMode", true);
 menuBar.addWidget("org.kde.plasma.appmenu");
 menuBar.addWidget("org.kde.plasma.panelspacer");
+menuBar.addWidget("org.kde.plasma.systemtray");
 var clock = menuBar.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];
 clock.writeConfig("showDate", true);
@@ -44,8 +45,6 @@ clock.writeConfig("autoFontAndSize", false);
 clock.writeConfig("fontFamily", "Inter");
 clock.writeConfig("fontSize", 9);
 clock.writeConfig("boldText", false);
-menuBar.addWidget("org.kde.plasma.panelspacer");
-menuBar.addWidget("org.kde.plasma.systemtray");
 menuBar.locked = true;
 
 // Plank owns the dock in this X11 profile. Keeping one Plasma panel prevents

@@ -1,11 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="title">
   <title id="title">ShreeOS installer</title>
-  <rect x="4" y="4" width="120" height="120" rx="29" fill="#181c25"/>
-  <g transform="scale(.5)" fill="#f5f7fb">
-    <path d="M52 144a76 76 0 0 1 152 0z" fill="#4f91ff"/>
-    <path d="M28 150c36-13 68-13 100 0s63 13 100-1" fill="none" stroke="#f5f7fb" stroke-width="17" stroke-linecap="round"/>
-    <path d="M50 191c28-10 52-10 78-1s50 10 78 1" fill="none" stroke="#f5f7fb" stroke-width="15" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#78c9e2"/>
+      <stop offset="0.48" stop-color="#607bb5"/>
+      <stop offset="1" stop-color="#d77562"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff0b7"/>
+      <stop offset="1" stop-color="#ffc16e"/>
+    </linearGradient>
+    <linearGradient id="glaze" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".28"/>
+      <stop offset=".58" stop-color="#fff" stop-opacity=".05"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#surface)"/>
+  <rect x="10.75" y="10.75" width="106.5" height="106.5" rx="25.25" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="1.5"/>
+  <rect x="11.5" y="11.5" width="105" height="70" rx="24" fill="url(#glaze)"/>
+  <g transform="scale(.5)">
+    <path d="M52 144a76 76 0 0 1 152 0z" fill="url(#sun)"/>
+    <path d="M28 150c36-13 68-13 100 0s63 13 100-1" fill="none" stroke="#fffaf1" stroke-width="17" stroke-linecap="round"/>
+    <path d="M50 191c28-10 52-10 78-1s50 10 78 1" fill="none" stroke="#fffaf1" stroke-width="15" stroke-linecap="round"/>
   </g>
-  <circle cx="96" cy="96" r="21" fill="#2878ff" stroke="#181c25" stroke-width="4"/>
-  <path d="M96 83v23m-9-9 9 9 9-9" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="96" cy="96" r="20" fill="#f8f3eb" stroke="#c65f4d" stroke-width="2.5"/>
+  <path d="M96 83v22m-8-8 8 8 8-8" fill="none" stroke="#b85145" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

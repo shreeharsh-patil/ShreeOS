@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="1440" viewBox="0 0 2560 1440">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6eb5e3"/>
+      <stop offset="0.48" stop-color="#327db7"/>
+      <stop offset="1" stop-color="#182e60"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0.8">
+      <stop offset="0" stop-color="#fff28a"/>
+      <stop offset="0.38" stop-color="#ffd252"/>
+      <stop offset="0.72" stop-color="#ffad39"/>
+      <stop offset="1" stop-color="#ed6c34"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0.1" x2="1" y2="0.9">
+      <stop offset="0" stop-color="#ffe36d"/>
+      <stop offset="0.38" stop-color="#ffb23e"/>
+      <stop offset="0.76" stop-color="#f16a35"/>
+      <stop offset="1" stop-color="#d94736"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="0" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#ffbf45"/>
+      <stop offset="0.42" stop-color="#f36d37"/>
+      <stop offset="0.82" stop-color="#b72e45"/>
+      <stop offset="1" stop-color="#532554"/>
+    </linearGradient>
+    <linearGradient id="blue-ribbon" x1="0" y1="0" x2="1" y2="0.7">
+      <stop offset="0" stop-color="#c2e3f4"/>
+      <stop offset="0.44" stop-color="#64a8d9"/>
+      <stop offset="1" stop-color="#315d9f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.18" cy="0.2" r="0.78">
+      <stop offset="0" stop-color="#fff9ca" stop-opacity="0.56"/>
+      <stop offset="1" stop-color="#fff9ca" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="2560" height="1440" fill="url(#sky)"/>
+  <rect width="2560" height="1440" fill="url(#glow)"/>
+  <path fill="url(#blue-ribbon)" opacity="0.86"
+        d="M0 0H2560V236C2290 331 2042 368 1784 304C1448 220 1224 30 884 48C542 66 350 308 0 442Z"/>
+  <path fill="url(#gold)"
+        d="M-120 482C210 408 422 128 776 86C1128 44 1308 306 1634 418C1942 524 2218 480 2680 180V730C2280 950 2010 1018 1670 902C1320 782 1110 522 792 530C448 538 248 834-120 1006Z"/>
+  <path fill="url(#amber)"
+        d="M-120 758C164 588 420 506 716 578C1038 656 1286 984 1648 1054C2020 1128 2294 916 2680 600V1048C2368 1300 2116 1432 1746 1330C1378 1228 1118 966 766 922C428 880 192 1112-120 1304Z"/>
+  <path fill="url(#ember)"
+        d="M-120 1044C192 862 418 802 706 860C1050 930 1302 1234 1656 1324C1996 1410 2316 1282 2680 1004V1510H-120Z"/>
+  <path fill="#fff1b8" opacity="0.24"
+        d="M-80 476C248 386 476 126 790 94C1120 60 1322 298 1650 416C1940 520 2222 482 2622 206L2624 236C2220 522 1940 562 1640 454C1312 336 1116 96 792 130C468 164 252 426-80 518Z"/>
+  <path fill="#ffd976" opacity="0.20"
+        d="M-80 758C188 596 430 516 718 584C1038 660 1284 990 1648 1062C2018 1136 2314 912 2624 660L2624 704C2308 964 2020 1180 1642 1108C1274 1038 1032 698 710 626C422 560 184 638-80 802Z"/>
+</svg>

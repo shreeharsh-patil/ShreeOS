@@ -12,12 +12,17 @@ logger -t shreeos-session-setup 'Applying ShreeOS XFCE panel and wallpaper defau
 mkdir -p "$HOME/.cache"
 exec >>"$HOME/.cache/shreeos-session-setup.log" 2>&1
 
+if [ -r /etc/shreeos/tokens.conf ]; then
+  . /etc/shreeos/tokens.conf
+fi
+panel_size=${SHREE_TOPBAR_HEIGHT:-28}
+
 logger -t shreeos-session-setup 'Applying panel geometry'
 xfconf-query -c xfce4-panel -p /panels/panel-1/length -s 100
 xfconf-query -c xfce4-panel -p /panels/panel-1/length-adjust -s false
 xfconf-query -c xfce4-panel -p /panels/panel-1/position -s 'p=6;x=0;y=0'
 xfconf-query -c xfce4-panel -p /panels/panel-1/position-locked -s true
-xfconf-query -c xfce4-panel -p /panels/panel-1/size -s 30
+xfconf-query -c xfce4-panel -p /panels/panel-1/size -s "$panel_size"
 
 # The live QEMU display exposes a small initial mode. Select its widescreen
 # mode so the dock and panel use a desktop-like canvas during boot validation.

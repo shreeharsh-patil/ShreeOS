@@ -41,16 +41,19 @@ release; the XFCE profile's screenshot gate is still under investigation.
 The new `plasma` profile installs Debian's `kde-plasma-desktop`, SDDM, Dolphin,
 Konsole, Ark, Spectacle, Plasma network/audio widgets, PowerDevil and BlueDevil,
 plus Plank, Kate, Gwenview, Okular and KCalc. Plasma's layout scripting API
-creates a 28px top menu/status bar with a date and clock between expanding
-spacers. An original Plasma style supplies its translucent surface, while
-Plank supplies the rounded, always-visible dock with 44px icons, 130% hover
-magnification and persistent favorite launchers. An original ShreeOS QML theme styles the
-SDDM greeter with ShreeOS branding. The greeter theme persists into installed
-systems, while a boot-time check removes the live-only autologin override from
+creates a 28px top menu/status bar with status controls and date/time at the far
+right. The default Plasma style uses a tinted navigation surface; a clearer
+glass style is available in Plasma Style settings, with an opaque fallback when
+compositing is unavailable. Aurorae supplies rounded ShreeOS titlebars with
+left-side traffic-light controls and a soft titlebar-only blur. Plank supplies
+the centered, always-visible silver-gray dock with 50px icons, 145% hover
+magnification and persistent favorite launchers. An original ShreeOS QML
+theme styles the SDDM greeter with ShreeOS branding. The greeter theme persists
+into installed systems, while a boot-time check removes the live-only autologin override from
 an installed system. ShreeOS dark and light color schemes, matching Konsole
 schemes, GTK theme defaults and an appearance switcher are included with the
-original logo and wallpapers. The default is ShreeOS Light with the Alpenglow
-mountain photograph; appearance changes preserve the user's wallpaper and
+original logo and wallpapers. The default is ShreeOS Light with the Ember Flow
+abstract wallpaper; appearance changes preserve the user's wallpaper and
 pinned applications. Four virtual desktops and KRunner's Meta+Space
 shortcut are configured. Discover uses Debian's PackageKit backend for system
 packages and the Flatpak backend with Flathub preconfigured for user-selected

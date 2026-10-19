@@ -14,7 +14,7 @@ AnimationDurationFactor=0.8
 Theme=Papirus
 
 [WM]
-activeBackground=245,245,247
+activeBackground=244,239,233
 activeForeground=29,29,31
-inactiveBackground=235,235,239
+inactiveBackground=236,230,224
 inactiveForeground=110,110,115

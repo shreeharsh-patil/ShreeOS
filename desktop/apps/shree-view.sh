@@ -9,7 +9,7 @@ IMAGE="${1:-}"
 
 if [ -z "$IMAGE" ]; then
   # Open file picker if none passed
-  IMAGE=$(find "${HOME}/Pictures" "${HOME}/Desktop" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null | dmenu -p "Select Image to View" -l 8 -c || true)
+  IMAGE=$(find "${HOME}/Pictures" "${HOME}/Desktop" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null | shree-dmenu -p "Select Image to View" -l 8 -c || true)
 fi
 
 [ -z "$IMAGE" ] || [ ! -f "$IMAGE" ] && exit 0

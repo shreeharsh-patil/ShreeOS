@@ -60,7 +60,7 @@ plasma-apply-desktoptheme shreeos-glass
 
 wallpaper_attempt=0
 while [ "$wallpaper_attempt" -lt 30 ]; do
-  if plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-alpenglow.png; then
+  if plasma-apply-wallpaperimage /usr/share/backgrounds/shreeos/shreeos-ember-flow.png; then
     break
   fi
   wallpaper_attempt=$((wallpaper_attempt + 1))

@@ -34,7 +34,7 @@ Placement=Centered
 FocusPolicy=ClickToFocus
 
 [kwinrc][org.kde.kdecoration2]
-library=org.kde.breeze
-theme=Breeze
+library=org.kde.kwin.aurorae
+theme=ShreeOS-Ventura
 ButtonsOnLeft=XIA
 ButtonsOnRight=

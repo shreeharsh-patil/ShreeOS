@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <style id="current-color-scheme">
+    .ColorScheme-Background { color: #f4efe9; }
+    .ColorScheme-Text { color: #1d1d1f; }
+    .ColorScheme-Outline { color: #cfc7bf; }
+  </style>
+  <!-- The active titlebar is a quiet, blurred material. Content panes stay
+       opaque and are painted by the application. -->
+  <g class="ColorScheme-Background" fill="currentColor" fill-opacity=".92">
+    <path id="decoration-topleft" d="M12 0H18V36H0V12Q0 0 12 0Z"/>
+    <rect id="decoration-top" x="18" y="0" width="64" height="36"/>
+    <path id="decoration-topright" d="M82 0H88Q100 0 100 12V36H82Z"/>
+    <rect id="decoration-center" x="1" y="36" width="98" height="63" fill-opacity="0"/>
+  </g>
+  <g class="ColorScheme-Background" fill="currentColor" fill-opacity=".82">
+    <path id="decoration-inactive-topleft" d="M12 0H18V36H0V12Q0 0 12 0Z"/>
+    <rect id="decoration-inactive-top" x="18" y="0" width="64" height="36"/>
+    <path id="decoration-inactive-topright" d="M82 0H88Q100 0 100 12V36H82Z"/>
+    <rect id="decoration-inactive-center" x="1" y="36" width="98" height="63" fill-opacity="0"/>
+  </g>
+  <g class="ColorScheme-Background" fill="currentColor">
+    <path id="decoration-opaque-topleft" d="M12 0H18V36H0V12Q0 0 12 0Z"/>
+    <rect id="decoration-opaque-top" x="18" y="0" width="64" height="36"/>
+    <path id="decoration-opaque-topright" d="M82 0H88Q100 0 100 12V36H82Z"/>
+    <rect id="decoration-opaque-center" x="1" y="36" width="98" height="63" fill-opacity="0"/>
+  </g>
+  <g class="ColorScheme-Background" fill="currentColor">
+    <path id="decoration-opaque-inactive-topleft" d="M12 0H18V36H0V12Q0 0 12 0Z"/>
+    <rect id="decoration-opaque-inactive-top" x="18" y="0" width="64" height="36"/>
+    <path id="decoration-opaque-inactive-topright" d="M82 0H88Q100 0 100 12V36H82Z"/>
+    <rect id="decoration-opaque-inactive-center" x="1" y="36" width="98" height="63" fill-opacity="0"/>
+  </g>
+  <!-- Blur only the translucent titlebar, not the application contents. -->
+  <g fill="#000000">
+    <path id="mask-topleft" d="M12 0H18V36H0V12Q0 0 12 0Z"/>
+    <rect id="mask-top" x="18" y="0" width="64" height="36"/>
+    <path id="mask-topright" d="M82 0H88Q100 0 100 12V36H82Z"/>
+  </g>
+  <g class="ColorScheme-Outline" fill="currentColor">
+    <rect id="decoration-left" x="0" y="36" width="1" height="63"/>
+    <rect id="decoration-right" x="99" y="36" width="1" height="63"/>
+    <rect id="decoration-bottomleft" x="0" y="99" width="1" height="1"/>
+    <rect id="decoration-bottom" x="1" y="99" width="98" height="1"/>
+    <rect id="decoration-bottomright" x="99" y="99" width="1" height="1"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+[Settings]
+FallbackTheme=default
+
+[ContrastEffect]
+enabled=true
+contrast=0.3
+intensity=1.5
+saturation=1.4
+
+[BlurBehindEffect]
+enabled=true

@@ -3,8 +3,10 @@
 set -u
 report() { shreedctl hardware --json 2>&1 || printf '%s\n' 'Not available (shreed unavailable or restarting)'; }
 if command -v zenity >/dev/null 2>&1; then
+  hardware_report=$(report)
+  report_markup=$(printf '%s' "$hardware_report" | sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
   zenity --info --title='About ShreeOS' --width=640 --height=420 \
-    --text="<big><b>ShreeOS</b></big>\n\n$(report)\n\n<i>Live hardware report from shreed.</i>"
+    --text="<span size='x-large' weight='bold'>ShreeOS</span>\n\n<tt>${report_markup}</tt>\n\n<i>Live hardware report from shreed.</i>"
 else
   st -g 90x30 -t 'About ShreeOS' -e /bin/bash -c 'while :; do clear; echo "=== ShreeOS ==="; echo; shreedctl hardware --json 2>&1 || echo "Not available (shreed unavailable or restarting)"; echo; echo "[r] Refresh  [q] Close"; read -r -n 1 key; [ "$key" = q ] && exit; done' &
 fi

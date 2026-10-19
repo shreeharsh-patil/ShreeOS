@@ -114,7 +114,7 @@ interactive_menu() {
   fi
 
   local options="Power: Toggle On/Off (Currently ${status})\nScan & Pair Devices\nList Paired Peripherals"
-  choice=$(printf "%b\n" "$options" | dmenu -p "Bluetooth Settings" -l 3 -c || true)
+  choice=$(printf "%b\n" "$options" | shree-dmenu -p "Bluetooth Settings" -l 3 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in

@@ -8,7 +8,7 @@ set -euo pipefail
 LOG_FILE="${HOME}/.local/share/shreeos/notifications.log"
 
 if [ ! -f "$LOG_FILE" ] || [ ! -s "$LOG_FILE" ]; then
-  printf "No recent notifications\n[Close]" | dmenu -p "Notification Center" -l 2 -c >/dev/null 2>&1 || true
+  printf "No recent notifications\n[Close]" | shree-dmenu -p "Notification Center" -l 2 -c >/dev/null 2>&1 || true
   exit 0
 fi
 
@@ -20,7 +20,7 @@ while IFS='|' read -r timestamp app title body _status; do
   ENTRIES+="${TIME_STR} [${app}] ${title}: ${body}\n"
 done < <(tac "$LOG_FILE" 2>/dev/null || cat "$LOG_FILE")
 
-SELECTED=$(echo -e "$ENTRIES" | dmenu -p "Notification Center" -l 8 -c || true)
+SELECTED=$(echo -e "$ENTRIES" | shree-dmenu -p "Notification Center" -l 8 -c || true)
 
 if [ "$SELECTED" = "[Clear All Notifications]" ]; then
   : > "$LOG_FILE"

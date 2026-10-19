@@ -20,7 +20,7 @@ handle_appearance() {
   local cur
   cur=$(shree-theme get 2>/dev/null || echo "dark")
   local choice
-  choice=$(printf "Dark Mode (Current: %s)\nLight Mode\nAutomatic (Day/Night 07:00-19:00)\nToggle Appearance Now\nSelect Wallpaper\nWallpaper Mode (Fill/Fit/Center)" "$cur" | dmenu -p "Appearance" -l 6 -c || true)
+  choice=$(printf "Dark Mode (Current: %s)\nLight Mode\nAutomatic (Day/Night 07:00-19:00)\nToggle Appearance Now\nSelect Wallpaper\nWallpaper Mode (Fill/Fit/Center)" "$cur" | shree-dmenu -p "Appearance" -l 6 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -32,7 +32,7 @@ handle_appearance() {
       local wp_list
       wp_list=$(shree-wallpaper list 2>/dev/null | sed 's/^ *//' || true)
       local wp_choice
-      wp_choice=$(echo -e "$wp_list" | dmenu -p "Select Wallpaper" -l 6 -c || true)
+      wp_choice=$(echo -e "$wp_list" | shree-dmenu -p "Select Wallpaper" -l 6 -c || true)
       if [ -n "$wp_choice" ]; then
         local wp_path
         wp_path=$(echo "$wp_choice" | awk -F' -> ' '{print $2}')
@@ -41,7 +41,7 @@ handle_appearance() {
       ;;
     "Wallpaper Mode"*)
       local m
-      m=$(printf "fill\nfit\ncenter" | dmenu -p "Wallpaper Scaling" -l 3 -c || true)
+      m=$(printf "fill\nfit\ncenter" | shree-dmenu -p "Wallpaper Scaling" -l 3 -c || true)
       [ -n "$m" ] && shree-wallpaper mode "$m"
       ;;
   esac
@@ -51,16 +51,16 @@ handle_appearance() {
 handle_desktop() {
   local dock_conf="${CONFIG_DIR}/dock.conf"
   local autohide="false"
-  local size="44"
+  local size="50"
   if [ -f "$dock_conf" ]; then
     autohide=$(sed -n 's/^AUTOHIDE=//p' "$dock_conf" 2>/dev/null | head -n1)
     size=$(sed -n 's/^ICON_SIZE=//p' "$dock_conf" 2>/dev/null | head -n1)
     autohide="${autohide:-false}"
-    size="${size:-44}"
+    size="${size:-50}"
   fi
 
   local choice
-  choice=$(printf "Dock Auto-Hide: %s (Click to Toggle)\nDock Icon Size: %spx (Click to Change)\nRestart Dock Service\nEdit Pinned Applications" "$autohide" "$size" | dmenu -p "Desktop & Dock" -l 4 -c || true)
+  choice=$(printf "Dock Auto-Hide: %s (Click to Toggle)\nDock Icon Size: %spx (Click to Change)\nRestart Dock Service\nEdit Pinned Applications" "$autohide" "$size" | shree-dmenu -p "Desktop & Dock" -l 4 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -70,7 +70,7 @@ handle_desktop() {
       ;;
     "Dock Icon Size"*)
       local new_size
-      new_size=$(printf "36\n44\n48\n56" | dmenu -p "Select Dock Icon Size (px)" -l 4 -c || true)
+      new_size=$(printf "40\n44\n50\n56" | shree-dmenu -p "Select Dock Icon Size (px)" -l 4 -c || true)
       if [ -n "$new_size" ]; then
         sed -i "s/^ICON_SIZE=.*/ICON_SIZE=${new_size}/" "$dock_conf" 2>/dev/null || echo "ICON_SIZE=${new_size}" >> "$dock_conf"
         shree-notify "Dock" "Icon size set to ${new_size}px" --app="Settings"
@@ -86,7 +86,7 @@ handle_desktop() {
       current_pinned=$(sed -n 's/^PINNED_APPS=//p' "$dock_conf" 2>/dev/null | head -n1 | tr -d '"')
       current_pinned="${current_pinned:-shree-files:st:netsurf:shree-pkgmanager:shree-settings}"
       local new_pinned
-      new_pinned=$(echo "$current_pinned" | dmenu -p "Edit Pinned (colon-separated):" -c || true)
+      new_pinned=$(echo "$current_pinned" | shree-dmenu -p "Edit Pinned (colon-separated):" -c || true)
       if [ -n "$new_pinned" ]; then
         sed -i "s/^PINNED_APPS=.*/PINNED_APPS=\"${new_pinned}\"/" "$dock_conf" 2>/dev/null || echo "PINNED_APPS=\"${new_pinned}\"" >> "$dock_conf"
         shree-notify "Dock" "Updated pinned applications" --app="Settings"
@@ -98,7 +98,7 @@ handle_desktop() {
 # ── 3. Display ────────────────────────────────────────────────────────────────
 handle_display() {
   local choice
-  choice=$(printf "View Connected Displays & Resolutions\nToggle Night Light Warm Display\nAdjust Screen Brightness" | dmenu -p "Display Settings" -l 3 -c || true)
+  choice=$(printf "View Connected Displays & Resolutions\nToggle Night Light Warm Display\nAdjust Screen Brightness" | shree-dmenu -p "Display Settings" -l 3 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -121,7 +121,7 @@ handle_display() {
       ;;
     "Adjust Screen Brightness"*)
       local b_choice
-      b_choice=$(printf "25%%\n50%%\n75%%\n100%%" | dmenu -p "Display Brightness" -l 4 -c || true)
+      b_choice=$(printf "25%%\n50%%\n75%%\n100%%" | shree-dmenu -p "Display Brightness" -l 4 -c || true)
       local b_val
       b_val=$(echo "$b_choice" | tr -dc '0-9')
       if [ -n "$b_val" ]; then
@@ -139,7 +139,7 @@ handle_display() {
 # ── 4. Network ────────────────────────────────────────────────────────────────
 handle_network() {
   local choice
-  choice=$(printf "Network Status Overview\nWi-Fi Scan & Connect\nConfigure DNS Resolvers\nRestart Network Stack" | dmenu -p "Network Settings" -l 4 -c || true)
+  choice=$(printf "Network Status Overview\nWi-Fi Scan & Connect\nConfigure DNS Resolvers\nRestart Network Stack" | shree-dmenu -p "Network Settings" -l 4 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -153,7 +153,7 @@ handle_network() {
       local current_dns
       current_dns=$(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' | tr '\n' ' ' || echo "1.1.1.1 8.8.8.8")
       local new_dns
-      new_dns=$(echo "$current_dns" | dmenu -p "DNS Resolvers (space-separated):" -c || true)
+      new_dns=$(echo "$current_dns" | shree-dmenu -p "DNS Resolvers (space-separated):" -c || true)
       if [ -n "$new_dns" ]; then
         # shellcheck disable=SC2086
         shree-network dns set $new_dns 2>/dev/null || true
@@ -169,13 +169,13 @@ handle_network() {
 # ── 5. Sound ──────────────────────────────────────────────────────────────────
 handle_sound() {
   local choice
-  choice=$(printf "Master Volume (25%%, 50%%, 75%%, 100%%)\nMute / Unmute Toggle\nAudio Hardware & Card Information\nInteractive Audio Mixer" | dmenu -p "Sound Settings" -l 4 -c || true)
+  choice=$(printf "Master Volume (25%%, 50%%, 75%%, 100%%)\nMute / Unmute Toggle\nAudio Hardware & Card Information\nInteractive Audio Mixer" | shree-dmenu -p "Sound Settings" -l 4 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
     "Master Volume"*)
       local v_choice
-      v_choice=$(printf "25%%\n50%%\n75%%\n100%%" | dmenu -p "Set Volume" -l 4 -c || true)
+      v_choice=$(printf "25%%\n50%%\n75%%\n100%%" | shree-dmenu -p "Set Volume" -l 4 -c || true)
       local v_val
       v_val=$(echo "$v_choice" | tr -dc '0-9')
       if [ -n "$v_val" ] && command -v amixer >/dev/null 2>&1; then
@@ -201,13 +201,13 @@ handle_sound() {
 # ── 6. Keyboard ───────────────────────────────────────────────────────────────
 handle_keyboard() {
   local choice
-  choice=$(printf "Keyboard Layout (US, UK, DE, FR, ES)\nKey Repeat Rate (Fast, Normal, Conservative)\nKeyboard Shortcuts Reference" | dmenu -p "Keyboard Settings" -l 3 -c || true)
+  choice=$(printf "Keyboard Layout (US, UK, DE, FR, ES)\nKey Repeat Rate (Fast, Normal, Conservative)\nKeyboard Shortcuts Reference" | shree-dmenu -p "Keyboard Settings" -l 3 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
     "Keyboard Layout"*)
       local layout
-      layout=$(printf "us\ngb\nde\nfr\nes" | dmenu -p "Select Keyboard Layout" -l 5 -c || true)
+      layout=$(printf "us\ngb\nde\nfr\nes" | shree-dmenu -p "Select Keyboard Layout" -l 5 -c || true)
       if [ -n "$layout" ] && command -v setxkbmap >/dev/null 2>&1; then
         setxkbmap "$layout"
         shree-notify "Keyboard" "Layout switched to ${layout}" --app="Settings"
@@ -215,7 +215,7 @@ handle_keyboard() {
       ;;
     "Key Repeat Rate"*)
       local rate
-      rate=$(printf "Fast (250ms delay, 40 rps)\nNormal (300ms delay, 30 rps)\nConservative (400ms delay, 20 rps)" | dmenu -p "Repeat Rate" -l 3 -c || true)
+      rate=$(printf "Fast (250ms delay, 40 rps)\nNormal (300ms delay, 30 rps)\nConservative (400ms delay, 20 rps)" | shree-dmenu -p "Repeat Rate" -l 3 -c || true)
       if [ -n "$rate" ] && command -v xset >/dev/null 2>&1; then
         case "$rate" in
           Fast*) xset r rate 250 40 ;;
@@ -252,7 +252,7 @@ handle_keyboard() {
 # ── 7. Mouse & Pointer ────────────────────────────────────────────────────────
 handle_mouse() {
   local choice
-  choice=$(printf "Pointer Speed: Fast (3/1)\nPointer Speed: Normal (2/1)\nPointer Speed: Precision (1/1)" | dmenu -p "Mouse & Pointer" -l 3 -c || true)
+  choice=$(printf "Pointer Speed: Fast (3/1)\nPointer Speed: Normal (2/1)\nPointer Speed: Precision (1/1)" | shree-dmenu -p "Mouse & Pointer" -l 3 -c || true)
   [ -z "$choice" ] && return
 
   if command -v xset >/dev/null 2>&1; then
@@ -268,7 +268,7 @@ handle_mouse() {
 # ── 8. Power & Energy ─────────────────────────────────────────────────────────
 handle_power() {
   local choice
-  choice=$(printf "Battery Health & Energy Diagnostics\nDisplay Sleep Timeout (5m, 10m, 30m, Never)" | dmenu -p "Power Settings" -l 2 -c || true)
+  choice=$(printf "Battery Health & Energy Diagnostics\nDisplay Sleep Timeout (5m, 10m, 30m, Never)" | shree-dmenu -p "Power Settings" -l 2 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -284,7 +284,7 @@ handle_power() {
       ;;
     "Display Sleep Timeout"*)
       local to
-      to=$(printf "5m\n10m\n30m\nNever" | dmenu -p "Display Sleep Timeout" -l 4 -c || true)
+      to=$(printf "5m\n10m\n30m\nNever" | shree-dmenu -p "Display Sleep Timeout" -l 4 -c || true)
       if [ -n "$to" ] && command -v xset >/dev/null 2>&1; then
         case "$to" in
           5m) xset s 300 dpms 300 450 600 ;;
@@ -303,7 +303,7 @@ handle_datetime() {
   local cur_tz
   cur_tz=$(cat /etc/timezone 2>/dev/null || echo "UTC")
   local choice
-  choice=$(printf "Current Time: %s\nTimezone: %s\nNTP Network Time Synchronization Check" "$(date)" "$cur_tz" | dmenu -p "Date & Time" -l 3 -c || true)
+  choice=$(printf "Current Time: %s\nTimezone: %s\nNTP Network Time Synchronization Check" "$(date)" "$cur_tz" | shree-dmenu -p "Date & Time" -l 3 -c || true)
   [ -z "$choice" ] && return
 
   if [[ "$choice" =~ "NTP" ]]; then
@@ -315,7 +315,7 @@ handle_datetime() {
 handle_users() {
   local cur_user="${USER:-shree}"
   local choice
-  choice=$(printf "Active User: %s\nList System Accounts\nChange User Password" "$cur_user" | dmenu -p "Users & Accounts" -l 3 -c || true)
+  choice=$(printf "Active User: %s\nList System Accounts\nChange User Password" "$cur_user" | shree-dmenu -p "Users & Accounts" -l 3 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -331,7 +331,7 @@ handle_users() {
 # ── 11. Software & Updates ────────────────────────────────────────────────────
 handle_software() {
   local choice
-  choice=$(printf "Launch Package Manager (shree-pkgmanager)\nCheck & Apply System Updates\nManage SafeUpdate Restore Points\nVerify System Package Integrity" | dmenu -p "Software & Updates" -l 4 -c || true)
+  choice=$(printf "Launch Package Manager (shree-pkgmanager)\nCheck & Apply System Updates\nManage SafeUpdate Restore Points\nVerify System Package Integrity" | shree-dmenu -p "Software & Updates" -l 4 -c || true)
   [ -z "$choice" ] && return
 
   case "$choice" in
@@ -373,7 +373,7 @@ About             — ShreeOS release, kernel version & hardware specs"
 TARGET="${1:-}"
 
 if [ -z "$TARGET" ]; then
-  SELECTED=$(echo -e "$CATEGORIES" | dmenu -p "ShreeOS Settings" -l 12 -c || true)
+  SELECTED=$(echo -e "$CATEGORIES" | shree-dmenu -p "ShreeOS Settings" -l 12 -c || true)
   [ -z "$SELECTED" ] && exit 0
   TARGET=$(echo "$SELECTED" | awk '{print tolower($1)}')
 fi

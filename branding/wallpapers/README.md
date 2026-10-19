@@ -1,9 +1,14 @@
 # ShreeOS wallpapers
 
-`shreeos-alpenglow.png` is the default backdrop for the Plasma profile and
-SDDM. It is original AI-generated artwork made with the built-in imagegen tool
-on 2026-10-06, using the user's desktop screenshot as a composition reference.
-The supplied screenshot is not bundled in the image.
+`shreeos-ember-flow.svg` is the default backdrop for the Plasma profile and
+SDDM. It is original ShreeOS vector artwork with broad blue, gold, and ember
+waves, based on the colors and flowing forms in the supplied macOS desktop
+reference. The user-provided screenshots and Apple's wallpaper are not bundled.
+
+`shreeos-alpenglow.png` remains available as an alternate photographic
+wallpaper. It is original AI-generated artwork made with the built-in imagegen
+tool on 2026-10-06, using the earlier mountain screenshot as a composition
+reference.
 
 The stored output is 1672 × 941 pixels. The ISO builder copies it directly;
 it does not upscale the file or claim a 4K source.

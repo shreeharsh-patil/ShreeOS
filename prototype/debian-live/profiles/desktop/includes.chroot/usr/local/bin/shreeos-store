@@ -4,27 +4,36 @@
 import re
 import os
 import subprocess
+import sys
 import threading
+sys.path.insert(0, "/usr/local/lib/shreeos")
 
 import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk
+from ui_theme import themed_css
 
 
-CSS = b"""
-window.shreeos-store { background: #171e28; color: #f5f7fb; }
-headerbar.store-header { background: #202a37; border: 0; box-shadow: none; }
-entry.store-search { background: #2a3544; color: #fff; border: 1px solid #46566b;
-  border-radius: 12px; padding: 10px 14px; }
+CSS = """
+window.shreeos-store { background: @bg@; color: @text@; font-family: '@font_ui@'; }
+headerbar.store-header { background: @bg@; border: 0; box-shadow: none; }
+entry.store-search { background: @surface@; color: @text@; border: 1px solid @border_hex@;
+  border-radius: @radius_control@; padding: 10px 14px; }
+entry.store-search:focus { border-color: @accent@; }
 list.store-results { background: transparent; }
-row.store-row { background: #222d3a; border: 1px solid #344355;
-  border-radius: 14px; margin: 6px 2px; padding: 10px; }
-label.store-title { color: #f5f7fb; font-size: 14px; font-weight: 600; }
-label.store-package, label.store-description, label.store-status { color: #aebbd0; }
-button.store-action { background: #3b6eae; color: white; border: 0;
-  border-radius: 9px; padding: 7px 15px; }
-button.store-action:hover { background: #4c83c8; }
+row.store-row { background: @surface@; border: 1px solid @border_hex@;
+  border-radius: @radius_window@; margin: 5px 2px; padding: 10px; }
+label.store-title { color: @text@; font-size: @font_size_ui@; font-weight: 600; }
+label.store-description, label.store-status { color: @text_secondary@; }
+button.store-action { background: @accent@; color: white; border: 0;
+  border-radius: @radius_control@; padding: 7px 15px; }
+button.store-action:hover { background: @accent_hover@; }
+button.store-sidebar { background: transparent; color: @text@; border: 0;
+  border-radius: @radius_control@; padding: 8px 10px; }
+button.store-sidebar:hover { background: @surface_alt@; }
+button.store-sidebar.selected { background: @accent_muted@; color: @accent@; }
+label.store-section { color: @text_muted@; font-size: @font_size_sm@; font-weight: 600; }
 """
 
 
@@ -52,6 +61,7 @@ class ShreeStore(Gtk.Application):
         self.installed, self.protected = installed_packages()
         self.live_session = os.path.exists("/run/live/medium")
         self.search_timeout = 0
+        self.view = "discover"
 
     def do_activate(self):
         self.window = Gtk.ApplicationWindow(application=self)
@@ -61,26 +71,51 @@ class ShreeStore(Gtk.Application):
         self.window.get_style_context().add_class("shreeos-store")
 
         header = Gtk.HeaderBar(title="Software", show_close_button=True)
+        header.set_subtitle("ShreeOS software")
         header.get_style_context().add_class("store-header")
         self.window.set_titlebar(header)
-        refresh = Gtk.Button(label="Refresh catalog")
+        refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
+        refresh.set_tooltip_text("Refresh package catalog")
         refresh.connect("clicked", self.refresh_catalog)
         header.pack_end(refresh)
         self.refresh_button = refresh
         if self.live_session:
             self.refresh_button.set_sensitive(False)
 
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        content.set_margin_top(20)
-        content.set_margin_bottom(18)
-        content.set_margin_start(22)
-        content.set_margin_end(22)
-        self.window.add(content)
+        shell = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+        shell.set_margin_top(16)
+        shell.set_margin_bottom(16)
+        shell.set_margin_start(18)
+        shell.set_margin_end(18)
+        self.window.add(shell)
 
-        intro = Gtk.Label(label="Find and manage software for ShreeOS")
-        intro.set_xalign(0)
-        intro.set_halign(Gtk.Align.START)
-        intro.get_style_context().add_class("store-description")
+        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        sidebar.set_size_request(150, -1)
+        section = Gtk.Label(label="LIBRARY", xalign=0)
+        section.get_style_context().add_class("store-section")
+        sidebar.pack_start(section, False, False, 8)
+        self.view_buttons = {}
+        for key, label, icon in (
+            ("discover", "Discover", "system-search-symbolic"),
+            ("installed", "Installed", "emblem-ok-symbolic"),
+        ):
+            button = Gtk.Button(label=label)
+            button.set_image(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.BUTTON))
+            button.set_always_show_image(True)
+            button.set_halign(Gtk.Align.FILL)
+            button.get_style_context().add_class("store-sidebar")
+            button.connect("clicked", self.switch_view, key)
+            sidebar.pack_start(button, False, False, 0)
+            self.view_buttons[key] = button
+        self.view_buttons["discover"].get_style_context().add_class("selected")
+        shell.pack_start(sidebar, False, False, 0)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content.set_hexpand(True)
+        shell.pack_start(content, True, True, 0)
+
+        intro = Gtk.Label(label="Explore software for ShreeOS", xalign=0)
+        intro.get_style_context().add_class("store-title")
         content.pack_start(intro, False, False, 0)
 
         self.search = Gtk.SearchEntry(placeholder_text="Search packages and applications")
@@ -102,13 +137,28 @@ class ShreeStore(Gtk.Application):
         scroll.add(self.results)
 
         provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
+        provider.load_from_data(themed_css(CSS).encode("utf-8"))
         Gtk.StyleContext.add_provider_for_screen(
             self.window.get_screen(), provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
         self.window.show_all()
         self.search.grab_focus()
+
+    def switch_view(self, _button, view):
+        self.view = view
+        for key, button in self.view_buttons.items():
+            context = button.get_style_context()
+            if key == view:
+                context.add_class("selected")
+            else:
+                context.remove_class("selected")
+        self.search.set_placeholder_text(
+            "Search installed software" if view == "installed"
+            else "Search packages and applications"
+        )
+        self.search.set_text("")
+        self.fill_results("")
 
     def queue_search(self, *_args):
         if self.search_timeout:
@@ -124,6 +174,34 @@ class ShreeStore(Gtk.Application):
     def fill_results(self, query):
         for row in self.results.get_children():
             self.results.remove(row)
+        if self.view == "installed":
+            try:
+                output = subprocess.run(
+                    ["dpkg-query", "-W", "-f=${Package}\\t${binary:Summary}\\n"],
+                    check=False, capture_output=True, text=True, timeout=15,
+                ).stdout
+            except (OSError, subprocess.TimeoutExpired):
+                self.status.set_text("The installed software list is unavailable.")
+                return
+            matches = []
+            needle = query.casefold()
+            for line in output.splitlines():
+                package, separator, description = line.partition("\t")
+                if not separator or package not in self.installed:
+                    continue
+                if needle and needle not in package.casefold() and needle not in description.casefold():
+                    continue
+                matches.append((package, description))
+                if len(matches) == 40:
+                    break
+            self.status.set_text(
+                f"Showing {len(matches)} installed packages" if matches
+                else "No installed packages match this search"
+            )
+            for package, description in matches:
+                self.results.add(self.package_row(package, description))
+            self.results.show_all()
+            return
         if not query:
             self.status.set_text(
                 "Install ShreeOS to manage packages" if self.live_session

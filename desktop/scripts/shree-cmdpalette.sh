@@ -24,7 +24,7 @@ Lock Screen (Secure Session)
 Reboot System Cleanly
 Power Off Computer"
 
-SELECTED=$(echo "$COMMANDS" | dmenu -p "Command Palette (Super+K)" -l 10 -c)
+SELECTED=$(echo "$COMMANDS" | shree-dmenu -p "Command Palette (Super+K)" -l 10 -c)
 [ -z "$SELECTED" ] && exit 0
 
 case "$SELECTED" in

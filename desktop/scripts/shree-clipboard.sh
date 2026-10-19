@@ -129,7 +129,7 @@ run_interactive() {
     exit 0
   fi
 
-  # Decode history entries for dmenu display
+  # Decode history entries for shree-dmenu display
   local display_items="[Clear Clipboard History]\n[Toggle Clipboard Recording]\n"
   while read -r b64_line; do
     [ -z "$b64_line" ] && continue
@@ -141,7 +141,7 @@ run_interactive() {
   done < <(tac "$HIST_FILE" 2>/dev/null || cat "$HIST_FILE")
 
   local selected
-  selected=$(echo -e "$display_items" | dmenu -p "Clipboard History (Super+V)" -l 8 -c || true)
+  selected=$(echo -e "$display_items" | shree-dmenu -p "Clipboard History (Super+V)" -l 8 -c || true)
   [ -z "$selected" ] && exit 0
 
   if [ "$selected" = "[Clear Clipboard History]" ]; then
