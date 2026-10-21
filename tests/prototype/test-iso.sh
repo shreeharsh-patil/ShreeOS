@@ -437,6 +437,11 @@ PY
     [ ! -s "$emulator_log" ] || cat "$emulator_log" >&2
     return 1
   fi
+  if ! grep -Fq 'SHREEOS_BOOT_CHECK: Ethernet DHCP route is active' "$log"; then
+    echo "${mode} boot did not obtain the DHCP default route required by the live ISO acceptance test." >&2
+    cat "$log" >&2
+    return 1
+  fi
   if [ "$PROFILE" = desktop ] || [ "$PROFILE" = plasma ]; then
     if [ ! -s "$screen_dump" ] || [ ! -s "$screen_before_dock_dump" ]; then
       echo "${mode} boot reached the health marker, but QEMU did not create a desktop screenshot." >&2

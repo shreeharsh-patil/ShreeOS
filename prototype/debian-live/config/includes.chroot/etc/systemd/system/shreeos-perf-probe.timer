@@ -1,9 +1,11 @@
 [Unit]
-Description=Schedule the ShreeOS live performance probe after the desktop target
+Description=Schedule the ShreeOS live performance probe after startup settles
 ConditionPathExists=/run/live/medium
 
 [Timer]
-OnActiveSec=5s
+# This timer is pulled into the graphical-target boot transaction. Delay the
+# collector until after that transaction can record systemd's boot-finish time.
+OnActiveSec=5min
 AccuracySec=1s
 Unit=shreeos-perf-probe.service
 

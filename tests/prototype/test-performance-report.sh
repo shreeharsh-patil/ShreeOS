@@ -447,6 +447,7 @@ fi
 # would truncate them and silently weaken the report.
 awk 'index($0, "SHREEOS_PERF ") {
        line = substr($0, index($0, "SHREEOS_PERF ") + length("SHREEOS_PERF "))
+       sub(/\r$/, "", line)
        separator = index(line, "=")
        if (separator > 1) print substr(line, 1, separator - 1) "\t" substr(line, separator + 1)
      }' "$SERIAL" | sort -u >"$TEST_DIR/metrics.tsv"

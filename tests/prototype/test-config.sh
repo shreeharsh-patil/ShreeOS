@@ -45,6 +45,8 @@ grep -Fq 'LIVE_APPEND_COMPONENTS=hostname,user-setup,locales,tzdata,keyboard-con
   "$REPO_ROOT/scripts/build-debian-prototype.sh"
 grep -Fq 'passwd --status shree' "$boot_check"
 grep -Fq 'live account password is locked' "$boot_check"
+grep -Fq 'Plasma user journal' "$boot_check"
+grep -Fq 'coredumpctl --no-pager list' "$boot_check"
 grep -Fq 'SHREEOS_LIVE_BOOT_OK' "$boot_check"
 grep -Fq 'SHREEOS_BOOT_CHECK: %s' "$boot_check"
 grep -Fq 'StandardOutput=journal+console' \
@@ -62,6 +64,13 @@ grep -Fq 'apt-get check' "$boot_check"
 grep -Fq 'lsblk -ndo TYPE' "$boot_check"
 grep -Fq 'NetworkManager.service' "$boot_check"
 grep -Fq 'nmcli -t -f TYPE,STATE device status' "$boot_check"
+grep -Fq 'continuing with offline boot' "$boot_check"
+if grep -Fq "fail 'the Ethernet interface did not receive a default route'" "$boot_check"; then
+  echo 'Offline network must not fail live boot validation.' >&2
+  exit 1
+fi
+grep -Fq 'SHREEOS_BOOT_CHECK: Ethernet DHCP route is active' \
+  "$REPO_ROOT/tests/prototype/test-iso.sh"
 grep -Fq 'unexpectedly has sudo access' "$boot_check"
 if grep -Eq 'live-config\.components=[^ ]*sudo' \
   "$REPO_ROOT/scripts/build-debian-prototype.sh"; then
