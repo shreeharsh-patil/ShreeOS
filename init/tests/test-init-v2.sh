@@ -297,6 +297,11 @@ fi
 
 # Verify mutating operations are denied when strict authentication is active
 STRICT_SOCK="${TEST_TMP}/strict.sock"
+# SO_PEERCRED authorizes uid 0 by design: root may always control services, so
+# a root client cannot demonstrate the denial path. The socket itself is 0666,
+# so an unprivileged peer only has to be able to reach its directory.
+STRICT_DIR_MODE="$(stat -c '%a' "$TEST_TMP")"
+chmod 0755 "$TEST_TMP"
 "$INIT_BIN" --test --strict-auth --services-dir "$SERVICES_DIR" --socket "$STRICT_SOCK" --log-dir "$LOG_DIR" >/dev/null 2>&1 &
 STRICT_PID=$!
 for _ in $(seq 1 20); do
@@ -304,18 +309,38 @@ for _ in $(seq 1 20); do
   sleep 0.1
 done
 
-UNAUTH_OUTPUT=$(INIT_SOCK_PATH="$STRICT_SOCK" "$INITCTL_BIN" start first 2>&1 || true)
+# The client has to be an unprivileged peer for the authorization check to say
+# anything. When this suite runs as root (CI build containers do), drop the
+# client to an unprivileged uid instead of exercising the root allow path.
+run_unprivileged_client() {
+  if [ "$(id -u)" -ne 0 ]; then
+    INIT_SOCK_PATH="$STRICT_SOCK" "$INITCTL_BIN" "$@"
+    return
+  fi
+  if command -v setpriv >/dev/null 2>&1; then
+    setpriv --reuid=65534 --regid=65534 --clear-groups \
+      env INIT_SOCK_PATH="$STRICT_SOCK" "$INITCTL_BIN" "$@"
+    return
+  fi
+  return 127
+}
+
+UNAUTH_STATUS=0
+UNAUTH_OUTPUT=$(run_unprivileged_client start first 2>&1) || UNAUTH_STATUS=$?
 kill -TERM "$STRICT_PID" 2>/dev/null || true
 wait "$STRICT_PID" 2>/dev/null || true
 STRICT_PID=""
 
 if echo "$UNAUTH_OUTPUT" | grep -q "Permission denied"; then
   echo "  [OK] Unauthorized mutating IPC command rejected with 'Permission denied'"
+elif [ "$UNAUTH_STATUS" -eq 127 ]; then
+  echo "  [SKIP] No way to run the IPC client as an unprivileged peer (setpriv and non-root execution both unavailable); the root-only allow path is not a denial test."
 else
-  echo "FAIL: Unauthorized mutating IPC command was not properly blocked:"
+  echo "FAIL: Unauthorized mutating IPC command was not properly blocked (client exit ${UNAUTH_STATUS}):"
   echo "$UNAUTH_OUTPUT"
   exit 1
 fi
+chmod "$STRICT_DIR_MODE" "$TEST_TMP"
 
 # ---------------------------------------------------------
 # Test 8: Orderly Shutdown in Reverse Dependency Sequence

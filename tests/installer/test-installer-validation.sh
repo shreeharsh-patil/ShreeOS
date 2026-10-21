@@ -294,6 +294,27 @@ if [ "$(uname -s)" != Linux ]; then
   exit 0
 fi
 
+# The installer refuses to run without its own required commands, and it does so
+# before the preflight conditions under test. A missing host tool would then be
+# reported as "the installer did not reject invalid input" instead of as a
+# dependency gap. The list is read from the installer's own require calls so it
+# cannot drift from what the scripts really need. Exit 2 is this repository's
+# "missing prerequisite" status.
+missing_tools=()
+installer_required_commands() {
+  sed -n 's/^[[:space:]]*shreeos_require_cmd[[:space:]]\{1,\}\(.*\)$/\1/p' \
+    "$INSTALLER" "${ROOT_DIR}/installer/scripts/partition-disk.sh" \
+    | tr ' ' '\n' | sed '/^$/d' | sort -u
+}
+while read -r required_tool; do
+  command -v "$required_tool" >/dev/null 2>&1 || missing_tools+=("$required_tool")
+done < <(installer_required_commands)
+if [ "${#missing_tools[@]}" -gt 0 ]; then
+  echo "Missing installer test dependency: ${missing_tools[*]}" >&2
+  echo "Install them (Debian: fdisk e2fsprogs dosfstools cpio grub2-common openssl util-linux) and re-run." >&2
+  exit 2
+fi
+
 PREFLIGHT_DIR=$(mktemp -d /tmp/shreeos-installer-preflight-XXXXXX)
 trap 'rm -rf "$PREFLIGHT_DIR"' EXIT
 PREFLIGHT_STAGE="$PREFLIGHT_DIR/rootfs"

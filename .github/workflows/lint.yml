@@ -94,11 +94,12 @@ jobs:
       - name: Exercise destructive installer preflight without touching real disks
         run: |
           set -Eeuo pipefail
-          # The installer requires sfdisk, mkfs.vfat, cpio, grub-install and
-          # openssl. Without them every preflight refusal would report the
-          # missing tool instead of the condition under test.
+          # The installer requires sfdisk, mkfs.vfat, mkfs.ext4, cpio,
+          # grub-install and openssl. Without them every preflight refusal would
+          # report the missing tool instead of the condition under test, and the
+          # case list below would fail for the wrong reason.
           sudo apt-get install -y --no-install-recommends \
-            fdisk dosfstools cpio grub2-common openssl
+            fdisk e2fsprogs dosfstools cpio grub2-common openssl
           bash tests/installer/test-installer-validation.sh
 
       - name: Parse every workflow YAML file

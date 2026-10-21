@@ -18,6 +18,11 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
+# The unified image entry point (scripts/build-shreeos.sh) requires live-build,
+# debootstrap, squashfs-tools, dpkg-dev, librsvg2-bin and debian-archive-keyring
+# in addition to the source-build toolchain. They are installed here so a host
+# prepared by this script can actually build the release artifact instead of
+# failing the environment validation with an empty tool list.
 "${APT[@]}" update
 "${APT[@]}" install -y --no-install-recommends \
   git ca-certificates python3 python3-venv python3-mako python3-yaml python3-xcbgen perl \
@@ -31,7 +36,21 @@ export DEBIAN_FRONTEND=noninteractive
   xorriso mtools dosfstools fdisk util-linux e2fsprogs kmod \
   grub-pc-bin grub-efi-amd64-bin grub-common grub2-common \
   qemu-system-x86 ovmf \
-  shellcheck
+  shellcheck \
+  live-build debootstrap squashfs-tools dpkg-dev librsvg2-bin \
+  debian-archive-keyring rsync
+
+# scripts/build-shreeos.sh only accepts the live-build version pinned in
+# prototype/debian-live/versions.conf. Report drift here, where the fix (add the
+# matching suite snapshot or install the pinned version) is obvious, instead of
+# letting the image build refuse to start.
+# shellcheck source=../prototype/debian-live/versions.conf
+. "$(dirname "${BASH_SOURCE[0]}")/../prototype/debian-live/versions.conf"
+installed_live_build="$(dpkg-query -W -f='${Version}' live-build 2>/dev/null || true)"
+if [ "$installed_live_build" != "$LIVE_BUILD_VERSION" ]; then
+  printf '[warn] live-build %s is installed but the image contract pins %s; scripts/build-shreeos.sh will refuse to build until they match.\n' \
+    "${installed_live_build:-none}" "$LIVE_BUILD_VERSION" >&2
+fi
 
 # libxcb's source generator runs on the build host even though libxcb itself is
 # cross-compiled for ShreeOS. Check that the module can be located without

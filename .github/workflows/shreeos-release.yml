@@ -71,12 +71,12 @@ jobs:
       - name: Install static-analysis and installer test tools
         run: |
           sudo apt-get update
-          # The installer requires sfdisk, mkfs.vfat, cpio, grub-install and
-          # openssl. Without them every preflight refusal would report the
-          # missing tool instead of the condition under test.
+          # The installer requires sfdisk, mkfs.vfat, mkfs.ext4, cpio,
+          # grub-install and openssl. Without them every preflight refusal would
+          # report the missing tool instead of the condition under test.
           sudo apt-get install -y --no-install-recommends \
             shellcheck python3-yaml python3-pil cpio build-essential \
-            fdisk dosfstools grub2-common openssl
+            fdisk e2fsprogs dosfstools grub2-common openssl
 
       - name: Enforce the single-authoritative-version contract
         run: |
