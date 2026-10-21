@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <limits.h>
 
 static int safe_exec(const char *file, char *const argv[]) {
     pid_t pid = fork();
@@ -347,7 +348,9 @@ static int validate_repository_packages(const json_value *packages) {
 
 static int get_repo_url(char *buf, size_t maxlen) {
     int have_configured_url = 0;
-    if (!buf || maxlen < 32) return -1;
+    /* fgets() takes its size as an int, so a buffer whose size cannot be
+     * represented there is rejected instead of being silently truncated. */
+    if (!buf || maxlen < 32 || maxlen > INT_MAX) return -1;
 
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {

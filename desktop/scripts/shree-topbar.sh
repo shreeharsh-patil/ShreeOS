@@ -37,7 +37,7 @@ get_active_app() {
       if command -v xdotool >/dev/null 2>&1; then
         win_name=$(xdotool getwindowname "$win_id" 2>/dev/null | cut -c1-24 || true)
       else
-        win_name=$(xprop -id "$win_id" _NET_WM_NAME 2>/dev/null | sed -n 's/.*= "//; s/"$//; p' | cut -c1-24)
+        win_name=$(xprop -id "$win_id" _NET_WM_NAME 2>/dev/null | sed -n 's/.*= "//; s/"$//; p' | cut -c1-24 || true)
       fi
       [ -n "$win_name" ] && echo "$win_name" || echo "ShreeOS"
       ;;

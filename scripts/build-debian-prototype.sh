@@ -70,7 +70,10 @@ fi
 
 BUILD_ROOT="$REPO_ROOT/build"
 BUILD_DIR="$BUILD_ROOT/debian-live-prototype"
-OUT_DIR="$REPO_ROOT/out"
+# The output directory is the SHREEOS_OUT knob that build.conf publishes for
+# final artifacts. The canonical builder honours it, so this script has to
+# honour it too or the two disagree about where the image was written.
+OUT_DIR="${SHREEOS_OUT:-$REPO_ROOT/out}"
 case "$BUILD_DIR" in
   "$BUILD_ROOT/debian-live-prototype") ;;
   *) echo "Unsafe prototype build path: $BUILD_DIR" >&2; exit 2 ;;
@@ -337,7 +340,9 @@ ISO_APPLICATION="ShreeOS Base Prototype"
 ISO_VOLUME="SHREEOS_PROTO"
 if [ "$SHREEOS_UNIFIED" = 1 ]; then
   ISO_APPLICATION="ShreeOS ${PROTOTYPE_VERSION} Unified Desktop"
-  ISO_VOLUME="SHREEOS_040"
+  # The volume label carries the release version, so it is derived from the
+  # version source of truth instead of being written down here.
+  ISO_VOLUME="SHREEOS_$(printf '%s' "$PROTOTYPE_VERSION" | tr -cd '0-9')"
 fi
 APT_RECOMMENDS=true
 if [ "$SHREEOS_UNIFIED" = 1 ]; then APT_RECOMMENDS=false; fi

@@ -1,5 +1,11 @@
 # base-system/profiles/desktop.list — Desktop graphical profile
 # Inherits server profile and adds display server, window management, fonts, and terminals
+#
+# Every entry below names a package the source-built stages actually produce.
+# base-system/README.md requires that optional services are not claimed as
+# installed until they have a pinned ShreeOS package/build recipe, so a
+# package that only exists in the Debian prototype prototype/ path is listed
+# as a comment.
 
 # Include server profile
 @server
@@ -8,10 +14,10 @@
 xorg-server
 xinit
 mesa
-libinput
 libx11
 libxft
 libxinerama
+# libinput — no pinned ShreeOS package/build recipe yet.
 
 # Window Manager & GUI Utilities
 dwm

@@ -44,7 +44,9 @@ int shreed_collect_brightness(const char *root, char *buffer, size_t size) {
             if (ent->d_name[0] == '.') continue;
             int cur = read_int_file(root, ent->d_name, "brightness");
             int max = read_int_file(root, ent->d_name, "max_brightness");
-            int pct = (cur >= 0 && max > 0) ? (cur * 100 / max) : 100;
+            /* The percentage is computed in long arithmetic so a large
+             * sysfs brightness value cannot overflow the int result. */
+            int pct = (cur >= 0 && max > 0) ? (int)(((long)cur * 100L) / max) : 100;
 
             if (count++) shreed_json_append(&json, ",");
             shreed_json_append(&json, "{\"name\":"); shreed_json_string(&json, ent->d_name);

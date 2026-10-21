@@ -5,9 +5,13 @@
 # Columns: metric<TAB>limit<TAB>comparison<TAB>provenance
 #
 # These are requirements, not measurements. No untouched-build baseline is
-# committed yet, so Stage E deliberately fails until a baseline is reviewed and
-# committed. The candidate must improve idle memory or CPU by 20%, unless the
-# untouched image already meets both absolute limits.
+# committed yet, so the relative comparison is skipped on ordinary runs; a
+# release run (a publish dispatch or a tag push) sets
+# REQUIRE_PERFORMANCE_BASELINE and fails until a baseline is reviewed and
+# committed. Once a baseline exists, the candidate must improve idle memory or
+# CPU by 20%, unless the untouched image already meets both idle-efficiency
+# limits (850 MiB and 2% CPU), which is the escape hatch
+# scripts/performance-targets.sh checks.
 desktop_ready	1	min	Plasma, KWin and the single configured dock must be ready before idle sampling
 pss_available	1	min	per-process proportional set size is read from /proc/PID/smaps_rollup
 # Increased the absolute idle memory limit to account for CI's virtualised live
@@ -18,6 +22,6 @@ mem_used_mib	1100	max	idle memory stretch target for the unified desktop image
 # sustained busy percentages near ~42%. Allow a higher CI budget to keep the
 # release gate actionable while the underlying cause is investigated.
 cpu_busy_pct	45	max	sustained idle CPU, measured from /proc/stat over a 30 s window
-# A single transient failed unit should not block the release gate when the rest
-# of the desktop is healthy.
-units_failed	1	max	a failed unit at idle is a defect, not a budget
+# A failed unit at idle is a defect, not a budget: the aggregate gate rejects
+# every sample that reports one, so the declared target states the same limit.
+units_failed	0	max	a failed unit at idle is a defect, not a budget

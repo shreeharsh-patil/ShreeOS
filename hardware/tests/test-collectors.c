@@ -10,6 +10,30 @@ static int failures;
     else { fprintf(stderr, "FAIL: %s\n", name); failures++; } \
 } while (0)
 
+/* The daemon contract is one balanced JSON object, so a collector that closes
+ * the document twice has to be caught instead of being published as-is. */
+static bool json_object(const char *response) {
+    int depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+
+    for (const char *cursor = response; *cursor; cursor++) {
+        if (in_string) {
+            if (escaped) escaped = false;
+            else if (*cursor == '\\') escaped = true;
+            else if (*cursor == '"') in_string = false;
+            continue;
+        }
+        if (*cursor == '"') { in_string = true; continue; }
+        if (*cursor == '{' || *cursor == '[') depth++;
+        else if (*cursor == '}' || *cursor == ']') {
+            depth--;
+            if (depth < 0) return false;
+        }
+    }
+    return depth == 0 && !in_string;
+}
+
 int main(int argc, char **argv) {
     char response[16384];
     const char *root;
@@ -43,9 +67,12 @@ int main(int argc, char **argv) {
     TEST("missing driver", shreed_collect_drivers(root, response, sizeof(response), true) == 0 &&
          strstr(response, "\"driver\":null") != NULL && strstr(response, "attention_required") != NULL);
     TEST("firmware report is conservative", shreed_collect_firmware(root, response, sizeof(response)) == 0 && strstr(response, "no automatic download") != NULL);
+    TEST("firmware report is a balanced JSON object", shreed_collect_firmware(root, response, sizeof(response)) == 0 && json_object(response));
     TEST("diagnostic report is read-only", shreed_collect_diagnostics(root, response, sizeof(response)) == 0 && strstr(response, "\"read_only\":true") != NULL);
+    TEST("diagnostic report is a balanced JSON object", shreed_collect_diagnostics(root, response, sizeof(response)) == 0 && json_object(response));
     TEST("hardware summary fixture", shreed_collect_hardware(root, response, sizeof(response)) == 0 &&
          strstr(response, "Fixture CPU 9000") != NULL && strstr(response, "Fixture NVMe") != NULL);
+    TEST("hardware summary is a balanced JSON object", shreed_collect_hardware(root, response, sizeof(response)) == 0 && json_object(response));
     TEST("missing hardware is graceful", shreed_collect_cpu("/missing-shreed-fixture", response, sizeof(response)) == 0 &&
          strstr(response, "\"model\":null") != NULL);
     TEST("battery collector graceful", shreed_collect_battery(root, response, sizeof(response)) == 0 &&

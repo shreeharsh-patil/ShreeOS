@@ -63,6 +63,14 @@ int shreed_prepare_socket_path(const char *path) {
         errno = EINVAL;
         return -1;
     }
+    /* The service manager may only guarantee /run itself, so the daemon
+     * creates its own runtime directory the same way it creates the log
+     * directory; without it bind() fails with ENOENT and the service
+     * never starts. */
+    if (strcmp(path, SHREED_SOCKET_PATH) == 0) {
+        if (mkdir("/run", 0755) != 0 && errno != EEXIST) return -1;
+        if (mkdir("/run/shreeos", 0755) != 0 && errno != EEXIST) return -1;
+    }
     if (lstat(path, &status) == 0) {
         if (!S_ISSOCK(status.st_mode)) {
             errno = EEXIST;

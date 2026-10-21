@@ -22,7 +22,7 @@ def main(arguments):
         iso_size = iso_path.stat().st_size
         with iso_path.open("rb") as stream:
             iso_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
         print(f"Could not read image provenance: {error}", file=sys.stderr)
         return 1
 

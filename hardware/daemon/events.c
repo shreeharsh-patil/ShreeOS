@@ -139,12 +139,12 @@ void shreed_events_process_network(int fd, shreed_client_t clients[]) {
             } else if (message->nlmsg_type == RTM_DELLINK) {
                 struct ifinfomsg *link = NLMSG_DATA(message);
                 (void)if_indextoname(link->ifi_index, name);
-                if (link->ifi_index < 65536) known_interfaces[link->ifi_index] = false;
+                if (link->ifi_index >= 0 && link->ifi_index < 65536) known_interfaces[link->ifi_index] = false;
                 event = "NETWORK_INTERFACE_REMOVED";
             } else if (message->nlmsg_type == RTM_NEWLINK) {
                 struct ifinfomsg *link = NLMSG_DATA(message);
                 (void)if_indextoname(link->ifi_index, name);
-                if (link->ifi_index < 65536 && !known_interfaces[link->ifi_index]) {
+                if (link->ifi_index >= 0 && link->ifi_index < 65536 && !known_interfaces[link->ifi_index]) {
                     known_interfaces[link->ifi_index] = true;
                     event = "NETWORK_INTERFACE_ADDED";
                 } else {

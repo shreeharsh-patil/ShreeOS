@@ -79,6 +79,9 @@ def write_provenance(args: argparse.Namespace) -> None:
         raise ValueError("aggregate has no valid measurement protocol SHA-256")
     if not re.fullmatch(r"[0-9a-f]{64}", metadata.get("iso_sha256", "")):
         raise ValueError("aggregate is missing a valid measured ISO SHA-256")
+    conditions = metadata.get("conditions", "")
+    if not conditions:
+        raise ValueError("aggregate does not identify the measurement conditions")
 
     files = {"performance-baseline.tsv": sha256(baseline)}
     for index, sample in enumerate(samples, 1):
@@ -122,7 +125,7 @@ def write_provenance(args: argparse.Namespace) -> None:
         "baseline_source_commit": BASELINE_SOURCE_COMMIT,
         "iso_sha256": metadata["iso_sha256"],
         "measurement_protocol_sha256": protocol,
-        "conditions": metadata["conditions"],
+        "conditions": conditions,
         "sample_count": 3,
         "files": files,
         "raw_evidence_files": raw_evidence_files,

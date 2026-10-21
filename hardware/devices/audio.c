@@ -27,7 +27,10 @@ int shreed_collect_audio(const char *root, char *buffer, size_t size) {
             char line[256];
             while (fgets(line, sizeof(line), f) && count < MAX_AUDIO_CARDS) {
                 int idx;
-                char id[64], name[128];
+                /* Both buffers are cleared first: a card line without a device
+                 * description matches only two fields and would otherwise copy
+                 * uninitialised stack memory into the response. */
+                char id[64] = "", name[128] = "";
                 /* Format: " 0 [PCH            ]: HDA-Intel - HDA Intel PCH" */
                 if (sscanf(line, " %d [%63[^]]]: %127[^\r\n]", &idx, id, name) >= 2) {
                     cards[count].index = idx;

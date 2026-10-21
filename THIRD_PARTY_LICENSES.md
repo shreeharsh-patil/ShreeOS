@@ -15,10 +15,13 @@ root filesystem audits are needed to identify what was actually installed.
 
 ## Debian Live prototype
 
-The experimental prototype currently selects Debian's `main` archive area,
-which contains free software under a range of licenses. It does not include
-the `contrib` or `non-free` archive areas or request Debian's non-free
-firmware. The actual installed package names and versions are recorded in
+The experimental prototype selects Debian's `main` archive area, which contains
+free software under a range of licenses. It never enables the `contrib` or
+`non-free` archive areas. The firmware component follows the image's firmware
+policy: the graphical profiles default to `SHREEOS_FIRMWARE=standard`, which
+also selects `non-free-firmware`, and the console base profile defaults to
+`SHREEOS_FIRMWARE=free`; `SHREEOS_FIRMWARE=free` keeps any profile on `main`
+alone. The actual installed package names and versions are recorded in
 `out/shreeos-<version>-packages.txt` and in the ISO's
 `/live/filesystem.packages`. Debian packages retain upstream copyright and
 license information in their installed documentation, usually under
@@ -31,9 +34,13 @@ upstream source; a short project-level list cannot replace those notices.
 
 The optional desktop profile adds the Debian `firmware-linux-free` package,
 which Debian describes as firmware compliant with the Debian Free Software
-Guidelines. It deliberately does not enable `non-free-firmware` or bundle
-device blobs whose redistribution terms have not been reviewed. This is a
-limited set and does not imply broad device support. See the
+Guidelines and which comes from `main`. A graphical profile built with the
+default `standard` firmware policy additionally selects the
+`non-free-firmware` packages listed in
+[`prototype/debian-live/features/package-lists/shreeos-hardware.list.chroot`](prototype/debian-live/features/package-lists/shreeos-hardware.list.chroot);
+those carry proprietary blobs under package-specific redistribution terms and
+are covered in the firmware section below. This is a limited set and does not
+imply broad device support. See the
 [Debian package record](https://packages.debian.org/trixie/firmware-linux-free)
 and preserve its installed copyright record with the image.
 

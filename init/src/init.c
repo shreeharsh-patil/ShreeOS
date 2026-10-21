@@ -1325,15 +1325,25 @@ int main(int argc, char **argv) {
         }
 
         pid_t rpid = fork();
+        if (rpid < 0) {
+            fprintf(stderr, "[init:fail] Could not fork recovery console: %s\n", strerror(errno));
+            perform_shutdown();
+            return 0;
+        }
         if (rpid == 0) {
             setsid();
             execl("/usr/bin/shree-recovery", "shree-recovery", (char *)NULL);
             execl("/bin/sh", "sh", (char *)NULL);
             _exit(1);
         }
-        int status;
-        waitpid(rpid, &status, 0);
-        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        /* The recovery console exit status decides whether the system may boot
+         * normally, so it must never be read from an unwaited-for child. */
+        int status = 0;
+        pid_t waited;
+        do {
+            waited = waitpid(rpid, &status, 0);
+        } while (waited < 0 && errno == EINTR);
+        if (waited == rpid && WIFEXITED(status) && WEXITSTATUS(status) == 0) {
             printf("\n[init] Recovery requested normal boot. Starting services...\n");
         } else {
             printf("\n[init] Recovery ended without normal-boot confirmation. Rebooting...\n");

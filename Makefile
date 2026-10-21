@@ -22,6 +22,7 @@
 #   shreeos         — Build the unified ShreeOS desktop image (out/shreeos(VERSION).iso)
 #   shreeos-check   — Validate the build environment and version contract only
 #   shreeos-verify  — Re-verify an already-built image without rebuilding
+#   unified-iso     — Build the unified image through the pinned live-build pipeline
 #   toolchain       — Phase 1: cross-compilation toolchain
 #   base-system     — Phase 2: base userland packages
 #   kernel          — Phase 3: Linux kernel
@@ -33,15 +34,21 @@
 #   distro          — Run the legacy source-build desktop certification checks
 #   security-distro — Build and certify the security workstation distribution
 #   release-check   — Legacy source-build desktop readiness checks
+#   audit           — Report what the source tree and a built image contain
+#   audit-iso       — Audit a built ISO (ISO=path/to/image.iso)
+#   test-toolchain  — Cross-compilation toolchain smoke checks
 #   test-unit       — LPM package manager unit tests
+#   test-init       — Init supervisor unit tests
 #   test-security   — System security audit tests
 #   test-auth       — Authentication & credential tests
 #   test-installer  — Disk installer validation tests
 #   test-pkgmanager — LPM transaction & hash verification tests
 #   test-desktop    — Desktop suite syntax & token tests
+#   test-base-system — Base-system contract and smoke checks
 #   test-hardware   — shreed daemon IPC lifecycle tests
 #   test-smoke      — Smoke test aggregator
 #   test-qemu       — Automated QEMU boot & install tests
+#   test-prototype-config — Prototype configuration contract gate
 #   test-all        — All automated test suites
 #   qemu            — Launch built ISO in QEMU (UEFI)
 #   qemu-bios       — Launch built ISO in QEMU (BIOS)
@@ -66,6 +73,7 @@ help:
 	@echo "  make shreeos              Build out/shreeos(VERSION).iso (Debian 13 + KDE Plasma)"
 	@echo "  make shreeos-check        Validate build environment and version contract only"
 	@echo "  make shreeos-verify       Re-verify an existing image without rebuilding"
+	@echo "  make unified-iso          Build the unified image through the pinned live-build pipeline"
 	@echo ""
 	@echo "Legacy experimental source-build pipeline:"
 	@echo "  make toolchain            Phase 1: Cross-compilation toolchain"
@@ -87,19 +95,26 @@ help:
 	@echo "  make verify-sources       Verify upstream URLs, checksum format, and downloaded tarballs"
 	@echo "  make graphics             Strictly validate target desktop graphics readiness"
 	@echo "  make verify-iso           Validate ISO structure and BIOS/UEFI boot"
+	@echo "  make audit                Report what the source tree and a built image contain"
+	@echo "  make audit-iso            Audit a built ISO (ISO=path/to/image.iso)"
 	@echo "  make release-check        Run legacy source-build desktop readiness checks"
 	@echo "  make security-release-check  Run strict security edition certification"
 	@echo ""
 	@echo "Testing & Execution Targets:"
+	@echo "  make test-toolchain       Run the cross-compilation toolchain smoke checks"
 	@echo "  make test-unit            Run LPM package manager C unit tests"
+	@echo "  make test-init            Run the init supervisor unit tests"
 	@echo "  make test-security        Run system security audits"
 	@echo "  make test-auth            Run authentication & credential tests"
 	@echo "  make test-installer       Run disk installer validation tests"
 	@echo "  make test-pkgmanager      Run LPM transaction tests"
+	@echo "  make test-desktop         Run the desktop suite syntax and token checks"
+	@echo "  make test-base-system     Run the base-system contract and smoke checks"
 	@echo "  make test-hardware        Run shreed daemon IPC lifecycle tests"
 	@echo "  make test-smoke           Run desktop & system smoke suite"
 	@echo "  make test-qemu            Run automated QEMU ISO & installed disk tests"
 	@echo "  make test-audit           Run the distribution audit tool self-tests"
+	@echo "  make test-prototype-config  Run the prototype configuration contract gate"
 	@echo "  make test-all             Run all automated test suites"
 	@echo "  make qemu                 Launch built ISO in QEMU (UEFI mode)"
 	@echo "  make qemu-bios            Launch built ISO in QEMU (BIOS mode)"
@@ -190,6 +205,7 @@ test-prototype-config:
 	python3 tests/prototype/test-search-calculator.py
 	python3 tests/prototype/test-workspace-overview.py
 	python3 tests/prototype/test-branding.py
+	python3 tests/prototype/test-design-tokens.py
 
 test-prototype: test-prototype-config
 	@test -n "$(ISO)" || { echo "Usage: make test-prototype ISO=path/to/prototype.iso" >&2; exit 2; }

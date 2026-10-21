@@ -2,10 +2,13 @@
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <errno.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAX_APPS 8
@@ -15,6 +18,9 @@
 #define PAD 12
 #define BOTTOM_GAP 12
 #define HIDDEN_EDGE 4
+
+/* Root polling interval used for screen geometry and theme changes. */
+static const struct timespec poll_interval = {0, 200000000L};
 
 typedef struct {
     int icon_size;
@@ -117,8 +123,12 @@ static DockConfig load_config(void) {
 
         if (strcmp(key, "ICON_SIZE") == 0) {
             char *end = NULL;
-            long parsed = strtol(value, &end, 10);
-            if (end && *end == '\0') cfg.icon_size = clamp_int((int)parsed, MIN_ICON, MAX_ICON);
+            long parsed;
+            errno = 0;
+            parsed = strtol(value, &end, 10);
+            /* An empty or unparsable value keeps the default icon size. */
+            if (end && end != value && *end == '\0' && errno == 0)
+                cfg.icon_size = clamp_int((int)parsed, MIN_ICON, MAX_ICON);
         } else if (strcmp(key, "AUTOHIDE") == 0) {
             cfg.autohide = strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
         } else if (strcmp(key, "PINNED_APPS") == 0) {
@@ -192,7 +202,7 @@ static double glass_opacity(void) {
     double opacity;
     if (!value || !*value) return 0.88;
     opacity = strtod(value, &end);
-    if (!end || *end != '\0' || opacity < 0.45 || opacity > 0.96) return 0.88;
+    if (!end || *end != '\0' || !isfinite(opacity) || opacity < 0.45 || opacity > 0.96) return 0.88;
     return opacity;
 }
 
@@ -330,7 +340,6 @@ int main(void) {
     int hidden = 0;
     unsigned long surface, tile, tile_hover, text, accent;
     unsigned long root;
-    Atom theme_atom;
     int dark;
     DockPalette palette;
 
@@ -371,42 +380,58 @@ int main(void) {
 
     font = XLoadQueryFont(dpy, "fixed");
     if (!font) font = XQueryFont(dpy, XGContextFromGC(DefaultGC(dpy, screen)));
+    if (!font) {
+        fprintf(stderr, "shree-dock-ui: no usable font could be loaded\n");
+        XCloseDisplay(dpy);
+        return 1;
+    }
     gcv.font = font->fid;
     gc = XCreateGC(dpy, win, GCFont, &gcv);
 
-    /* Root ConfigureNotify events let the dock track display resize and
-     * resolution changes instead of remaining off-center or offscreen. */
-    theme_atom = XInternAtom(dpy, "_SHREEOS_THEME", False);
-    XSelectInput(dpy, root, StructureNotifyMask | PropertyChangeMask);
+    /* The window manager already owns StructureNotifyMask and
+     * PropertyChangeMask on the root window, and X11 allows only one client
+     * per exclusive event type.  Selecting them here makes the window
+     * manager fail with BadAccess, so the dock polls the root in the event
+     * loop instead of selecting the root events. */
     XMapRaised(dpy, win);
     XFlush(dpy);
 
     for (;;) {
+        /* Polling the root keeps the dock centred on screen resize and
+         * follows theme changes without taking the window manager's
+         * exclusive root events. */
+        if (!XPending(dpy)) {
+            XWindowAttributes root_attributes;
+            int current_width = sw;
+            int current_height = sh;
+            int current_dark;
+            /* The cached screen size only changes when the client receives
+             * the root events, so the root geometry is queried directly. */
+            if (XGetWindowAttributes(dpy, root, &root_attributes)) {
+                current_width = root_attributes.width;
+                current_height = root_attributes.height;
+            }
+            current_dark = theme_is_dark(dpy, root);
+            if (current_width != sw || current_height != sh) {
+                sw = current_width;
+                sh = current_height;
+                visible_y = sh - height - BOTTOM_GAP;
+                hidden_y = sh - HIDDEN_EDGE;
+                XMoveWindow(dpy, win, (sw - width) / 2, hidden ? hidden_y : visible_y);
+            }
+            if (current_dark != dark) {
+                dark = current_dark;
+                set_palette(dpy, screen, dark, &surface, &tile, &tile_hover, &text, &accent, &palette);
+                XSetWindowBackground(dpy, win, surface);
+                XClearWindow(dpy, win);
+                draw_dock(dpy, win, gc, font, &cfg, width, height, hover,
+                          surface, tile, tile_hover, text, accent, &palette);
+            }
+            nanosleep(&poll_interval, NULL);
+            continue;
+        }
         XNextEvent(dpy, &ev);
         switch (ev.type) {
-            case ConfigureNotify:
-                if (ev.xconfigure.window == root &&
-                    ev.xconfigure.width > 0 && ev.xconfigure.height > 0 &&
-                    (sw != ev.xconfigure.width || sh != ev.xconfigure.height)) {
-                    sw = ev.xconfigure.width;
-                    sh = ev.xconfigure.height;
-                    visible_y = sh - height - BOTTOM_GAP;
-                    hidden_y = sh - HIDDEN_EDGE;
-                    XMoveWindow(dpy, win, (sw - width) / 2,
-                                hidden ? hidden_y : visible_y);
-                }
-                break;
-            case PropertyNotify:
-                if (ev.xproperty.window == root && ev.xproperty.atom == theme_atom) {
-                    dark = theme_is_dark(dpy, root);
-                    set_palette(dpy, screen, dark, &surface, &tile, &tile_hover,
-                                &text, &accent, &palette);
-                    XSetWindowBackground(dpy, win, surface);
-                    XClearWindow(dpy, win);
-                    draw_dock(dpy, win, gc, font, &cfg, width, height, hover,
-                              surface, tile, tile_hover, text, accent, &palette);
-                }
-                break;
             case Expose:
                 if (ev.xexpose.count == 0)
                     draw_dock(dpy, win, gc, font, &cfg, width, height, hover,

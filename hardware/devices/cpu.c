@@ -6,10 +6,10 @@
 static void trim(char *text) {
     char *start = text;
     char *end;
-    while (*start == ' ' || *start == '\t') start++;
+    while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') start++;
     if (start != text) memmove(text, start, strlen(start) + 1);
     end = text + strlen(text);
-    while (end > text && (end[-1] == ' ' || end[-1] == '\t')) *--end = '\0';
+    while (end > text && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' || end[-1] == '\n')) *--end = '\0';
 }
 
 int shreed_collect_cpu(const char *root, char *buffer, size_t size) {

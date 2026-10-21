@@ -97,8 +97,8 @@ fi
 
 if [ -r /etc/os-release ]; then
   # Keep the host's generic VERSION field out of this shell. On Debian it is
-  # "13 (trixie)", and sourcing os-release here would replace ShreeOS's 0.4.0
-  # value before the ISO name is passed to the prototype builder.
+  # "13 (trixie)", and sourcing os-release here would replace ShreeOS's own
+  # version value before the ISO name is passed to the prototype builder.
   host_metadata="$(
     # shellcheck source=/dev/null
     . /etc/os-release
@@ -152,8 +152,11 @@ inputs_hash() {
       printf 'toolsets=%s\n' "${SHREEOS_TOOLSETS:-}"
       printf 'architecture=%s\n' "$SHREEOS_ARCH"
       sha256sum build.conf
+      # Generated Python bytecode is not an input: it changes whenever the test
+      # suite is run and would invalidate the cache for an unchanged tree.
       find prototype/debian-live desktop hardware pkgmanager themes/plasma branding scripts \
-        docs/UNIFIED-IMAGE.md LICENSE -type f -print0 |
+        docs/UNIFIED-IMAGE.md LICENSE -type f \
+        -not -path '*/__pycache__/*' -not -name '*.pyc' -print0 |
         sort -z | xargs -0 sha256sum
     } | sha256sum | awk '{print $1}'
   )
@@ -216,6 +219,7 @@ log "Building the unified ShreeOS desktop image ($UNIFIED_PROFILE profile)"
 SHREEOS_UNIFIED=1 \
 SHREEOS_LIVE_PROFILE="$UNIFIED_PROFILE" \
   SHREEOS_OUTPUT_BASENAME="shreeos(${VERSION})" \
+  SHREEOS_OUT="$OUT_DIR" \
   SHREEOS_FIRMWARE="${SHREEOS_FIRMWARE:-standard}" \
   SHREEOS_TOOLSETS="${SHREEOS_TOOLSETS:-}" \
   bash scripts/build-debian-prototype.sh
@@ -283,12 +287,12 @@ out["size_bytes"] = int(os.environ["ISO_SIZE"])
 out["git_dirty"] = os.environ["DIRTY"] == "1"
 out["built_at"] = next(
     line.split("=", 1)[1]
-    for line in Path(os.environ["BUILD_INFO"]).read_text().splitlines()
+    for line in Path(os.environ["BUILD_INFO"]).read_text(encoding="utf-8").splitlines()
     if line.startswith("built_at=")
 )
 out["components"] = {
     line.split("=", 1)[0]: line.split("=", 1)[1]
-    for line in Path(os.environ["BUILD_INFO"]).read_text().splitlines()
+    for line in Path(os.environ["BUILD_INFO"]).read_text(encoding="utf-8").splitlines()
     if line.split("=", 1)[0] in {
         "kernel", "plasma", "kwin", "sddm", "shreeos_tools", "shreeos_native_tools"
     }
@@ -301,7 +305,9 @@ if digest != out["sha256"]:
     raise SystemExit("manifest digest does not match the built image")
 if iso.stat().st_size != out["size_bytes"]:
     raise SystemExit("manifest size does not match the built image")
-Path(sys.argv[1]).write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
+Path(sys.argv[1]).write_text(
+    json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
 print(f"Manifest written for {out['iso']} ({out['size_bytes']} bytes)")
 PY
 

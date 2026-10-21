@@ -69,6 +69,15 @@ int main(int argc, char **argv) {
     if (argc >= 3) {
         output_written = snprintf(out_lpkg, sizeof(out_lpkg), "%s", argv[2]);
     } else {
+        /* The default archive name is derived from manifest metadata, so it
+         * must not be able to introduce a path component. */
+        if (!lpm_valid_pkgname(m->name) || !m->version || !*m->version ||
+            strchr(m->version, '/') != NULL || strchr(m->version, '\\') != NULL ||
+            strcmp(m->version, ".") == 0 || strcmp(m->version, "..") == 0) {
+            fprintf(stderr, "lpm-build: manifest name or version cannot be used as a package file name\n");
+            manifest_free(m);
+            return 1;
+        }
         output_written = snprintf(out_lpkg, sizeof(out_lpkg), "%s-%s.lpkg", m->name, m->version);
     }
     if (output_written < 0 || (size_t)output_written >= sizeof(out_lpkg)) {

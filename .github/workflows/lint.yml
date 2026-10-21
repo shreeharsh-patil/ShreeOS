@@ -61,7 +61,9 @@ jobs:
                   sh_syntax_files+=("$file")
                   ;;
                 '#!/usr/bin/env python3'|'#!/usr/bin/python3')
-                  # -B keeps the tree free of __pycache__ side effects.
+                  # -B only suppresses import-time bytecode; py_compile still
+                  # writes its own cache file, which .gitignore keeps out of
+                  # the tree.
                   python3 -B -m py_compile "$file"
                   printf 'python syntax OK: %s\n' "$file"
                   ;;
@@ -92,7 +94,11 @@ jobs:
       - name: Exercise destructive installer preflight without touching real disks
         run: |
           set -Eeuo pipefail
-          sudo apt-get install -y --no-install-recommends fdisk
+          # The installer requires sfdisk, mkfs.vfat, cpio, grub-install and
+          # openssl. Without them every preflight refusal would report the
+          # missing tool instead of the condition under test.
+          sudo apt-get install -y --no-install-recommends \
+            fdisk dosfstools cpio grub2-common openssl
           bash tests/installer/test-installer-validation.sh
 
       - name: Parse every workflow YAML file

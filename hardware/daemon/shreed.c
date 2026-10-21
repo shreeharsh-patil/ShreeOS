@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -50,6 +51,17 @@ static int create_listener(const char *socket_path) {
         close(fd);
         unlink(socket_path);
         return -1;
+    }
+    /* The socket is shared with the shree-hardware group, so the service
+     * group has to own it even when the daemon is started as root. The
+     * result is checked rather than discarded: an ignored chown leaves a
+     * socket that group members cannot connect to. */
+    if (geteuid() == 0) {
+        struct group *hardware_group = getgrnam("shree-hardware");
+        if (hardware_group && chown(socket_path, -1, hardware_group->gr_gid) != 0) {
+            fprintf(stderr, "shreed: could not give %s to the shree-hardware group: %s\n",
+                    socket_path, strerror(errno));
+        }
     }
     return fd;
 }

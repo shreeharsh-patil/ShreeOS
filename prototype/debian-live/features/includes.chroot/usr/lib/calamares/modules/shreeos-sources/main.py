@@ -40,7 +40,7 @@ def configure_sources(root_mount):
     apt = target("etc/apt")
     if not apt.is_dir():
         raise ValueError("The installation has no APT configuration")
-    policy = target("etc/shreeos/firmware-policy").read_text().strip()
+    policy = target("etc/shreeos/firmware-policy").read_text(encoding="utf-8").strip()
     areas = {"free": "main", "standard": "main non-free-firmware"}.get(policy)
     if areas is None:
         raise ValueError("Unknown image firmware policy")

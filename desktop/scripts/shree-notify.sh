@@ -43,7 +43,10 @@ ACTION_CMD=""
 TIMEOUT=4
 URGENT=false
 
-shift 2 2>/dev/null || true
+# Drop the title and the body, but tolerate a missing body: the parameter
+# default above already allows it, so `shift 2` must not turn the title into
+# an unknown option and abort the notification.
+shift $(( $# > 2 ? 2 : $# ))
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --app=*) APP="${1#*=}" ;;

@@ -361,8 +361,10 @@ try:
     command("sendkey shift")
     # Give Plasma or XFCE time to finish rendering after the live-boot marker.
     time.sleep(30)
-    # Plank uses auto-hide. Capture before and after moving the guest pointer
-    # to the bottom edge so the screenshot proves the dock actually appeared.
+    # Both ShreeOS profiles run Plank with hiding disabled, so the dock must be
+    # rendered from the start. Capture a frame before and after moving the guest
+    # pointer to the bottom edge so the artifact records that the dock does not
+    # depend on a pointer reveal.
     before_dock = output.replace("-screen.ppm", "-screen-before-dock.ppm")
     command(f"screendump {before_dock}")
     command("mouse_move 0 10000")
@@ -453,11 +455,34 @@ def read_ppm(image_path):
     data = image_path.read_bytes()
     if not data.startswith(b"P6"):
         raise SystemExit(f"{profile} screenshot is not a binary PPM: {image_path}")
-    parts = data.split(maxsplit=4)
-    if len(parts) != 5:
-        raise SystemExit(f"{profile} screenshot has an invalid PPM header: {image_path}")
-    image_width, image_height, maximum = map(int, parts[1:4])
-    image_pixels = parts[4]
+    # The header is "P6", width, height and maxval separated by whitespace and
+    # followed by exactly one whitespace byte before the raster. Splitting the
+    # whole file on whitespace would also swallow leading pixel values that
+    # happen to be whitespace bytes, so the header is located explicitly.
+    fields = []
+    index = 2
+    while len(fields) < 3:
+        while index < len(data) and data[index:index + 1].isspace():
+            index += 1
+        if data[index:index + 1] == b"#":
+            while index < len(data) and data[index:index + 1] not in (b"\n", b"\r"):
+                index += 1
+            continue
+        start = index
+        while index < len(data) and not data[index:index + 1].isspace():
+            index += 1
+        try:
+            fields.append(int(data[start:index]))
+        except ValueError:
+            raise SystemExit(
+                f"{profile} screenshot has an invalid PPM header: {image_path}"
+            ) from None
+    image_width, image_height, maximum = fields
+    # Exactly one whitespace byte separates the header from the raster.
+    index += 1
+    if data[index:index + 2] == b"\r\n":
+        index += 1
+    image_pixels = data[index:]
     if maximum != 255 or len(image_pixels) != image_width * image_height * 3:
         raise SystemExit(f"{profile} screenshot has invalid pixel data: {image_path}")
     return image_width, image_height, image_pixels
@@ -478,18 +503,22 @@ if profile in ("desktop", "plasma"):
     before_width, before_height, before_pixels = read_ppm(before_path)
     if (before_width, before_height) != (width, height):
         raise SystemExit(f"Before/after desktop screenshots have different sizes: {path}")
+    # Plank ships with hiding disabled in both profiles, so the dock has to be
+    # drawn in the bottom band of every screenshot instead of being revealed by
+    # the pointer moving to the edge. The frame captured before the pointer
+    # moved therefore has to show the dock as well; checking both frames is
+    # what proves the dock does not depend on a pointer reveal.
     band_start = (height - min(64, height)) * width * 3
-    before_band = before_pixels[band_start:]
-    after_band = pixels[band_start:]
-    changed_dock_pixels = sum(
-        1 for i in range(0, len(after_band), 3)
-        if max(abs(after_band[i + channel] - before_band[i + channel])
-               for channel in range(3)) > 24
-    )
-    if changed_dock_pixels < max(256, width * 4):
-        raise SystemExit(
-            f"ShreeOS dock did not appear after moving the pointer to the bottom edge: {path}"
-        )
+    minimum_dock_pixels = max(24, width * 64 // 300)
+    for label, frame in (("before", before_pixels), ("after", pixels)):
+        dock_band = frame[band_start:]
+        visible_dock_pixels = sum(1 for i in range(0, len(dock_band), 3)
+                                  if max(dock_band[i:i + 3]) > 50)
+        if visible_dock_pixels < minimum_dock_pixels:
+            raise SystemExit(
+                f"ShreeOS dock is missing from the bottom of the {label} "
+                f"desktop screenshot: {path}"
+            )
 print(f"{profile} screenshot contains visible content ({width}x{height}).")
 PY
   fi

@@ -238,6 +238,7 @@ int main(int argc, char **argv) {
     char log_path[108];
     char response[SHREED_RESPONSE_MAX + 1];
     char log_contents[512];
+    char malformed_body[2048];
     struct stat status;
     pid_t daemon;
     int malformed_fd;
@@ -318,6 +319,22 @@ int main(int argc, char **argv) {
          read_all(malformed_fd, response, ntohl(malformed_length)) == 0 &&
          (response[ntohl(malformed_length)] = '\0') == '\0' && strstr(response, "MALFORMED_FRAME") != NULL);
     if (malformed_fd >= 0) close(malformed_fd);
+    /* A rejected frame length must not survive in the frame state: the daemon
+     * reuses that state for the next read and the payload buffer is only
+     * SHREED_MAX_MESSAGE bytes long. */
+    malformed_fd = connect_socket(socket_path);
+    malformed_length = htonl(SHREED_MAX_MESSAGE + 1);
+    memset(malformed_body, 'A', sizeof(malformed_body));
+    if (malformed_fd >= 0) {
+        (void)write_all(malformed_fd, &malformed_length, sizeof(malformed_length));
+        (void)write_all(malformed_fd, malformed_body, sizeof(malformed_body));
+        (void)read_all(malformed_fd, &malformed_length, sizeof(malformed_length));
+    }
+    if (malformed_fd >= 0) close(malformed_fd);
+    usleep(100000);
+    TEST("daemon stays healthy after a malformed frame with a body",
+         exchange(socket_path, "{\"action\":\"ping\"}", response, sizeof(response)) == 0 &&
+         strstr(response, "\"pong\":true") != NULL);
     test_concurrent_connections(socket_path);
 
     if (daemon > 0) kill(daemon, SIGTERM);

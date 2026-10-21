@@ -90,7 +90,12 @@ is_app_running() {
   if get_running_window "$binary" >/dev/null; then
     return 0
   fi
-  if pgrep -x "$binary" >/dev/null 2>&1 || pgrep -f "$binary" >/dev/null 2>&1; then
+  # pgrep -f matches the whole command line, so a bare name would also hit
+  # unrelated processes that merely contain it ("systemd" for "st"). The
+  # pattern is anchored to a path element and a word boundary so only the
+  # real application matches.
+  if pgrep -x "$binary" >/dev/null 2>&1 || \
+     pgrep -f "(^|/)${binary}([ ]|$)" >/dev/null 2>&1; then
     return 0
   fi
   return 1

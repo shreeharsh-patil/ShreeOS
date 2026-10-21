@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
+#include <limits.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/wait.h>
@@ -100,10 +101,18 @@ static int is_local_development_url(const char *url) {
 
 static int get_repo_url(char *buf, size_t maxlen) {
     int have_configured_url = 0;
+    /* fgets() takes its size as an int, so a buffer whose size cannot be
+     * represented there is rejected instead of being silently truncated. */
+    if (!buf || maxlen < 32 || maxlen > INT_MAX) return -1;
     FILE *f = fopen(LPM_REPOS_CONF, "r");
     if (f) {
-        if (fgets(buf, maxlen, f)) {
+        if (fgets(buf, (int)maxlen, f)) {
             size_t len = strlen(buf);
+            if (len == maxlen - 1 && buf[len - 1] != '\n' && !feof(f)) {
+                fclose(f);
+                fprintf(stderr, "lpm: repository URL in %s is too long\n", LPM_REPOS_CONF);
+                return -1;
+            }
             while (len > 0 && (buf[len-1] == '\r' || buf[len-1] == '\n' ||
                                buf[len-1] == ' ' || buf[len-1] == '\t')) {
                 buf[--len] = '\0';
@@ -113,7 +122,8 @@ static int get_repo_url(char *buf, size_t maxlen) {
         fclose(f);
     }
     if (!have_configured_url) {
-        snprintf(buf, maxlen, "http://localhost:8080");
+        int written = snprintf(buf, maxlen, "http://localhost:8080");
+        if (written < 0 || (size_t)written >= maxlen) return -1;
     }
 
     if (strncmp(buf, "https://", 8) == 0 || is_local_development_url(buf)) return 0;
@@ -354,9 +364,18 @@ static int manifest_allows_directory(const manifest *m, const char *path) {
     return 0;
 }
 
+/* Maximum directory nesting accepted in a staged payload. The validator
+ * recurses per level, so an unbounded archive could exhaust the stack. */
+#define LPM_MAX_PAYLOAD_DEPTH 64
+
 static int validate_staged_payload_tree(const char *stage_root, const char *relative,
-                                        const manifest *m) {
+                                        const manifest *m, unsigned depth) {
     char dir_path[LPM_PATH_MAX];
+    if (depth > LPM_MAX_PAYLOAD_DEPTH) {
+        fprintf(stderr, "lpm: security error: staged payload nesting is too deep\n");
+        errno = ELOOP;
+        return -1;
+    }
     int written = relative[0]
         ? snprintf(dir_path, sizeof(dir_path), "%s/%s", stage_root, relative)
         : snprintf(dir_path, sizeof(dir_path), "%s", stage_root);
@@ -418,7 +437,7 @@ static int validate_staged_payload_tree(const char *stage_root, const char *rela
                 closedir(dir);
                 return -1;
             }
-            if (validate_staged_payload_tree(stage_root, child_rel, m) != 0) {
+            if (validate_staged_payload_tree(stage_root, child_rel, m, depth + 1) != 0) {
                 closedir(dir);
                 return -1;
             }
@@ -589,7 +608,6 @@ int cmd_install(int argc, char **argv) {
     int ret = 0;
     manifest *m = NULL;
     manifest *old_m = NULL;
-    int files_backed_up = 0;
     bool root_mutated = false;
     bool database_committed = false;
     char transaction_dir[LPM_PATH_MAX] = {0};
@@ -714,7 +732,7 @@ int cmd_install(int argc, char **argv) {
         goto cleanup;
     }
 
-    if (validate_staged_payload_tree(stage_root, "", m) != 0) {
+    if (validate_staged_payload_tree(stage_root, "", m, 0) != 0) {
         fprintf(stderr, "lpm: security violation: package payload does not match its manifest\n");
         ret = 1;
         goto cleanup;
@@ -725,6 +743,16 @@ int cmd_install(int argc, char **argv) {
         int checksum_mismatches = 0;
         for (int i = 0; i < m->nchecksums; i++) {
             char file_in_stage[LPM_PATH_MAX];
+            /* The checksum key comes from the package manifest, so it must
+             * name a declared payload file; otherwise the staged path below
+             * could point outside the staging area. */
+            if (!lpm_safe_path(m->checksums[i].path) ||
+                !manifest_declares_path(m, m->checksums[i].path)) {
+                fprintf(stderr, "lpm: security error: checksum path '%s' is not a declared package file\n",
+                        m->checksums[i].path);
+                checksum_mismatches++;
+                continue;
+            }
             int checksum_path_written = snprintf(file_in_stage, sizeof(file_in_stage),
                                                  "%s/root%s", tmpdir, m->checksums[i].path);
             if (checksum_path_written < 0 || (size_t)checksum_path_written >= sizeof(file_in_stage)) {
@@ -785,6 +813,7 @@ int cmd_install(int argc, char **argv) {
     for (int i = 0; i < m->nfiles; i++) {
         FILE *ledger = fopen(rollback_ledger, "a");
         if (!ledger) { ret = 1; goto cleanup; }
+        int ledger_failed = 0;
         if (access(m->files[i], F_OK) == 0) {
             char backup_file[LPM_PATH_MAX * 2];
             int backup_written = snprintf(backup_file, sizeof(backup_file), "%s%s", backup_dir, m->files[i]);
@@ -807,12 +836,20 @@ int cmd_install(int argc, char **argv) {
                 *last_slash = '/';
             }
             if (copy_file(m->files[i], backup_file) != 0) { fclose(ledger); ret = 1; goto cleanup; }
-            fprintf(ledger, "E %s\n", m->files[i]);
-            files_backed_up++;
+            if (fprintf(ledger, "E %s\n", m->files[i]) < 0) ledger_failed = 1;
         } else {
-            fprintf(ledger, "N %s\n", m->files[i]);
+            if (fprintf(ledger, "N %s\n", m->files[i]) < 0) ledger_failed = 1;
         }
-        fclose(ledger);
+        /* The ledger is the only record of how to undo the commit, so it must
+         * reach the disk before the payload is written to the root filesystem. */
+        if (!ledger_failed && fflush(ledger) != 0) ledger_failed = 1;
+        if (!ledger_failed && fsync(fileno(ledger)) != 0) ledger_failed = 1;
+        if (fclose(ledger) != 0) ledger_failed = 1;
+        if (ledger_failed) {
+            fprintf(stderr, "lpm: failed to record rollback ledger entry for %s\n", m->files[i]);
+            ret = 1;
+            goto cleanup;
+        }
     }
 
     /* 10. Commit staged payload to root. The rollback ledger is already durable,
@@ -883,8 +920,12 @@ int cmd_install(int argc, char **argv) {
                     ret = 1;
                     goto cleanup;
                 }
-                if (fprintf(ledger, "E %s\n", old_m->files[i]) < 0 || fclose(ledger) != 0 ||
-                    unlink(old_m->files[i]) != 0) {
+                int obsolete_ledger_failed = 0;
+                if (fprintf(ledger, "E %s\n", old_m->files[i]) < 0) obsolete_ledger_failed = 1;
+                if (!obsolete_ledger_failed && fflush(ledger) != 0) obsolete_ledger_failed = 1;
+                if (!obsolete_ledger_failed && fsync(fileno(ledger)) != 0) obsolete_ledger_failed = 1;
+                if (fclose(ledger) != 0) obsolete_ledger_failed = 1;
+                if (obsolete_ledger_failed || unlink(old_m->files[i]) != 0) {
                     ret = 1;
                     goto cleanup;
                 }

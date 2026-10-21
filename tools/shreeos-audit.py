@@ -269,7 +269,12 @@ class IsoImage:
         self.volume_id = self.publisher = self.preparer = self.app_id = ""
         self.rock_ridge = False
         self.el_torito = []
-        self._parse()
+        try:
+            self._parse()
+        except Exception:
+            # A failed parse must not leave the image handle open.
+            self.handle.close()
+            raise
 
     def close(self):
         self.handle.close()
@@ -358,7 +363,10 @@ class IsoImage:
             is_dir = bool(flags & 0x02)
             name = record[33:33 + name_len].decode("latin-1").split(";")[0]
             path = prefix + name
-            cursor = 33 + name_len + (name_len % 2)
+            # The system use area starts on the next even boundary after the
+            # file identifier, so an even-length identifier is followed by a
+            # padding byte.
+            cursor = 33 + name_len + (1 if name_len % 2 == 0 else 0)
             while cursor + 4 <= len(record):
                 slen = record[cursor]
                 if slen == 0 or cursor + slen > len(record):
@@ -613,7 +621,10 @@ def audit_repo(root: str) -> dict:
     conf = parse_build_conf(conf_path) if os.path.isfile(conf_path) else {}
     version_file = os.path.join(root, "VERSION")
     if os.path.isfile(version_file):
-        conf.setdefault("DISTRO_VERSION", read_text(version_file).strip())
+        # build.conf derives the version from the VERSION file with a shell
+        # command substitution, which a pure text parse cannot evaluate, so the
+        # file is read directly instead of reporting the unevaluated command.
+        conf["DISTRO_VERSION"] = read_text(version_file).strip()
 
     # -- pinned sources with checksum status ------------------------------
     manifests = {}
@@ -841,7 +852,8 @@ def audit_iso(path: str, profile_override: str = None) -> dict:
             raw = image.extract(blobs["initramfs"])
             live["format"] = "initramfs-cpio"
             live["compressed_bytes"] = len(raw)
-            data = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
+            with gzip.GzipFile(fileobj=io.BytesIO(raw)) as compressed:
+                data = compressed.read()
             live["uncompressed_bytes"] = len(data)
             live["compression_ratio"] = round(len(raw) / float(len(data)), 3) \
                 if data else 0
@@ -997,12 +1009,15 @@ def render(report: dict) -> str:
 def main(argv=None) -> int:
     # The output flags are attached to both the top-level parser and every
     # subcommand so that `--json` works before or after the subcommand name.
+    # They default to SUPPRESS so that a flag given before the subcommand is
+    # not overwritten by the subparser's own default.
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--json", action="store_true",
+    common.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
                         help="emit the report as JSON")
-    common.add_argument("--text", action="store_true",
+    common.add_argument("--text", action="store_true", default=argparse.SUPPRESS,
                         help="emit the human-readable summary (default)")
-    common.add_argument("--out", help="write the report to this path")
+    common.add_argument("--out", default=argparse.SUPPRESS,
+                        help="write the report to this path")
 
     parser = argparse.ArgumentParser(
         prog="shreeos-audit", parents=[common],
@@ -1025,28 +1040,36 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
 
-    if args.command == "repo":
-        report = audit_repo(os.path.abspath(args.root))
-    elif args.command == "rootfs":
-        if not os.path.isdir(args.path):
-            print("error: not a directory: %s" % args.path, file=sys.stderr)
-            return 1
-        report = audit_rootfs(os.path.abspath(args.path))
-    else:
-        if not os.path.isfile(args.path):
-            print("error: not a file: %s" % args.path, file=sys.stderr)
-            return 1
-        report = audit_iso(args.path, profile_override=args.profile)
+    try:
+        if args.command == "repo":
+            report = audit_repo(os.path.abspath(args.root))
+        elif args.command == "rootfs":
+            if not os.path.isdir(args.path):
+                print("error: not a directory: %s" % args.path, file=sys.stderr)
+                return 1
+            report = audit_rootfs(os.path.abspath(args.path))
+        else:
+            if not os.path.isfile(args.path):
+                print("error: not a file: %s" % args.path, file=sys.stderr)
+                return 1
+            report = audit_iso(args.path, profile_override=args.profile)
+    except (OSError, ValueError) as error:
+        # A missing or malformed input is a usage/IO error, not a crash.
+        print("error: %s" % error, file=sys.stderr)
+        return 1
 
     # Output selection: --out always writes JSON; stdout gets the text summary
     # unless --json was requested. With neither flag, print both so a bare
     # invocation is useful interactively.
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as handle:
+    want_json = getattr(args, "json", False)
+    want_text = getattr(args, "text", False)
+    out_path = getattr(args, "out", None)
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as handle:
             json.dump(report, handle, indent=2, sort_keys=True, default=str)
             handle.write("\n")
-    emit_json = args.json or (not args.text and not args.out)
-    emit_text = args.text or (not args.json and not args.out)
+    emit_json = want_json or (not want_text and not out_path)
+    emit_text = want_text or (not want_json and not out_path)
     if emit_json:
         print(json.dumps(report, indent=2, sort_keys=True, default=str))
     if emit_text:

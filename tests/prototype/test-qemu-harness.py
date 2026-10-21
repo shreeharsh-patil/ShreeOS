@@ -2,12 +2,137 @@
 """Guard live QEMU serial monitoring and screenshot failure handling."""
 
 from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = ROOT / "tests/prototype/test-iso.sh"
 PERFORMANCE_HARNESS = ROOT / "tests/prototype/test-performance-report.sh"
+
+PYTHON_BLOCK = re.compile(r"<<'PY'\n(.*?)\nPY\n", re.S)
+
+
+def screenshot_checker():
+    """Return the embedded Python that validates the captured screenshots."""
+    blocks = PYTHON_BLOCK.findall(HARNESS.read_text(encoding="utf-8"))
+    if not blocks:
+        raise AssertionError("no embedded Python block found in " + str(HARNESS))
+    return blocks[-1]
+
+
+def write_ppm(path, width, height, dock_rows, dock_pixel=(200, 210, 220)):
+    """Write a binary PPM.
+
+    The top-left pixel is always (10, 12, 20), so the raster starts with byte
+    0x0a, which is ASCII whitespace.
+    """
+    wallpaper = bytes((30, 40, 60))
+    body = bytearray()
+    for row in range(height):
+        if row in dock_rows:
+            body += bytes(dock_pixel) * width
+        elif 40 <= row < height - 64:
+            body += wallpaper * width
+        else:
+            body += bytes((10, 12, 20)) * width
+    path.write_bytes(b"P6\n%d %d\n255\n" % (width, height) + bytes(body))
+
+
+class ScreenshotCheckerTests(unittest.TestCase):
+    """Exercise the screenshot checker embedded in the ISO boot harness."""
+
+    def setUp(self):
+        self.checker = screenshot_checker()
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.width = 320
+        self.height = 200
+
+    def run_checker(self, screen, before):
+        return subprocess.run(
+            [sys.executable, "-c", self.checker, str(screen), "plasma", str(before)],
+            capture_output=True, text=True,
+        )
+
+    def test_dock_is_accepted_when_it_needs_no_pointer_reveal(self):
+        screen = self.root / "screen.ppm"
+        before = self.root / "before.ppm"
+        dock = set(range(self.height - 40, self.height))
+        write_ppm(screen, self.width, self.height, dock)
+        write_ppm(before, self.width, self.height, dock)
+
+        result = self.run_checker(screen, before)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_dock_missing_before_the_pointer_moved_is_rejected(self):
+        screen = self.root / "screen.ppm"
+        before = self.root / "before.ppm"
+        write_ppm(screen, self.width, self.height, set(range(self.height - 40, self.height)))
+        write_ppm(before, self.width, self.height, set())
+
+        result = self.run_checker(screen, before)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("before desktop screenshot", result.stdout + result.stderr)
+
+    def test_dock_missing_from_every_frame_is_rejected(self):
+        screen = self.root / "screen.ppm"
+        before = self.root / "before.ppm"
+        write_ppm(screen, self.width, self.height, set())
+        write_ppm(before, self.width, self.height, set())
+
+        result = self.run_checker(screen, before)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("dock is missing", result.stdout + result.stderr)
+
+    def test_leading_whitespace_pixel_is_not_treated_as_a_header_separator(self):
+        # The raster starts with byte 0x0a, which is ASCII whitespace. A parser
+        # that splits the file on whitespace loses that byte and rejects a
+        # perfectly valid screenshot.
+        screen = self.root / "screen.ppm"
+        before = self.root / "before.ppm"
+        dock = set(range(self.height - 40, self.height))
+        write_ppm(screen, self.width, self.height, dock)
+        write_ppm(before, self.width, self.height, dock)
+
+        result = self.run_checker(screen, before)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("invalid pixel data", result.stdout + result.stderr)
+
+    def test_screenshots_of_different_sizes_are_rejected(self):
+        screen = self.root / "screen.ppm"
+        before = self.root / "before.ppm"
+        dock = set(range(self.height - 40, self.height))
+        write_ppm(screen, self.width, self.height, dock)
+        write_ppm(before, self.width // 2, self.height // 2, set(range(self.height // 2 - 20, self.height // 2)))
+
+        result = self.run_checker(screen, before)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("different sizes", result.stdout + result.stderr)
+
+    def test_a_malformed_header_reports_a_clean_error(self):
+        # A corrupt screenshot must produce a diagnosable message, not a
+        # Python traceback that hides which artifact failed.
+        screen = self.root / "screen.ppm"
+        before = self.root / "before.ppm"
+        dock = set(range(self.height - 40, self.height))
+        write_ppm(before, self.width, self.height, dock)
+        screen.write_bytes(b"P6\nnot a size\n255\n" + b"\x00" * 16)
+
+        result = self.run_checker(screen, before)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid PPM header", result.stdout + result.stderr)
+        self.assertNotIn("Traceback", result.stdout + result.stderr)
 
 
 class QemuHarnessTests(unittest.TestCase):
@@ -58,12 +183,17 @@ class QemuHarnessTests(unittest.TestCase):
         self.assertLess(wait, normalize)
         self.assertIn('[[ "$status" -eq 143 ]]', script)
 
-    def test_screenshot_reveals_and_checks_the_auto_hidden_dock(self):
+    def test_screenshot_checks_the_always_visible_dock(self):
         script = HARNESS.read_text(encoding="utf-8")
 
         self.assertIn('command("mouse_move 0 10000")', script)
         self.assertIn('screen-before-dock.ppm', script)
-        self.assertIn('changed_dock_pixels < max(256, width * 4)', script)
+        # Plank runs with hiding disabled, so the dock is checked in the bottom
+        # band of the frame captured before the pointer moved as well. The
+        # pointer-reveal pixel diff is no longer the contract.
+        self.assertIn('visible_dock_pixels < minimum_dock_pixels', script)
+        self.assertIn('minimum_dock_pixels = max(24, width * 64 // 300)', script)
+        self.assertNotIn('changed_dock_pixels', script)
         self.assertIn('"unknown command"', script)
         capture_before = script.index('command(f"screendump {before_dock}")')
         move_pointer = script.index('command("mouse_move 0 10000")')

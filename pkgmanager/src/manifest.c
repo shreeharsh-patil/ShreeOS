@@ -324,7 +324,9 @@ bool lpm_parse_dep_spec(const char *dep_spec, char *name_out, size_t name_sz,
 
     size_t ni = 0;
     while (*p && (isalnum((unsigned char)*p) || *p == '.' || *p == '_' || *p == '-')) {
-        if (ni + 1 >= name_sz) return false;
+        /* Keep the output buffers terminated even when the spec is rejected:
+         * callers may still inspect them after a failed parse. */
+        if (ni + 1 >= name_sz) { name_out[ni] = '\0'; return false; }
         name_out[ni++] = *p++;
     }
     name_out[ni] = '\0';
@@ -335,7 +337,7 @@ bool lpm_parse_dep_spec(const char *dep_spec, char *name_out, size_t name_sz,
 
     size_t oi = 0;
     while (*p == '>' || *p == '<' || *p == '=' || *p == '!') {
-        if (oi + 1 >= op_sz) return false;
+        if (oi + 1 >= op_sz) { op_out[oi] = '\0'; return false; }
         op_out[oi++] = *p++;
     }
     op_out[oi] = '\0';
@@ -352,9 +354,9 @@ bool lpm_parse_dep_spec(const char *dep_spec, char *name_out, size_t name_sz,
 
     size_t vi = 0;
     while (*p && *p != ' ' && *p != '\t') {
-        if (vi + 1 >= ver_sz) return false;
+        if (vi + 1 >= ver_sz) { ver_out[vi] = '\0'; return false; }
         unsigned char c = (unsigned char)*p;
-        if (iscntrl(c)) return false;
+        if (iscntrl(c)) { ver_out[vi] = '\0'; return false; }
         ver_out[vi++] = *p++;
     }
     ver_out[vi] = '\0';
@@ -421,7 +423,9 @@ int manifest_check_deps(const manifest *m, char ***missing_out, int *nmissing_ou
     int count = 0;
 
     for (int i = 0; i < m->ndeps; i++) {
-        char dep_name[128] = {0};
+        /* The buffer must hold the longest name lpm_valid_pkgname() accepts,
+         * otherwise a valid dependency would be reported as unparsable. */
+        char dep_name[LPM_MAX_PACKAGE_NAME + 1] = {0};
         char op[16] = {0};
         char req_ver[64] = {0};
 
@@ -546,10 +550,17 @@ int lpm_find_dependents(const char *pkgname, char ***deps_out, int *ndeps_out) {
 
         bool depends = false;
         for (int i = 0; i < other->ndeps; i++) {
-            char dep_name[128];
+            /* The buffer must hold the longest name lpm_valid_pkgname() accepts,
+             * otherwise a valid dependency would be skipped as unparsable. */
+            char dep_name[LPM_MAX_PACKAGE_NAME + 1];
             char op[16];
             char ver[64];
-            lpm_parse_dep_spec(other->deps[i], dep_name, sizeof(dep_name), op, sizeof(op), ver, sizeof(ver));
+            /* An unparsable dependency spec cannot name a package, so it must
+             * not be mistaken for a dependency on a truncated name. */
+            if (!lpm_parse_dep_spec(other->deps[i], dep_name, sizeof(dep_name),
+                                    op, sizeof(op), ver, sizeof(ver))) {
+                continue;
+            }
 
             if (strcmp(dep_name, pkgname) == 0) {
                 depends = true;

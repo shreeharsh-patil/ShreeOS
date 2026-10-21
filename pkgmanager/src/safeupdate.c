@@ -171,7 +171,7 @@ int cmd_rollback(int argc, char **argv) {
     }
     if (argc == 0) {
         DIR *dir = opendir(LPM_TRANSACTIONS); struct dirent *entry;
-        if (dir) { while ((entry = readdir(dir))) if (entry->d_name[0] != '.' && strcmp(entry->d_name, selected) > 0 && valid_payload(entry->d_name, ledger, sizeof(ledger))) snprintf(selected, sizeof(selected), "%s", entry->d_name); closedir(dir); }
+        if (dir) { while ((entry = readdir(dir))) if (entry->d_name[0] != '.' && strcmp(entry->d_name, selected) > 0 && valid_payload(entry->d_name, ledger, sizeof(ledger))) { size_t nlen = strlen(entry->d_name); if (nlen < sizeof(selected)) memcpy(selected, entry->d_name, nlen + 1); } closedir(dir); }
         if (!selected[0]) { fprintf(stderr, "lpm: no valid rollback payload\n"); return 1; }
         selected_args[0] = selected; argv = selected_args; argc = 1;
     }
@@ -184,10 +184,14 @@ int cmd_rollback(int argc, char **argv) {
     }
     file = fopen(ledger, "r"); if (!file) { lpm_unlock(); return 1; }
     while (fgets(line, sizeof(line), file)) {
-        char *path = line + 2; char source[LPM_PATH_MAX * 4];
+        char source[LPM_PATH_MAX * 4];
         if (line[0] == '#') continue;
+        /* Validate the record before deriving the path from it: a malformed
+         * line must never be scanned past its own terminator. */
+        if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ') { failed = 1; break; }
+        char *path = line + 2;
         path[strcspn(path, "\r\n")] = 0;
-        if ((line[0] != 'E' && line[0] != 'N') || line[1] != ' ' || !lpm_safe_path(path)) { failed = 1; break; }
+        if (!lpm_safe_path(path)) { failed = 1; break; }
         if (line[0] == 'N') { if (unlink(path) != 0 && errno != ENOENT) failed = 1; }
         else {
             int source_written = snprintf(source, sizeof(source), "%s%s", base, path);

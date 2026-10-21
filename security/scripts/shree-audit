@@ -35,7 +35,7 @@ if [ -e /etc/shadow ]; then check_mode /etc/shadow 600; fi
 
 section "Privileged executables"
 if command -v find >/dev/null 2>&1; then
-  suid_count="$(find /bin /sbin /usr/bin /usr/sbin -xdev -type f -perm /6000 2>/dev/null | wc -l | tr -d ' ')"
+  suid_count="$(find /bin /sbin /usr/bin /usr/sbin -xdev -type f -perm /6000 2>/dev/null | wc -l | tr -d ' ' || true)"
   printf 'SUID/SGID executables: %s\n' "$suid_count"
   find /bin /sbin /usr/bin /usr/sbin -xdev -type f -perm /6000 2>/dev/null | sort || true
 else

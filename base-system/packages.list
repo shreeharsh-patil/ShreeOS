@@ -138,7 +138,10 @@ pam	1.7.0	https://github.com/linux-pam/linux-pam/releases/download/v1.7.0/linux-
 # dbus -- system bus. Session and hardware services communicate over it.
 dbus	1.14.10	https://dbus.freedesktop.org/releases/dbus/dbus-1.14.10.tar.xz	ba1f21d2bd9d339da2d4aa8780c09df32fea87998b73da24f49ab9df1e36a50f
 
-# systemd -- the service manager itself, cross-compiled for the target.
+# systemd -- upstream service manager, pinned as a checksum-verified reference
+# source only. The target does not run it: ShreeOS uses its own init
+# (init/src/init.c), and every recipe that could link against systemd
+# disables it explicitly. There is no systemd build recipe in this stage.
 # GitHub does not attach a release tarball for v258, so the tag archive is
 # the pinned source (verified 2026-09-28).
 systemd	258	https://github.com/systemd/systemd/archive/refs/tags/v258.tar.gz	07a580cf21856f468f82b77b82973a926f42ccc696462459b53f8b88893dff8e

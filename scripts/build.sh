@@ -16,7 +16,7 @@ if [ -z "${SHREEOS_MAKE_JOBS:-}" ]; then
 fi
 
 # This legacy pipeline can build desktop/security/minimal/server profiles, but
-# its source-built ISO is not the canonical ShreeOS 0.4.0 release image.
+# its source-built ISO is not the canonical ShreeOS release image.
 profile="${1:-desktop}"
 case "$profile" in
   desktop|security|minimal|server) ;;

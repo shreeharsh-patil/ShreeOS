@@ -76,7 +76,8 @@ int shreed_read_file(const char *root, const char *path, char *buffer, size_t si
     FILE *file;
     size_t length;
 
-    if (!buffer || size == 0 || shreed_path_join(full_path, sizeof(full_path), root, path) != 0) return -1;
+    if (!buffer || size == 0 || size > INT_MAX ||
+        shreed_path_join(full_path, sizeof(full_path), root, path) != 0) return -1;
     file = fopen(full_path, "r");
     if (!file) return -1;
     if (!fgets(buffer, (int)size, file)) {

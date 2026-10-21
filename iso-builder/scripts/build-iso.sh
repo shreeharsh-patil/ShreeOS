@@ -20,7 +20,11 @@ case "$PROFILE" in
 esac
 export PROFILE
 
-for arg in "$@"; do
+# Iterate with a while loop, not "for arg in \"$@\"": the loop body consumes
+# the value that follows --cmdline, and a for loop over "$@" would keep
+# offering that value as an option of its own.
+while [ "$#" -gt 0 ]; do
+  arg="$1"
   case "$arg" in
     --no-cleanup) NO_CLEANUP=true ;;
     --cmdline=*) CMDLINE_EXTRA="${arg#*=}" ;;

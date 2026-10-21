@@ -42,12 +42,21 @@ Example `/etc/services.d/network.conf`:
 
 ```ini
 name=network
-command=/bin/sh -c "ip link set lo up"
+command=/bin/sh -c 'ip link set lo up'
 after=hostname
 restart=never
 oneshot=true
 critical=false
 ```
+
+The recognised keys are `name`, `command`, `after`, `restart`, `oneshot` and
+`critical`. Ordering is declared by the dependent service's `after=` key;
+there is no `before=` key.
+
+init runs the whole `command=` value through a single `/bin/sh -c`, so an
+inner script must be **single**-quoted. A double-quoted inner script is
+expanded by that outer shell before the inner shell ever sees it, which
+resolves `$variables` and `$(...)` with the wrong values.
 
 ## Building
 

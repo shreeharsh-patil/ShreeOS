@@ -4,7 +4,12 @@ set -Eeuo pipefail
 fail() { printf 'SHREEOS_INSTALLED_FAIL: %s\n' "$*" >&2; exit 1; }
 [ ! -e /run/live/medium ] || fail 'Still booted from Live media'
 grep -Fxq 'ID=shreeos' /etc/os-release || fail 'Wrong OS identity'
-grep -Fxq 'VERSION_ID="0.4.0"' /etc/os-release || fail 'Wrong ShreeOS version'
+# The expected version is the version of the installed native tools package,
+# which the image builder stamps from the repository VERSION file. Comparing
+# against it keeps this check honest without writing a version down here.
+expected_version="$(dpkg-query -W -f='${Version}' shreeos-native-tools 2>/dev/null || true)"
+[ -n "$expected_version" ] || fail 'Native tools package is not installed'
+grep -Fxq "VERSION_ID=\"${expected_version%%-*}\"" /etc/os-release || fail 'Wrong ShreeOS version'
 grep -Fxq 'edition=unified' /etc/shreeos/unified-image || fail 'Unified image marker missing'
 fs_type="$(findmnt -n -o FSTYPE /)" || fail 'Root filesystem could not be identified'
 case "$fs_type" in overlay|squashfs|tmpfs) fail "Root filesystem is still live ($fs_type)" ;; esac

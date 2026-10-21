@@ -1,25 +1,31 @@
 # base-system/profiles/server.list — Server runtime profile
 # Inherits minimal profile and adds networking, DNS, TLS, SSH, time sync, process monitoring
+#
+# Every entry below names a package the source-built stages actually produce.
+# base-system/README.md requires that optional services are not claimed as
+# installed until they have a pinned ShreeOS package/build recipe, so the
+# packages that only exist in the Debian prototype prototype/ path are listed
+# as comments: they are wanted for this profile, but the source build does
+# not ship them yet.
 
 # Include minimal base
 @minimal
 
 # Networking & Transport
 iproute2
-dhcpcd
 wpa_supplicant
 curl
 wget
-ca-certificates
 openssl
+# dhcpcd — the source build uses the BusyBox udhcpc client instead.
+# ca-certificates — the source build has no CA bundle recipe yet.
 
 # Time Synchronization & Cryptography
-chrony
+# chrony — no pinned ShreeOS package/build recipe yet.
 
 # Remote Access & Daemons
-openssh
+# openssh — no pinned ShreeOS package/build recipe yet.
 
 # Storage & Filesystem Management
-e2fsprogs
-dosfstools
 kmod
+# e2fsprogs, dosfstools — no pinned ShreeOS package/build recipe yet.

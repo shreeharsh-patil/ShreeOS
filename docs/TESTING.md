@@ -54,16 +54,25 @@ bash tests/qemu/boot-installed-disk.sh /path/to/disk.img
 
 ## CI Pipeline
 
+The authoritative pipeline for the release product is
+`shreeos-release.yml`; the others are regression or experimental paths.
+
 | Workflow | Trigger | Scope |
 |----------|---------|-------|
+| `shreeos-release.yml` | Push to `master`, `v*` tags, PRs, manual dispatch | The one release pipeline: static checks, ISO build, BIOS/UEFI boot, installer and performance gates, publish |
 | `lint.yml` | Every push/PR | Shellcheck + structure |
-| `toolchain.yml` | Push to main | Full toolchain build |
-| `kernel.yml` | Push to main | Kernel against cached toolchain |
-| `iso.yml` | Push to main, tags | Full chain → ISO artifact |
-| `release.yml` | v* tags | GitHub Release with ISO |
+| `audit.yml` | Push/PR touching audited paths | Repository and ISO audit reports |
+| `toolchain.yml` | Push to `master` | Full toolchain build |
+| `kernel.yml` | Push to `master` | Kernel against cached toolchain |
+| `base-system.yml` | Push/PR touching the base system | Base userland build |
+| `iso.yml` | Push to `master`, PR | Experimental source-built chain → ISO artifact |
+| `unified-iso.yml` | Push/PR touching the unified image | Unified image build check |
+| `debian-prototype.yml` | Push/PR touching the live-build tree | Console, XFCE and Plasma prototypes |
+| `security.yml` | PR touching security paths | Security edition checks |
+| `performance-baseline.yml` | Manual dispatch only | Records the untouched-build performance baseline |
 
 ## Writing Tests
 
 - Smoke tests: add a `.sh` file to `tests/smoke/`; must exit 0 on success
 - QEMU tests: use the helper in `tests/qemu/qemu-common.sh` for consistent QEMU invocation
-- Unit tests: add to `tests/unit/` for logic-level tests (init parser, lpm resolver)
+- Unit tests: add to `pkgmanager/tests/` (lpm resolver, manifest), `init/tests/` (init parser) or `hardware/tests/` (shreed collectors) for logic-level tests

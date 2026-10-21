@@ -6,7 +6,11 @@ grep -q 'shreedctl hardware --json' "$root/desktop/apps/shree-about"
 grep -q 'shree-hardware-ui' "$root/desktop/apps/shree-settings"
 grep -q 'shreectl wifi status --json' "$root/desktop/apps/shree-control-center"
 grep -q 'drivers_missing --json' "$root/desktop/scripts/shree-hardware-ui.sh"
-# The native dock must reposition on screen geometry changes.
-grep -Fq 'case ConfigureNotify:' "$root/desktop/wm/shree-dock.c"
+# The native dock must reposition on screen geometry changes. It may learn
+# about a resize either from a root ConfigureNotify event or by polling the
+# current display geometry, but it must always compare the live geometry
+# against its cached screen size and move the window with XMoveWindow.
+grep -Eq 'sw = ev\.xconfigure\.width|!=[ ]*sw([^A-Za-z0-9_]|$)' \
+  "$root/desktop/wm/shree-dock.c"
 grep -Fq 'XMoveWindow(dpy, win' "$root/desktop/wm/shree-dock.c"
 echo 'PASS: desktop views use live ShreeOS backend commands'

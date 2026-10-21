@@ -108,7 +108,8 @@ static void test_manifest_json_escaping(void) {
 static void test_strict_json_rejection(void) {
     static const char *const invalid[] = {
         "\"unterminated", "{\"a\" 1}", "{\"a\":1,}", "[1,]", "{\"a\":truee}",
-        "{\"a\":nul}", "{\"a\":01}", "{\"a\":1} trailing", "\"\\q\"", "\"\\uD800\""
+        "{\"a\":nul}", "{\"a\":01}", "{\"a\":1} trailing", "\"\\q\"", "\"\\uD800\"",
+        "{\"a\"}", "{\"a}", "{\"a\":1,\"b\"}", "{\"a\":{\"b\"}}"
     };
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i)
         TEST("strict parser rejects malformed JSON", json_parse(invalid[i]) == NULL);
@@ -188,7 +189,11 @@ static void test_manifest_conflicts_provides_replaces(void) {
         TEST("1 replaces", m->nreplaces == 1 && strcmp(m->replaces[0], "old-network") == 0);
 
         /* Test save & reload */
+#ifdef _WIN32
+        const char *tmpdir = "lpm-test-cpr";
+#else
         const char *tmpdir = "/tmp/lpm-test-cpr";
+#endif
         mkdir(tmpdir, 0755);
         TEST("save manifest with cpr", manifest_save(m, tmpdir) == 0);
         manifest_free(m);
@@ -220,6 +225,21 @@ static void test_dep_spec_parsing(void) {
 
     TEST("parse with ==", lpm_parse_dep_spec("busybox == 1.36.1", name, sizeof(name), op, sizeof(op), ver, sizeof(ver)) &&
          strcmp(name, "busybox") == 0 && strcmp(op, "==") == 0 && strcmp(ver, "1.36.1") == 0);
+}
+
+static void test_dep_spec_max_length_name(void) {
+    /* lpm_valid_pkgname() accepts names up to LPM_MAX_PACKAGE_NAME characters,
+     * so a dependency on such a package must still be parsable. */
+    char long_name[LPM_MAX_PACKAGE_NAME + 1];
+    char name[LPM_MAX_PACKAGE_NAME + 1];
+    char op[16], ver[64];
+
+    memset(long_name, 'a', LPM_MAX_PACKAGE_NAME);
+    long_name[LPM_MAX_PACKAGE_NAME] = '\0';
+
+    TEST("parse maximum length package name",
+         lpm_parse_dep_spec(long_name, name, sizeof(name), op, sizeof(op), ver, sizeof(ver)) &&
+         strcmp(name, long_name) == 0);
 }
 
 static void test_version_constraints(void) {
@@ -277,6 +297,7 @@ int main(void) {
     test_manifest_check_deps();
     test_manifest_conflicts_provides_replaces();
     test_dep_spec_parsing();
+    test_dep_spec_max_length_name();
     test_version_constraints();
     test_path_traversal_protection();
     test_safe_locking();

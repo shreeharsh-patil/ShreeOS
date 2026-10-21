@@ -27,7 +27,7 @@ export DEBIAN_FRONTEND=noninteractive
   bzip2 gzip xz-utils tar cpio bc fakeroot \
   pkg-config gettext gettext-base autopoint x11-xkb-utils xutils-dev \
   libgmp-dev libmpfr-dev libmpc-dev \
-  libssl-dev libelf-dev libcrypt-dev \
+  libssl-dev libelf-dev libcrypt-dev openssl \
   xorriso mtools dosfstools fdisk util-linux e2fsprogs kmod \
   grub-pc-bin grub-efi-amd64-bin grub-common grub2-common \
   qemu-system-x86 ovmf \

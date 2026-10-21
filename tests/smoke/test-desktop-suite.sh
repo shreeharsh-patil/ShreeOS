@@ -74,7 +74,8 @@ if grep -R -n --include='*.sh' --include='shree-*' 'grep -oP'     "${PROJECT_ROO
 fi
 
 if command -v cc >/dev/null 2>&1 &&
-   printf '#include <X11/Xlib.h>\n' | cc -E -x c - >/dev/null 2>&1; then
+   printf '#include <X11/Xlib.h>\nint main(void){ Display *d = XOpenDisplay(0); (void)d; return 0; }\n' |
+     cc -fsyntax-only -x c - >/dev/null 2>&1; then
   cc -std=c99 -Wall -Wextra -fsyntax-only "${PROJECT_ROOT}/desktop/wm/shree-dock.c"
   echo "  [OK] Persistent dock source passes C syntax validation"
 fi

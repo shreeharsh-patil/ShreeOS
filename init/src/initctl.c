@@ -117,6 +117,17 @@ static int send_ipc_command(const char *cmd, char *out, size_t out_len) {
     return 0;
 }
 
+/* Build an IPC request that addresses a named service. A truncated request
+ * could silently address a different service, so it is rejected instead. */
+static int build_service_request(char *buf, size_t buf_len, const char *verb, const char *name) {
+    int written = snprintf(buf, buf_len, "%s %s", verb, name);
+    if (written < 0 || (size_t)written >= buf_len) {
+        fprintf(stderr, "initctl: service name is too long\n");
+        return -1;
+    }
+    return 0;
+}
+
 static void usage(void) {
     fprintf(stderr,
         "initctl — ShreeOS Service & Init Controller (V2)\n"
@@ -159,7 +170,8 @@ int main(int argc, char **argv) {
         }
     } else if (strcmp(cmd, "logs") == 0) {
         if (argc < 3) { fprintf(stderr, "Usage: initctl logs <service>\n"); return 1; }
-        char req[128]; snprintf(req, sizeof(req), "LOGS %s", argv[2]);
+        char req[128];
+        if (build_service_request(req, sizeof(req), "LOGS", argv[2]) != 0) return 1;
         if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
             printf("%s", resp);
             return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
@@ -167,7 +179,8 @@ int main(int argc, char **argv) {
         return 1;
     } else if (strcmp(cmd, "start") == 0) {
         if (argc < 3) { fprintf(stderr, "Usage: initctl start <service>\n"); return 1; }
-        char req[128]; snprintf(req, sizeof(req), "START %s", argv[2]);
+        char req[128];
+        if (build_service_request(req, sizeof(req), "START", argv[2]) != 0) return 1;
         if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
             printf("%s", resp);
             return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
@@ -175,7 +188,8 @@ int main(int argc, char **argv) {
         return 1;
     } else if (strcmp(cmd, "stop") == 0) {
         if (argc < 3) { fprintf(stderr, "Usage: initctl stop <service>\n"); return 1; }
-        char req[128]; snprintf(req, sizeof(req), "STOP %s", argv[2]);
+        char req[128];
+        if (build_service_request(req, sizeof(req), "STOP", argv[2]) != 0) return 1;
         if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
             printf("%s", resp);
             return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
@@ -183,7 +197,8 @@ int main(int argc, char **argv) {
         return 1;
     } else if (strcmp(cmd, "restart") == 0) {
         if (argc < 3) { fprintf(stderr, "Usage: initctl restart <service>\n"); return 1; }
-        char req[128]; snprintf(req, sizeof(req), "RESTART %s", argv[2]);
+        char req[128];
+        if (build_service_request(req, sizeof(req), "RESTART", argv[2]) != 0) return 1;
         if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
             printf("%s", resp);
             return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;
@@ -191,7 +206,8 @@ int main(int argc, char **argv) {
         return 1;
     } else if (strcmp(cmd, "status") == 0) {
         if (argc >= 3) {
-            char req[128]; snprintf(req, sizeof(req), "STATUS %s", argv[2]);
+            char req[128];
+            if (build_service_request(req, sizeof(req), "STATUS", argv[2]) != 0) return 1;
             if (send_ipc_command(req, resp, sizeof(resp)) == 0) {
                 printf("%s", resp);
                 return (strncmp(resp, "ERROR", 5) == 0) ? 1 : 0;

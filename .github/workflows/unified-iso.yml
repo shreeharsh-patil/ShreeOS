@@ -46,6 +46,10 @@ concurrency:
   group: unified-shreeos-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
 jobs:
   build-and-test:
     name: Package native tools, build Plasma ISO, QEMU BIOS/UEFI tests

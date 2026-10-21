@@ -41,7 +41,7 @@ support yet. Thunar's sidebar includes common personal folders, Computer,
 Network, and Trash; the dock includes ShreeOS search, overview, Software, and
 quick controls, and the top panel has a recent-notifications dropdown.
 Ctrl+Alt+Left/Right switches workspaces; Ctrl+Alt+Shift+Left/Right moves the
-focused window, and Super+1â€“4 selects a workspace directly.
+focused window, and Super+1–4 selects a workspace directly.
 Super+L locks a password-protected installed account. The temporary live
 session shows a notification instead of locking itself without an unlock
 password.

@@ -40,9 +40,13 @@ capture_window() {
 }
 
 case "$MODE" in
-  full) capture_full ;;
-  select|region) capture_region ;;
-  window) capture_window ;;
+  # The capture helpers are allowed to fail here: the empty-output check
+  # below is what turns a failed (or missing) capture tool into the
+  # "Screenshot Failed" notification. Without this, set -e would abort on
+  # the capture and that error path would never run.
+  full) capture_full || true ;;
+  select|region) capture_region || true ;;
+  window) capture_window || true ;;
   interactive)
     CHOICE=$(printf "Fullscreen Capture\nSelected Region (Click and Drag)\nActive Window Only" | shree-dmenu -p "Take Screenshot" -l 3 -c || true)
     case "$CHOICE" in

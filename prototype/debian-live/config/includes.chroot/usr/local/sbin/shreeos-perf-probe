@@ -71,14 +71,16 @@ to_ms() {
 
 # --- Cold boot ---------------------------------------------------------------
 probe_started="$(cut -d' ' -f1 /proc/uptime)"
+# The duration helpers are also used by the memory section below, so they are
+# loaded whether or not systemd-analyze is available.
+if [ ! -r "$PERFORMANCE_TIME_HELPER" ]; then
+  emit boot_total_ms 0
+  echo "Missing performance duration helper: $PERFORMANCE_TIME_HELPER" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+. "$PERFORMANCE_TIME_HELPER"
 if command -v systemd-analyze >/dev/null 2>&1; then
-  if [ ! -r "$PERFORMANCE_TIME_HELPER" ]; then
-    emit boot_total_ms 0
-    echo "Missing performance duration helper: $PERFORMANCE_TIME_HELPER" >&2
-    exit 1
-  fi
-  # shellcheck source=/dev/null
-  . "$PERFORMANCE_TIME_HELPER"
   summary=""
   boot_waited=0
   while [ "$boot_waited" -lt "$BOOT_TOTAL_WAIT_SECONDS" ]; do

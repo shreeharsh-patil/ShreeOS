@@ -94,9 +94,13 @@ process() {
 }
 
 # Rewrite exactly one manifest line, preserving its name/version/url columns.
+# OFS is pinned to a tab because the manifest is tab-separated: rebuilding a
+# field with awk's default OFS (a space) would silently turn the re-pinned
+# row into a space-separated one, and every tab-aware reader
+# (scripts/verify-sources.sh, the emit() helper below) would then skip it.
 pin_manifest() {
   local lineno="$1" sha="$2"
-  awk -v n="$lineno" -v s="$sha" 'NR == n { $4 = s } { print }' "$MANIFEST" > "${MANIFEST}.new"
+  awk -v n="$lineno" -v s="$sha" 'BEGIN { OFS = "\t" } NR == n { $4 = s } { print }' "$MANIFEST" > "${MANIFEST}.new"
   mv -f "${MANIFEST}.new" "$MANIFEST"
 }
 

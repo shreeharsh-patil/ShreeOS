@@ -39,8 +39,8 @@ testable.
    should never be masked by a later stage.
 3. **Pinned, checksummed sources.** Every upstream component (kernel, gcc,
    binutils, glibc, busybox equivalents) is pinned to an exact version and
-   verified by checksum in `toolchain/sources.list` and `kernel/sources.list`.
-   No "latest" builds.
+   verified by checksum in `toolchain/scripts/sources.list` and
+   `kernel/sources.list`. No "latest" builds.
 4. **Config lives in one place.** `build.conf` at the repo root is the single
    source of truth for target architecture, distro name/branding, and
    component versions. Scripts read from it; nothing hardcodes these values.
@@ -78,5 +78,5 @@ testable.
 
 ## Why these specific technology choices
 
-See `docs/design-decisions/` for a written rationale per major choice
-(libc, init, package format, etc.) as each is finalized in its milestone.
+See [`design-decisions/`](design-decisions/) for a written rationale per major
+choice (libc, init, package format, etc.).

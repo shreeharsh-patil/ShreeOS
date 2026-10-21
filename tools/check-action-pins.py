@@ -31,7 +31,10 @@ import urllib.error
 import urllib.request
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
-USES = re.compile(r"^\s*-?\s*uses:\s*['\"]?([^'\"\s]+)['\"]?\s*$", re.M)
+# A YAML comment starts at a "#" that follows whitespace, so a pin may be
+# followed by one. Without this the whole line is skipped and an unpinned
+# action is never reported.
+USES = re.compile(r"^\s*-?\s*uses:\s*['\"]?([^'\"\s]+)['\"]?\s*(?:#.*)?$", re.M)
 WORKFLOW_GLOBS = (".github/workflows/*.yml", ".github/workflows/*.yaml")
 
 # Actions that are resolved by the runner, not by the GitHub API.

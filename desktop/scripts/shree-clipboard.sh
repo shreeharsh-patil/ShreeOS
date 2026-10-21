@@ -93,7 +93,11 @@ run_daemon() {
       exit 1
     }
   fi
-  printf '%s\n' "$" > "$INSTANCE_DIR/pid"
+  # Record the daemon's own PID. A bare "$" is a literal dollar sign in
+  # double quotes (it is not an expansion), so the lock file would never
+  # contain a PID and every second instance would treat the running daemon
+  # as stale and steal the lock.
+  printf '%s\n' "$$" > "$INSTANCE_DIR/pid"
   chmod 600 "$INSTANCE_DIR/pid"
   trap 'rm -rf "$INSTANCE_DIR"' EXIT
   trap 'exit 130' INT
@@ -165,7 +169,11 @@ run_interactive() {
       local full_text
       full_text=$(echo "$b64_line" | base64 -d 2>/dev/null || true)
       local preview
-      preview=$(echo "$full_text" | tr '\n' ' ' | head -c 80)
+      # printf, not echo: echo appends a newline, which would make the
+      # preview one character longer than the entry that was rendered into
+      # the menu, so the selection would never match and nothing would be
+      # copied back to the clipboard.
+      preview=$(printf '%s' "$full_text" | tr '\n' ' ' | head -c 80)
       if [ "$preview" = "$selected" ]; then
         if command -v xclip >/dev/null 2>&1; then
           echo -n "$full_text" | xclip -selection clipboard -i

@@ -37,7 +37,7 @@ int shreed_collect_firmware(const char *root, char *buffer, size_t size) {
     /* Kernel sysfs exposes drivers, but not a universal installed-firmware inventory. */
     start = strstr(drivers, "\"devices\":"); start = start ? start + 10 : "[]"; end = strchr(start, ']');
     if (end) shreed_json_append_n(&json, start, (size_t)(end - start + 1)); else shreed_json_append(&json, "[]");
-    shreed_json_append(&json, "}}}"); return json.failed ? -1 : 0;
+    shreed_json_append(&json, "}}"); return json.failed ? -1 : 0;
 }
 
 int shreed_collect_diagnostics(const char *root, char *buffer, size_t size) {
@@ -46,5 +46,5 @@ int shreed_collect_diagnostics(const char *root, char *buffer, size_t size) {
     shreed_json_init(&json, buffer, size); shreed_json_append(&json, "{\"ok\":true,\"result\":{\"read_only\":true,\"findings\":");
     if (devices) { devices += 10; end = strchr(devices, ']'); if (end) shreed_json_append_n(&json, devices, (size_t)(end - devices + 1)); else shreed_json_append(&json, "[]"); }
     else shreed_json_append(&json, "[]");
-    shreed_json_append(&json, "}}}"); return json.failed ? -1 : 0;
+    shreed_json_append(&json, "}}"); return json.failed ? -1 : 0;
 }

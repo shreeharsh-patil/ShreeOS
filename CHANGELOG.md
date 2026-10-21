@@ -3,18 +3,6 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [4.0.0-dev] - 2026-10-07
-
-### Changed
-- Start the requested v4 native desktop release series. The ISO, os-release,
-  installer, boot menus, login screens, and system information identify the
-  rebuilt image as `4.0.0-dev`.
-- Native release staging accepts version tags as well as build-specific tags,
-  and still requires passing native CI, matching provenance and verified assets.
-- This version change does not certify production readiness or add the separate
-  Debian Live Plasma desktop to the native image. Hardware acceptance,
-  installed-system updates/recovery and performance validation remain open.
-
 ## [0.4.0] - 2026-10-16
 
 ### Added
@@ -66,6 +54,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   desktop ISOs under prototype and native names. Superseded by the single
   pipeline above.
 
+## [4.0.0-dev] - 2026-10-07
+
+### Changed
+- Start the requested v4 native desktop release series. The ISO, os-release,
+  installer, boot menus, login screens, and system information identify the
+  rebuilt image as `4.0.0-dev`.
+- Native release staging accepts version tags as well as build-specific tags,
+  and still requires passing native CI, matching provenance and verified assets.
+- This version change does not certify production readiness or add the separate
+  Debian Live Plasma desktop to the native image. Hardware acceptance,
+  installed-system updates/recovery and performance validation remain open.
+
 ## [Unreleased]
 
 ### Added
@@ -110,6 +110,11 @@ the `v0.2.1-dev` release. The desktop image is built and certified entirely by
 GitHub Actions: native X11 / Mesa / Xorg stack, root filesystem, ISO structure,
 BIOS and UEFI QEMU boots, and the full automated test suite.
 
+### Added
+- Milestone 1: repository scaffold — directory structure, `build.conf`,
+  shared `scripts/common.sh` helpers, architecture and roadmap docs,
+  per-component README stubs, MIT license, contribution guide.
+
 ### Fixed
 - Xorg client libraries (libXext, libXi, libXinerama, libXrandr) no longer abort
   their cross-build with "cannot run test program while cross compiling"; the
@@ -134,10 +139,3 @@ BIOS and UEFI QEMU boots, and the full automated test suite.
   minimal-profile Kernel workflow no longer fails it.
 - `shreeinfo` reports the version the system was built as instead of a
   hardcoded string.
-
-## [Unreleased]
-
-### Added
-- Milestone 1: repository scaffold — directory structure, `build.conf`,
-  shared `scripts/common.sh` helpers, architecture and roadmap docs,
-  per-component README stubs, MIT license, contribution guide.

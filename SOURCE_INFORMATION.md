@@ -4,7 +4,7 @@ This document records the source policy for ShreeOS build outputs. It does not
 make the current prototype a published release or by itself satisfy source
 distribution obligations for a future binary release.
 
-## Experimental Debian Live prototype
+## Debian Live prototype
 
 The prototype uses Debian GNU/Linux 13 (Trixie), the `main` archive area, and
 the dated Debian and Debian Security snapshots selected in
@@ -13,6 +13,13 @@ The build uses Debian `live-build`; its exact expected version is pinned in the
 same file. The CI job installs the base image's packages from those snapshot
 repositories, and the resulting installed system uses signed Debian Trixie
 and security repositories for updates.
+
+The `contrib` and `non-free` archive areas are never enabled. The firmware
+component follows the image's firmware policy: the graphical `desktop` and
+`plasma` profiles default to `SHREEOS_FIRMWARE=standard`, which adds
+`non-free-firmware`, and the console `base` profile defaults to
+`SHREEOS_FIRMWARE=free`, which keeps `main` alone. Setting
+`SHREEOS_FIRMWARE=free` on any profile produces a main-only image.
 
 Each successful prototype build records:
 
@@ -36,9 +43,12 @@ The optional desktop profile adds `arc-theme`, `papirus-icon-theme`, and
 `firmware-linux-free` for firmware. Their installed Debian copyright notices
 are retained in the image; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 Debian describes this package as DFSG-compliant firmware; it is from `main`.
-The profiles do not use the `non-free-firmware` archive. This choice is a
-redistribution policy baseline, not a claim that the included firmware covers
-common Wi-Fi or other PC hardware.
+A graphical profile built with the default `standard` firmware policy also
+selects the `non-free-firmware` packages listed in
+[`prototype/debian-live/features/package-lists/shreeos-hardware.list.chroot`](prototype/debian-live/features/package-lists/shreeos-hardware.list.chroot),
+whose redistribution terms are package specific. Either way the selected
+firmware is a redistribution policy baseline, not a claim that the included
+firmware covers common Wi-Fi or other PC hardware.
 
 To inspect and obtain Debian source packages from the configured archive,
 enable a matching `deb-src` entry for the same suite/component and snapshot,

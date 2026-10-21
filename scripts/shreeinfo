@@ -5,18 +5,21 @@ set -euo pipefail
 
 DISTRO_NAME="ShreeOS"
 # Report the version the running system was built as. /etc/os-release is
-# generated from build.conf during the rootfs stage; when run from a checkout
-# (no ShreeOS os-release present) fall back to this tree's build.conf, and only
-# then to the compiled-in default, so the reported version cannot go stale.
+# generated from the version source of truth during the rootfs stage; when run
+# from a checkout (no ShreeOS os-release present) fall back to this tree's
+# VERSION file, and only then to the compiled-in default, so the reported
+# version cannot go stale.
 resolve_version() {
   local version=""
   if [ -r /etc/os-release ] && grep -Eq '^ID=shreeos$' /etc/os-release; then
     version="$(sed -n 's/^VERSION="\(.*\)"$/\1/p' /etc/os-release | head -n 1)"
   fi
   if [ -z "$version" ]; then
-    local conf="${BASH_SOURCE[0]%/*}/../build.conf"
-    if [ -r "$conf" ]; then
-      version="$(sed -n 's/^export DISTRO_VERSION="\(.*\)"$/\1/p' "$conf" | head -n 1)"
+    # build.conf derives the version from the repository VERSION file; read
+    # that source of truth directly instead of re-parsing the assignment.
+    local version_file="${BASH_SOURCE[0]%/*}/../VERSION"
+    if [ -r "$version_file" ]; then
+      version="$(tr -d '[:space:]' < "$version_file")"
     fi
   fi
   printf '%s' "${version:-unknown}"
@@ -30,7 +33,7 @@ if command -v dpkg-query >/dev/null 2>&1 && [ -r /var/lib/dpkg/status ]; then
   PACKAGES="$(dpkg-query -W -f='${binary:Package}\n' 2>/dev/null | wc -l)"
   PKG_MANAGER="dpkg/APT"
 else
-  PACKAGES="$(find /var/lib/lpm/installed -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)"
+  PACKAGES="$(find /var/lib/lpm/installed -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l || true)"
   PKG_MANAGER="lpm"
 fi
 SHELL_NAME=$(basename "${SHELL:-/bin/bash}")

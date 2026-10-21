@@ -101,8 +101,12 @@ int shreed_read_frame(shreed_client_t *client) {
     if (client->payload_length == 0) {
         uint32_t network_length;
         memcpy(&network_length, client->header, sizeof(network_length));
-        client->payload_length = ntohl(network_length);
-        if (client->payload_length == 0 || client->payload_length > SHREED_MAX_MESSAGE) return -2;
+        network_length = ntohl(network_length);
+        /* The announced length is validated before it is stored: a rejected
+         * value must not survive into the next frame, because the payload
+         * buffer is only SHREED_MAX_MESSAGE bytes long. */
+        if (network_length == 0 || network_length > SHREED_MAX_MESSAGE) return -2;
+        client->payload_length = network_length;
     }
 
     while (client->payload_used < client->payload_length) {

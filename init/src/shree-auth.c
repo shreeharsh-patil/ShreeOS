@@ -40,6 +40,25 @@
 #include <crypt.h>
 #endif
 
+/* Overwrite a buffer so the compiler cannot drop the erase as a dead store. */
+static void secure_erase(void *buf, size_t len) {
+    volatile unsigned char *p = (volatile unsigned char *)buf;
+    while (len--) *p++ = 0;
+}
+
+/* Compare a password hash without leaking how many leading characters
+ * matched; strcmp() would return as soon as the first difference is seen. */
+static int constant_time_equals(const char *a, const char *b) {
+    if (!a || !b) return 0;
+    size_t len_a = strlen(a);
+    if (len_a != strlen(b)) return 0;
+    unsigned char diff = 0;
+    for (size_t i = 0; i < len_a; i++) {
+        diff |= (unsigned char)(a[i] ^ b[i]);
+    }
+    return diff == 0;
+}
+
 static void close_extra_fds(void) {
     for (int fd = 3; fd < 1024; fd++) {
         close(fd);
@@ -104,7 +123,7 @@ int authenticate_user(const char *username, const char *password) {
         return 0;
     }
 
-    return (strcmp(computed, hash) == 0) ? 1 : 0;
+    return constant_time_equals(computed, hash) ? 1 : 0;
 }
 
 static int launch_user_session(struct passwd *pw, const char *session_cmd) {
@@ -244,7 +263,7 @@ int main(int argc, char **argv) {
         }
 
         /* Clear password from memory immediately */
-        memset(password, 0, sizeof(password));
+        secure_erase(password, sizeof(password));
 
         if (ok && pw) {
             printf("Login successful. Initializing session...\n");

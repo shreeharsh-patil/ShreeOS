@@ -22,8 +22,13 @@ LOG_DIR="${TEST_TMP}/logs"
 mkdir -p "$SERVICES_DIR" "$LOG_DIR"
 
 INIT_PID=""
+STRICT_PID=""
 
 cleanup() {
+  if [ -n "$STRICT_PID" ] && kill -0 "$STRICT_PID" 2>/dev/null; then
+    kill -TERM "$STRICT_PID" 2>/dev/null || true
+    wait "$STRICT_PID" 2>/dev/null || true
+  fi
   if [ -n "$INIT_PID" ] && kill -0 "$INIT_PID" 2>/dev/null; then
     kill -TERM "$INIT_PID" 2>/dev/null || true
     wait "$INIT_PID" 2>/dev/null || true
@@ -302,6 +307,7 @@ done
 UNAUTH_OUTPUT=$(INIT_SOCK_PATH="$STRICT_SOCK" "$INITCTL_BIN" start first 2>&1 || true)
 kill -TERM "$STRICT_PID" 2>/dev/null || true
 wait "$STRICT_PID" 2>/dev/null || true
+STRICT_PID=""
 
 if echo "$UNAUTH_OUTPUT" | grep -q "Permission denied"; then
   echo "  [OK] Unauthorized mutating IPC command rejected with 'Permission denied'"
