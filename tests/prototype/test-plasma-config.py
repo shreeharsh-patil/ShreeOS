@@ -65,6 +65,14 @@ class PlasmaConfigTests(unittest.TestCase):
         self.assertIn("plank", packages)
         self.assertIn("dconf-cli", packages)
 
+    def test_discover_notifier_is_not_autostarted_in_fresh_profiles(self):
+        notifier = INCLUDES / "etc/skel/.config/autostart/org.kde.discover.notifier.desktop"
+        entry = read_ini(notifier)
+        self.assertEqual(entry["Desktop Entry"].get("Hidden", "").lower(), "true")
+        packages = set((PROFILE / "package-lists/shreeos-plasma.list.chroot").read_text().splitlines())
+        self.assertIn("plasma-discover", packages,
+                      "Disabling update notifications must not remove Discover itself")
+
     def test_light_defaults_agree_across_native_gtk_and_terminal_apps(self):
         kde = read_ini(INCLUDES / "etc/skel/.config/kdeglobals")
         defaults = read_ini(INCLUDES / "usr/share/plasma/look-and-feel/org.shreeos.desktop/contents/defaults")
