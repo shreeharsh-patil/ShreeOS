@@ -210,7 +210,7 @@ class SessionStartupTests(unittest.TestCase):
         self.assertIn('local qemu_timeout=420', iso_test)
         self.assertIn('if [ "$PROFILE" = plasma ]; then qemu_timeout=1800; fi', iso_test)
         self.assertIn('local deadline=$((SECONDS + qemu_timeout))', iso_test)
-        self.assertIn('timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64', iso_test)
+        self.assertIn('timeout --signal=TERM --kill-after=10s "${qemu_timeout}s" qemu-system-x86_64', iso_test)
         # In CI's TCG-backed VM, the guest clock advances far slower than the
         # host clock. Allow six times the guest-side session deadline.
         self.assertGreaterEqual(1800, int(wait_limit.group(1)) * 6)

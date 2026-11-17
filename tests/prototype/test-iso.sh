@@ -222,7 +222,7 @@ run_boot_test() {
     )
   fi
 
-  setsid xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM "${qemu_timeout}s" qemu-system-x86_64 \
+  setsid xvfb-run -a -s "-screen 0 1280x800x24" timeout --signal=TERM --kill-after=10s "${qemu_timeout}s" qemu-system-x86_64 \
     -machine q35 -m "$memory" -smp 2 -vga virtio -nic user,model=virtio-net-pci \
     -drive "file=$TARGET_DISK,format=raw,if=virtio" \
     -cdrom "$ISO" -boot order=d \

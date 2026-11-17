@@ -151,6 +151,7 @@ class QemuHarnessTests(unittest.TestCase):
         self.assertIn("SHREEOS_BOOT_CHECK: FAIL:", script)
         self.assertIn("local screenshot_captured=0 cleanup_signal_sent=0 boot_check_failed=0", script)
         self.assertIn('setsid xvfb-run', script)
+        self.assertIn('timeout --signal=TERM --kill-after=10s', script)
         self.assertIn('kill -TERM -- "-$emulator_pid"', script)
         self.assertIn("for attempt in range(4):", script)
         self.assertIn("def boot_marker_seen():", script)
